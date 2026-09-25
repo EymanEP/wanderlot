@@ -8,5 +8,6 @@
   },
   "dependencies": {
     "@wanderlot/core": "*"
-  }
+  },
+  "license": "MIT"
 }

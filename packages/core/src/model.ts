@@ -72,12 +72,19 @@ export const Place = z.object({
 });
 export type Place = z.infer<typeof Place>;
 
+// Linked, never hosted, and only from services that allow it (SPEC §6).
 export const Photo = z.object({
   url: z.url(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
   source: z.enum(["unsplash", "pexels", "wikimedia"]),
   author: z.string().min(1),
+  authorUrl: z.url().optional(),
   license: z.string().min(1),
   sourceUrl: z.url(),
+  alt: z.string(),
+  // Unsplash only: the event URL to call when the organiser picks the photo.
+  downloadLocation: z.url().optional(),
 });
 export type Photo = z.infer<typeof Photo>;
 

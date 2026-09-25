@@ -4,6 +4,10 @@ Trip planning for Grupo 51: a **local panel** where the organiser researches
 and curates destinations, and a **published site** where the six friends read,
 comment and vote. Nothing reaches the site until the organiser approves it.
 
+Wanderlot is open source and self-hosted: one deployment serves one group of
+friends. The site runs free on Cloudflare (Workers + D1); the panel runs on the
+organiser's own computer. Hosting and setup: [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+
 The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Layout
@@ -117,3 +121,7 @@ the API server, so open the Vite URL.
   against the real binary yet.
 - The Duffel provider is a stub.
 - Photos are labelled placeholders until sources are picked (SPEC §6).
+
+## Licence
+
+[MIT](LICENSE). Photos shown on a site keep their own licences and credits.

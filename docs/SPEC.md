@@ -1,10 +1,15 @@
 # Wanderlot — spec
 
-Trip planning for one fixed group of friends (Grupo 51, six people), built as two
-halves that never blur into each other:
+Trip planning for one fixed group of friends, built as two halves that never
+blur into each other:
 
 - **Panel** — runs only on the organiser's machine. Research and curation.
-- **Site** — published, used by the six. Reading, commenting, voting.
+- **Site** — published, used by the group. Reading, commenting, voting.
+
+Wanderlot is open source (MIT) and self-hosted: **one deployment serves one
+group**. Anyone can deploy their own site for free (§11) and run the panel from
+a clone of the repo. The reference group throughout this spec and the mocks is
+Grupo 51: six people, planning from Madrid.
 
 The one rule everything else serves: **nothing reaches the site until the
 organiser approves it.** The panel generates twelve options; the group sees the
@@ -66,7 +71,7 @@ the organiser's editorial additions from Comparativa:
 
 - `pros`, `cons` — drafted by Claude, rewritten by the organiser
 - `weather` — one line for the trip month
-- `photos` — §6
+- `photos` — §6, chosen by the organiser at approval
 - `inVote` — the Comparativa checkbox; only `inVote` destinations are ballot options
 - `totalPerPersonCents` — flights + recommended stay × nights ÷ party size
 
@@ -96,7 +101,7 @@ Threads are one level deep: a reply's parent must be a top-level comment.
 ```
 
 - The panel binds to `127.0.0.1` only. API keys and the `claude` binary never
-  leave the machine.
+  leave the machine. There is no hosted panel in v1 (§10).
 - **Publish** is the only way data crosses. It sends a **snapshot**: the plan
   plus its approved destinations, validated against one shared schema
   (`packages/core`). The site stores snapshots verbatim; it never computes
@@ -149,7 +154,7 @@ provider (or sources) and the check date.
 
 ### Rule — Borda count over the top three
 Each member ranks the `inVote` destinations: first gets 3 points, second 2,
-third 1. Six members × 6 points = 36 points in play.
+third 1: six points per person, so 36 in play for a group of six.
 
 - A ballot ranks exactly `min(3, n)` distinct destinations, where `n` is the
   number of `inVote` destinations. (With 2 destinations: 3 and 2 points.)
@@ -175,7 +180,7 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 - **The scoreboard is hidden while `voting`.** Visible to everyone at all times:
   who has voted and who hasn't (names only, never rankings).
 - The vote closes the moment the sixth ballot arrives or the deadline passes,
-  whichever is first. Closing is checked on every read, so no cron is needed.
+  whichever is first. ("Sixth" means the group's `partySize`.) Closing is checked on every read, so no cron is needed.
 - Once `closed`, ballots are read-only and the full scoreboard is shown:
   points, first places, and each member's ranking.
 - Each member sees their own ballot at all times ("Tu 1.ª opción" on Plan cards).
@@ -185,27 +190,58 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 ## 5. Identity on the site
 
-Six known people, no sign-up. Each member gets **one private link**:
+A small, known group, no sign-up. Each member gets **one private link**:
 `https://<site>/p/<planId>?k=<token>`.
 
 - The token is 32 random bytes, base64url. The site stores only its SHA-256.
 - The first visit sets an http-only cookie and redirects to the clean URL.
-- The panel issues the six links once and can revoke/reissue one.
+- The panel issues everyone's link once and can revoke/reissue one.
 - Anyone without a valid token sees nothing — not even the plan name.
 
 ---
 
 ## 6. Photos
 
-Picked by the organiser at approval time in Revisar, never scraped.
+Photos are **linked, not hosted**: the site shows each image straight from the
+photo service that serves it, so a deployment stores no image files. That is
+only safe for images whose licence allows reuse and whose service allows
+direct linking, so photos come **only from three services**:
 
-- Hero shot: Unsplash or Pexels.
-- Specific landmarks: Wikimedia Commons.
-- Google Images is not a source (licensing).
+| source | used for | direct linking | attribution | key |
+|---|---|---|---|---|
+| Unsplash | hero and mood shots | **required** by its API rules: use the `urls` it returns | photographer + Unsplash, with `utm_source=wanderlot&utm_medium=referral` links; call `download_location` when a photo is chosen | free API key |
+| Pexels | hero and mood shots | allowed: use the `src` it returns | "Foto de X en Pexels", linked | free API key |
+| Wikimedia Commons | specific landmarks ("Castel dell'Ovo") | allowed but discouraged (files can be renamed or deleted); link a sized thumbnail | author + licence (usually CC BY-SA), linked | none (send a descriptive User-Agent) |
 
-Each photo stores `{ url, source, author, license, sourceUrl }`, and the site
-renders the attribution. v1 hotlinks the provider URL; copying files to our own
-storage is a later decision.
+**Claude never supplies an image URL.** An arbitrary image Claude finds on the
+web is usually copyrighted, may block direct linking, may be moved or deleted,
+and would let a third-party site log every friend who opens the page. So the
+work is split:
+
+1. **Claude picks what to show.** With each proposal it suggests 4–6 photo
+   subjects: one hero ("Bahía de Nápoles al atardecer") and the landmarks the
+   proposal mentions ("Pompeya", "Spaccanapoli").
+2. **The panel finds candidates** for each subject through the services' own
+   search APIs (Unsplash/Pexels for the hero, Wikimedia for landmarks), using
+   whichever keys the organiser configured. With no keys, Wikimedia alone works.
+3. **The panel checks each candidate** before showing it: the URL loads, it is
+   an image, and the service returned a licence and an author.
+4. **The organiser picks** in Revisar (one hero, up to three tiles). Picking an
+   Unsplash photo triggers its download event.
+5. **Publish carries the choice** with its credits. The site renders the image
+   from the service's URL and the credit under it. An image that fails to load
+   falls back to the labelled placeholder.
+
+Each photo stores:
+
+```
+{ url, width, height, source: "unsplash"|"pexels"|"wikimedia",
+  author, authorUrl, license, sourceUrl, alt, downloadLocation? }
+```
+
+Copying files into our own storage (Cloudflare R2's free tier would hold
+them) is not part of v1. It becomes worth doing if linked Wikimedia images
+start disappearing; Unsplash photos must stay linked either way.
 
 ---
 
@@ -218,20 +254,38 @@ already where they are.
 
 ---
 
-## 8. Data sources
+## 8. Providers
 
-The panel talks to one flight provider at a time through a `FlightProvider`
-interface, plus the local `claude` binary through a `ResearchProvider`.
+Every outside service sits behind an interface in the panel, and each hoster
+configures only the ones they have. The panel works with none of the paid ones.
 
-| source | status to check before building on it |
+### Research (AI)
+`ResearchProvider` produces proposals, pros and cons, and photo subjects.
+
+| provider | how | cost to the hoster |
+|---|---|---|
+| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema …` | their Claude subscription, no API bill |
+| `anthropic-api` | Anthropic API with the web search tool, `ANTHROPIC_API_KEY` | pay per use |
+
+Other providers can implement the same interface later. Whatever the provider,
+research always yields `claude` provenance (§3): it is labelled as written by
+AI until a flight API confirms it, even when it quotes an airline's price.
+
+### Flights (optional)
+`FlightProvider` searches and verifies fares; it is the only way to `api`
+provenance.
+
+| provider | status |
 |---|---|
-| Duffel | default. Offers API with real bookable fares. |
+| Duffel (default) | real bookable fares with a live account; test mode returns made-up flights. Check its pricing for search-only use before relying on it |
 | Amadeus Self-Service | reportedly being decommissioned in 2026 — confirm before use |
 | Kiwi (Tequila) | public sign-ups reportedly closed — confirm access |
-| `claude` binary | `claude -p --output-format json --json-schema …`; always yields `claude` provenance |
 
-Claude never produces `api` provenance, even when it quotes a price it found on
-an airline site.
+Without a flight provider, every proposal stays "Lo escribió Claude" and the
+panel says so on Generar.
+
+### Photos
+Unsplash, Pexels and Wikimedia Commons, per §6.
 
 ---
 
@@ -263,8 +317,65 @@ but its vote hasn't opened.
 
 ## 10. Out of scope for v1 / still open
 
-- Mobile layouts of the site (the group votes from phones — next design task).
-- Plan-creation screen in the panel.
+- **A hosted panel.** v1's panel is local only. A later option: serve it from
+  the same Cloudflare deployment under `/admin`, behind Cloudflare Access for
+  login, using `anthropic-api` (a Worker can't run the `claude` binary).
+- Plan-creation and "Personas y enlaces" screens in the panel (next).
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
-- Multiple groups. Grupo 51 is the only group; the model doesn't generalise it.
+- More than one group per deployment. Each group deploys its own site.
+
+---
+
+## 11. Hosting and setup
+
+### The site: Cloudflare Workers + D1 (default)
+The site is one Cloudflare Worker: it serves the built UI as static assets and
+runs the Hono API, with a D1 database (SQLite) for plans, members, ballots and
+comments. Cloudflare's free plan covers a group comfortably: D1 allows 5 M
+rows read and 100 K written per day and 5 GB of storage, and queries past the
+daily cap fail until midnight UTC rather than billing. Workers and D1 don't
+sleep, so the site answers instantly after weeks of silence between trips.
+
+Storage sits behind one interface with two implementations: **D1** for
+Cloudflare and **`node:sqlite`** for tests, local development, and anyone who
+prefers running the Node server themselves (Docker on any small server). Both
+use the same SQL schema and migrations.
+
+Considered and not the default:
+- **Vercel Hobby + Neon Postgres.** Free, but Hobby is for non-commercial
+  personal use only and lets Vercel use deployed content to train AI models,
+  a poor fit for a group's private comments; and it means two accounts and a
+  Postgres version of the storage layer.
+- **Supabase.** Free projects pause after a week without database activity,
+  and a group site sits idle for weeks between trips.
+
+### What a hoster does
+1. **Deploy the site**: the README's "Deploy to Cloudflare" button (or
+   `npm run deploy:site` with Wrangler) creates the Worker and the D1 database.
+2. **Set one secret**: `ADMIN_TOKEN`, 32+ random characters
+   (`openssl rand -base64 32`).
+3. **Clone the repo and run `npm run setup`**: it asks for the site URL, the
+   admin token, and any optional keys (Anthropic, Duffel, Unsplash, Pexels),
+   checks each one, and writes `.env`.
+4. **Run the panel**: `npm run panel`, then open `http://127.0.0.1:5151`.
+   "Personas y enlaces" issues each friend's private link (§5).
+5. **Research, approve, publish, open the vote**, and paste the panel's message
+   into the group chat (§7).
+
+### Secrets
+| secret | lives in | used for |
+|---|---|---|
+| `ADMIN_TOKEN` | Worker secret + panel `.env` | panel → site publishing and link issuing |
+| `ANTHROPIC_API_KEY` | panel `.env`, optional | `anthropic-api` research |
+| `DUFFEL_API_KEY` | panel `.env`, optional | flight search and verification |
+| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel `.env`, optional | photo search |
+
+The site holds no provider keys at all: photos are picked in the panel and
+published as plain URLs with their credits.
+
+---
+
+## 12. Licence
+
+MIT. Photos keep their own licences (§6); the site shows each credit.
