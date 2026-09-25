@@ -1,26 +1,92 @@
-/* Design tokens from the "Wanderlot · Planes de viaje" canvas, shared by the
-   panel and the site. Import after tailwindcss. */
+/* Wanderlot design tokens, taken from the "Wanderlot · Planes de viaje"
+   canvas. Import after tailwindcss; every value here becomes a Tailwind
+   utility (bg-accent-soft, text-muted, rounded-card, shadow-raised, …). */
+
+/* Components live next to this file; make sure Tailwind scans them. */
+@source "./src";
+
 @theme {
   --font-sans: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, sans-serif;
 
+  /* Ink */
   --color-ink: #1a1a18;
   --color-ink-2: #4a4a45;
   --color-muted: #6b6b66;
   --color-faint: #b8b8b2;
+  --color-dot: #c9c9c2;
+
+  /* Lines */
   --color-line: #dcdcd6;
   --color-line-soft: #e6e6e2;
-  --color-surface: #ffffff;
-  --color-surface-2: #f2f2ef;
+  --color-line-faint: #ededea;
 
+  /* Surfaces, lightest to darkest */
+  --color-surface: #ffffff;
+  --color-canvas: #f9f9f7; /* panel results column, Comparativa page */
+  --color-surface-2: #f7f7f5; /* grouped sections, comment bubbles */
+  --color-surface-3: #f2f2ef; /* chips, pills, neutral fills */
+  --color-surface-4: #efefeb; /* photo placeholders, IATA tiles */
+
+  /* Accent (the canvas's "Tema" default) */
   --color-accent: #0e6b60;
   --color-accent-hover: #0a524a;
+  --color-accent-strong: #0a524a;
   --color-accent-soft: #e4f0ee;
 
-  /* Provenance badges (SPEC §3). */
-  --color-verified: #0a524a;
-  --color-verified-soft: #e4f0ee;
+  /* Provenance (SPEC §3): verified is the accent; Claude is amber. */
   --color-claude: #8a5200;
+  --color-claude-hover: #704300;
   --color-claude-soft: #fdf0dc;
+
+  /* Avatar tints */
+  --color-tint-sand: #f0ebe2;
+  --color-tint-lilac: #eae7f0;
+  --color-tint-mint: #e4f0ee;
+  --color-tint-sky: #e3ecf5;
+  --color-tint-rose: #f5e6e6;
+
+  /* Type scale */
+  --text-display: 3.375rem; /* 54px: site page titles */
+  --text-display--line-height: 1.02;
+  --text-display--letter-spacing: -0.035em;
+  --text-hero: 3.75rem; /* 60px: destination name */
+  --text-hero--line-height: 1;
+  --text-hero--letter-spacing: -0.035em;
+  --text-title: 2.375rem; /* 38px: panel page titles */
+  --text-title--line-height: 1.05;
+  --text-title--letter-spacing: -0.03em;
+  --text-headline: 1.875rem; /* 30px */
+  --text-headline--line-height: 1.05;
+  --text-headline--letter-spacing: -0.03em;
+  --text-heading: 1.375rem; /* 22px: section headings */
+  --text-heading--line-height: 1.2;
+  --text-heading--letter-spacing: -0.025em;
+
+  /* Radii */
+  --radius-tile: 14px;
+  --radius-card: 18px;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgb(26 26 24 / 0.05), 0 8px 22px rgb(26 26 24 / 0.05);
+  --shadow-raised: 0 1px 2px rgb(26 26 24 / 0.05), 0 10px 26px rgb(26 26 24 / 0.07);
+  --shadow-pop: 0 2px 6px rgb(26 26 24 / 0.08), 0 16px 34px rgb(26 26 24 / 0.14);
+  --shadow-pill: 0 1px 2px rgb(26 26 24 / 0.04), 0 6px 16px rgb(26 26 24 / 0.05);
+  --shadow-chip: 0 1px 3px rgb(26 26 24 / 0.12);
+
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  --animate-toast-in: toast-in 180ms ease-out;
+
+  @keyframes pulse-soft {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
 }
 
 @layer base {
@@ -35,5 +101,13 @@
   select,
   textarea {
     font: inherit;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="range"] {
+    accent-color: var(--color-accent);
   }
 }
