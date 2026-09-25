@@ -95,3 +95,32 @@ describe("Comparativa", () => {
     expect(screen.getByRole("button", { name: "Enviar las 3 a votación" })).toBeTruthy();
   });
 });
+
+describe("Personas", () => {
+  it("shows who is in and manages invites and access", async () => {
+    const user = userEvent.setup();
+    renderAt("/personas");
+    expect(screen.getByText(/4 dentro · 1 con invitación pendiente · 1 sin entrar/)).toBeTruthy();
+
+    const laura = screen.getByRole("listitem", { name: "Laura" });
+    expect(within(laura).getByText("Invitación pendiente")).toBeTruthy();
+    const oldLink = within(laura).getByLabelText("Invitación de Laura").textContent;
+    await user.click(within(laura).getByRole("button", { name: "Nueva invitación" }));
+    expect(within(laura).getByLabelText("Invitación de Laura").textContent).not.toBe(oldLink);
+
+    const diego = screen.getByRole("listitem", { name: "Diego" });
+    expect(within(diego).getByText("Invitación caducada")).toBeTruthy();
+    await user.click(within(diego).getByRole("button", { name: "Crear invitación" }));
+    expect(within(diego).getByText("Invitación pendiente")).toBeTruthy();
+
+    const marta = screen.getByRole("listitem", { name: "Marta" });
+    await user.click(within(marta).getByRole("button", { name: "Quitar acceso" }));
+    await user.click(within(document.querySelector("dialog")!).getByRole("button", { name: "Quitar acceso", hidden: true }));
+    expect(within(marta).getByText(/Sin invitar|Invitación caducada/)).toBeTruthy();
+
+    await user.type(screen.getByLabelText("Añadir a alguien"), "Nuria Sanz");
+    await user.click(screen.getByRole("button", { name: "Añadir" }));
+    const nuria = screen.getByRole("listitem", { name: "Nuria Sanz" });
+    expect(within(nuria).getByText("Sin invitar")).toBeTruthy();
+  });
+});

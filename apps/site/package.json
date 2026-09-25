@@ -9,10 +9,13 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "tsx src/server.ts",
-    "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-sitio.html"
+    "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-sitio.html",
+    "test:e2e": "VITE_AUTH=http vite build && tsx e2e/passkeys.e2e.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.2",
     "@wanderlot/core": "*",
     "@wanderlot/mocks": "*",
     "@wanderlot/ui": "*",

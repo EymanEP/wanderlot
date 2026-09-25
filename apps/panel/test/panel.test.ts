@@ -5,7 +5,8 @@ import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
 import type { FlightProvider, ResearchProvider } from "../src/providers/types.ts";
 import { createApp } from "../../site/src/app.ts";
-import { SiteDb } from "../../site/src/db.ts";
+import { SqliteStore } from "../../site/src/sqlite.ts";
+import { SoftAuthenticator } from "../../site/test/authenticator.ts";
 import { proposal } from "../../../packages/core/test/fixtures.ts";
 
 const ADMIN = "t".repeat(40);
@@ -35,7 +36,7 @@ const json = async (path: string, method = "GET", body?: unknown) => {
 
 beforeEach(async () => {
   clock = new Date("2026-10-10T12:00:00Z");
-  site = createApp({ db: new SiteDb(), adminToken: ADMIN, now: () => clock });
+  site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: SITE }, now: () => clock });
 
   const research: ResearchProvider = {
     async *research() {
@@ -118,21 +119,52 @@ describe("panel → site", () => {
     const pub = await json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
     expect(pub.data).toMatchObject({ ok: true, published: 2 });
 
-    // Links first, then the vote.
+    // People first, then the vote.
     expect((await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" })).status).toBe(409);
-    await json("/api/members/links", "POST", FRIENDS);
+    await json("/api/members", "PUT", FRIENDS);
     const opened = await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
     expect(opened.status).toBe(200);
-    expect(opened.data.message).toContain("Abierta la votación de Noviembre 2026");
-    const anaLink = (opened.data.message as string).split("\n").find((l) => l.startsWith("• ana:"))!.slice(7);
+    const message = opened.data.message as string;
+    expect(message).toContain("Abierta la votación de Noviembre 2026");
+    expect(message).toContain(`Entrad en ${SITE}/p/${PLAN}`);
+    const anaInvite = message.split("\n").find((l) => l.startsWith("• ana:"))!.slice(7);
+    expect(anaInvite).toMatch(new RegExp(`^${SITE}/i/`));
 
-    // The site now shows exactly the approved pair, and Ana's link works.
-    const visit = await site.request(anaLink.replace(SITE, ""));
-    const cookie = visit.headers.get("set-cookie")!.split(";")[0]!;
+    // Ana accepts her invite with a passkey and sees exactly the approved pair.
+    const token = anaInvite.split("/i/")[1]!;
+    const phone = new SoftAuthenticator(SITE);
+    const opts = (await (await site.request(`/api/invites/${token}/passkey/options`, { method: "POST" })).json()) as any;
+    const joined = await site.request(`/api/invites/${token}/passkey/verify`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ flowId: opts.flowId, response: phone.register(opts.options) }),
+    });
+    expect(joined.status).toBe(200);
+    const cookie = joined.headers.get("set-cookie")!.split(";")[0]!;
     const view = (await (await site.request(`/api/plans/${PLAN}`, { headers: { cookie } })).json()) as any;
     expect(view.plan.status).toBe("voting");
     expect(view.destinations.map((d: any) => d.id)).toEqual(["lis", "nap"]);
     expect(view.destinations[0].totalPerPersonCents).toBe(10000 + 23800);
+
+    // The panel now sees her inside, and her invite link is gone.
+    const people = (await json("/api/members")).data as any[];
+    const ana = people.find((p) => p.id === "ana");
+    expect(ana.passkeys).toHaveLength(1);
+    expect(ana.inviteUrl).toBeNull();
+    expect(people.find((p) => p.id === "bea").inviteUrl).toMatch(/\/i\//);
+  });
+
+  it("issues, reissues and revokes invites", async () => {
+    await json("/api/members", "PUT", FRIENDS);
+    const first = (await json("/api/members/bea/invite", "POST")).data.url as string;
+    const second = (await json("/api/members/bea/invite", "POST")).data.url as string;
+    expect(second).not.toBe(first);
+    const oldStatus = (await (await site.request(`/api/invites/${first.split("/i/")[1]}`)).json()) as any;
+    expect(oldStatus.status).toBe("cancelled");
+    await json("/api/members/bea/revoke", "POST");
+    const bea = ((await json("/api/members")).data as any[]).find((p) => p.id === "bea");
+    expect(bea.invite.status).toBe("cancelled");
+    expect(bea.inviteUrl).toBeNull();
   });
 
   it("refuses to open a vote on stale verified prices", async () => {
@@ -147,7 +179,7 @@ describe("panel → site", () => {
       await json(`/api/plans/${PLAN}/proposals/${id}/review`, "POST", { review: "approved" });
       await json(`/api/plans/${PLAN}/proposals/${id}/verify`, "POST");
     }
-    await json("/api/members/links", "POST", FRIENDS);
+    await json("/api/members", "PUT", FRIENDS);
     clock = new Date(clock.getTime() + 73 * 3_600_000);
     const r = await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
     expect(r.status).toBe(409);

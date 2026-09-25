@@ -13,24 +13,23 @@ export interface PlanEntry {
   editorial: Record<string, Partial<Editorial>>;
 }
 
-// Each member's private site link. Kept here so the organiser can reprint
-// them; the site stores only their hashes (SPEC §5).
-export interface MemberLink {
-  id: string;
-  name: string;
+// The latest invite link per member, kept here so the organiser can copy it
+// again while it's unused; the site stores only its hash (SPEC §5).
+export interface PendingInvite {
   token: string;
+  expiresAt: string;
 }
 
 export interface PanelState {
   plans: Record<string, PlanEntry>;
-  links: MemberLink[];
+  invites: Record<string, PendingInvite>;
 }
 
 export class PanelStore {
   private state: PanelState;
 
   constructor(private path: string | null) {
-    this.state = { plans: {}, links: [] };
+    this.state = { plans: {}, invites: {} };
     if (path) {
       try {
         this.state = { ...this.state, ...(JSON.parse(readFileSync(path, "utf8")) as Partial<PanelState>) };
@@ -55,14 +54,13 @@ export class PanelStore {
     return result;
   }
 
-  links(): MemberLink[] {
-    return this.state.links;
+  invite(memberId: string): PendingInvite | undefined {
+    return this.state.invites[memberId];
   }
 
-  setLinks(issued: MemberLink[]) {
-    const byId = new Map(this.state.links.map((l) => [l.id, l]));
-    for (const l of issued) byId.set(l.id, l);
-    this.state.links = [...byId.values()];
+  setInvite(memberId: string, invite: PendingInvite | null) {
+    if (invite) this.state.invites[memberId] = invite;
+    else delete this.state.invites[memberId];
     this.save();
   }
 

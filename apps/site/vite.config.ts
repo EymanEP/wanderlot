@@ -10,13 +10,8 @@ export default defineConfig({
   build: { outDir: "../dist/web", emptyOutDir: true },
   server: {
     port: 5173,
-    proxy: {
-      "/api": api,
-      // Private links (?k=…) go to the API to set the cookie; plain /p/… is the SPA.
-      "/p": {
-        target: api,
-        bypass: (req) => (new URL(req.url ?? "/", "http://x").searchParams.has("k") ? undefined : "/index.html"),
-      },
-    },
+    // Passkeys check the page's origin: run the API with
+    // WANDERLOT_ORIGIN=http://localhost:5173 when signing in through Vite.
+    proxy: { "/api": api },
   },
 });

@@ -1,0 +1,300 @@
+// SiteStore on node:sqlite: tests, local development, and self-hosting on a
+// plain Node server.
+import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import type { Ballot, Comment, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { Flow, Invite, Passkey, Session, SiteStore, StoredPlan } from "./store.ts";
+
+type Row = Record<string, unknown>;
+type Value = string | number | null;
+
+const SCHEMA = readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
+
+export class SqliteStore implements SiteStore {
+  private db: DatabaseSync;
+
+  constructor(path = ":memory:") {
+    this.db = new DatabaseSync(path);
+    this.db.exec("pragma foreign_keys = on;");
+    this.db.exec(SCHEMA);
+  }
+
+  private get(sql: string, ...args: Value[]): Row | undefined {
+    return this.db.prepare(sql).get(...args) as Row | undefined;
+  }
+  private all(sql: string, ...args: Value[]): Row[] {
+    return this.db.prepare(sql).all(...args) as Row[];
+  }
+  private run(sql: string, ...args: Value[]): number {
+    return Number(this.db.prepare(sql).run(...args).changes);
+  }
+
+  // --- plans ---------------------------------------------------------------
+
+  async getPlan(id: string): Promise<StoredPlan | undefined> {
+    const row = this.get("select * from plans where id = ?", id);
+    if (!row) return undefined;
+    return {
+      snapshot: JSON.parse(row.snapshot as string) as Snapshot,
+      status: row.status as PlanStatus,
+      voteDeadline: (row.vote_deadline as string | null) ?? undefined,
+      winnerDestinationId: (row.winner_destination_id as string | null) ?? undefined,
+    };
+  }
+
+  async upsertSnapshot(s: Snapshot): Promise<void> {
+    this.run(
+      `insert into plans (id, snapshot, published_at) values (?, ?, ?)
+       on conflict(id) do update set snapshot = excluded.snapshot, published_at = excluded.published_at`,
+      s.plan.id,
+      JSON.stringify(s),
+      s.publishedAt,
+    );
+  }
+
+  async setStatus(planId: string, status: PlanStatus, fields: { voteDeadline?: string; winnerDestinationId?: string | null } = {}) {
+    this.run(
+      `update plans set status = ?, vote_deadline = coalesce(?, vote_deadline), winner_destination_id = ? where id = ?`,
+      status,
+      fields.voteDeadline ?? null,
+      fields.winnerDestinationId ?? null,
+      planId,
+    );
+  }
+
+  // --- members -------------------------------------------------------------
+
+  async upsertMembers(members: Member[]): Promise<void> {
+    for (const m of members) {
+      this.run("insert into members (id, name) values (?, ?) on conflict(id) do update set name = excluded.name", m.id, m.name);
+    }
+  }
+
+  async members(): Promise<Member[]> {
+    return this.all("select id, name from members order by name").map((r) => ({ id: r.id as string, name: r.name as string }));
+  }
+
+  async member(id: string): Promise<Member | undefined> {
+    const r = this.get("select id, name from members where id = ?", id);
+    return r ? { id: r.id as string, name: r.name as string } : undefined;
+  }
+
+  // --- invites -------------------------------------------------------------
+
+  async createInvite(i: { id: string; memberId: string; tokenHash: string; createdAt: string; expiresAt: string }) {
+    this.run(
+      "insert into invites (id, member_id, token_hash, created_at, expires_at) values (?, ?, ?, ?, ?)",
+      i.id,
+      i.memberId,
+      i.tokenHash,
+      i.createdAt,
+      i.expiresAt,
+    );
+  }
+
+  async inviteByTokenHash(hash: string) {
+    const r = this.get("select * from invites where token_hash = ?", hash);
+    return r ? toInvite(r) : undefined;
+  }
+
+  async latestInvite(memberId: string) {
+    const r = this.get("select * from invites where member_id = ? order by created_at desc, rowid desc limit 1", memberId);
+    return r ? toInvite(r) : undefined;
+  }
+
+  async useInvite(id: string, at: string) {
+    return this.run("update invites set used_at = ? where id = ? and used_at is null and cancelled_at is null", at, id) === 1;
+  }
+
+  async cancelPendingInvites(memberId: string, at: string) {
+    this.run("update invites set cancelled_at = ? where member_id = ? and used_at is null and cancelled_at is null", at, memberId);
+  }
+
+  // --- passkeys ------------------------------------------------------------
+
+  async addPasskey(p: Passkey) {
+    this.run(
+      `insert into passkeys (id, member_id, public_key, counter, transports, device, created_at, last_used_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      p.id,
+      p.memberId,
+      p.publicKey,
+      p.counter,
+      JSON.stringify(p.transports),
+      p.device,
+      p.createdAt,
+      p.lastUsedAt,
+    );
+  }
+
+  async passkey(id: string) {
+    const r = this.get("select * from passkeys where id = ?", id);
+    return r ? toPasskey(r) : undefined;
+  }
+
+  async passkeysFor(memberId: string) {
+    return this.all("select * from passkeys where member_id = ? order by created_at", memberId).map(toPasskey);
+  }
+
+  async recordPasskeyUse(id: string, counter: number, at: string) {
+    this.run("update passkeys set counter = ?, last_used_at = ? where id = ?", counter, at, id);
+  }
+
+  async deletePasskeysFor(memberId: string) {
+    this.run("delete from passkeys where member_id = ?", memberId);
+  }
+
+  // --- sessions ------------------------------------------------------------
+
+  async createSession(hash: string, s: Session) {
+    this.run(
+      `insert into sessions (token_hash, member_id, passkey_id, created_at, last_seen_at, expires_at, user_agent)
+       values (?, ?, ?, ?, ?, ?, ?)`,
+      hash,
+      s.memberId,
+      s.passkeyId,
+      s.createdAt,
+      s.lastSeenAt,
+      s.expiresAt,
+      s.userAgent,
+    );
+  }
+
+  async session(hash: string) {
+    const r = this.get("select * from sessions where token_hash = ?", hash);
+    return r ? toSession(r) : undefined;
+  }
+
+  async touchSession(hash: string, lastSeenAt: string, expiresAt: string) {
+    this.run("update sessions set last_seen_at = ?, expires_at = ? where token_hash = ?", lastSeenAt, expiresAt, hash);
+  }
+
+  async deleteSession(hash: string) {
+    this.run("delete from sessions where token_hash = ?", hash);
+  }
+
+  async deleteSessionsFor(memberId: string) {
+    this.run("delete from sessions where member_id = ?", memberId);
+  }
+
+  async sessionsFor(memberId: string) {
+    return this.all("select * from sessions where member_id = ? order by last_seen_at desc", memberId).map(toSession);
+  }
+
+  // --- flows ---------------------------------------------------------------
+
+  async putFlow(id: string, f: Flow) {
+    this.run("insert into flows (id, challenge, purpose, invite_id, expires_at) values (?, ?, ?, ?, ?)", id, f.challenge, f.purpose, f.inviteId, f.expiresAt);
+  }
+
+  async takeFlow(id: string) {
+    const r = this.get("select * from flows where id = ?", id);
+    if (!r) return undefined;
+    this.run("delete from flows where id = ?", id);
+    return {
+      challenge: r.challenge as string,
+      purpose: r.purpose as Flow["purpose"],
+      inviteId: (r.invite_id as string | null) ?? null,
+      expiresAt: r.expires_at as string,
+    };
+  }
+
+  // --- ballots -------------------------------------------------------------
+
+  async ballots(planId: string): Promise<Ballot[]> {
+    return this.all("select * from ballots where plan_id = ?", planId).map((r) => ({
+      memberId: r.member_id as string,
+      ranking: JSON.parse(r.ranking as string) as string[],
+      castAt: r.cast_at as string,
+      updatedAt: r.updated_at as string,
+    }));
+  }
+
+  async putBallot(planId: string, memberId: string, ranking: string[], at: string) {
+    this.run(
+      `insert into ballots (plan_id, member_id, ranking, cast_at, updated_at) values (?, ?, ?, ?, ?)
+       on conflict(plan_id, member_id) do update set ranking = excluded.ranking, updated_at = excluded.updated_at`,
+      planId,
+      memberId,
+      JSON.stringify(ranking),
+      at,
+      at,
+    );
+  }
+
+  // --- comments ------------------------------------------------------------
+
+  async getComment(id: string) {
+    const r = this.get("select * from comments where id = ?", id);
+    return r ? toComment(r) : undefined;
+  }
+
+  async addComment(c: Comment) {
+    this.run(
+      "insert into comments (id, plan_id, destination_id, member_id, parent_id, body, created_at) values (?, ?, ?, ?, ?, ?, ?)",
+      c.id,
+      c.planId,
+      c.destinationId,
+      c.memberId,
+      c.parentId ?? null,
+      c.body,
+      c.createdAt,
+    );
+  }
+
+  async commentsFor(planId: string, destinationId: string) {
+    return this.all("select * from comments where plan_id = ? and destination_id = ? order by created_at desc", planId, destinationId).map(toComment);
+  }
+
+  async recentComments(planId: string, limit: number) {
+    return this.all("select * from comments where plan_id = ? order by created_at desc limit ?", planId, limit).map(toComment);
+  }
+}
+
+function toInvite(r: Row): Invite {
+  return {
+    id: r.id as string,
+    memberId: r.member_id as string,
+    createdAt: r.created_at as string,
+    expiresAt: r.expires_at as string,
+    usedAt: (r.used_at as string | null) ?? null,
+    cancelledAt: (r.cancelled_at as string | null) ?? null,
+  };
+}
+
+function toPasskey(r: Row): Passkey {
+  return {
+    id: r.id as string,
+    memberId: r.member_id as string,
+    publicKey: r.public_key as string,
+    counter: Number(r.counter),
+    transports: JSON.parse(r.transports as string) as string[],
+    device: (r.device as string | null) ?? null,
+    createdAt: r.created_at as string,
+    lastUsedAt: (r.last_used_at as string | null) ?? null,
+  };
+}
+
+function toSession(r: Row): Session {
+  return {
+    memberId: r.member_id as string,
+    passkeyId: (r.passkey_id as string | null) ?? null,
+    createdAt: r.created_at as string,
+    lastSeenAt: r.last_seen_at as string,
+    expiresAt: r.expires_at as string,
+    userAgent: (r.user_agent as string | null) ?? null,
+  };
+}
+
+function toComment(r: Row): Comment {
+  const c: Comment = {
+    id: r.id as string,
+    planId: r.plan_id as string,
+    destinationId: r.destination_id as string,
+    memberId: r.member_id as string,
+    body: r.body as string,
+    createdAt: r.created_at as string,
+  };
+  if (r.parent_id) c.parentId = r.parent_id as string;
+  return c;
+}

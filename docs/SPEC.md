@@ -190,13 +190,54 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 ## 5. Identity on the site
 
-A small, known group, no sign-up. Each member gets **one private link**:
-`https://<site>/p/<planId>?k=<token>`.
+A small, known group, no passwords. People sign in with a **passkey**: Face ID,
+a fingerprint or the device PIN, stored by their phone or password manager.
+The organiser brings each person in with a **one-time invite**.
 
-- The token is 32 random bytes, base64url. The site stores only its SHA-256.
-- The first visit sets an http-only cookie and redirects to the clean URL.
-- The panel issues everyone's link once and can revoke/reissue one.
-- Anyone without a valid token sees nothing — not even the plan name.
+### Invites
+- The panel asks the site for an invite for one member. The site returns a
+  link once, `https://<site>/i/<token>`, and stores only the token's SHA-256.
+- The token is 32 random bytes, base64url. An invite expires after **7 days**
+  and works **once**. Creating a new invite for someone cancels their previous
+  unused one.
+- Opening the link shows "¿Eres Laura?" and asks her to create a passkey.
+  **Only finishing that consumes the invite.** Merely opening the link (a
+  WhatsApp link preview, a second tap) changes nothing.
+- A used, expired or cancelled invite says so and tells the person to ask the
+  organiser for a new one.
+
+### Signing in
+- Coming back needs only the site's address: "Entrar", then the device's
+  passkey prompt. Passkeys are discoverable, so nobody types a name.
+- A passkey synced by iCloud Keychain or Google Password Manager works on the
+  person's other devices; a browser can also sign in with a phone passkey by
+  scanning a QR code. Otherwise the organiser sends a new invite, which adds a
+  passkey on the new device.
+- Signing in creates a **session**: a random token in an http-only, `Secure`,
+  `SameSite=Lax` cookie, stored hashed on the site, valid **180 days** from last
+  use (refreshed at most once a day).
+- Without a session the site shows only the sign-in screen: not the plan name,
+  not who is in the group.
+
+### What the organiser can do (panel → "Personas")
+- Add people, and see each one's state: *sin invitar*, *invitación pendiente*,
+  *invitación caducada*, or *dentro* with their passkeys and devices.
+- Send a new invite, **close sessions** (signs the person out everywhere; their
+  passkeys still work), or **remove access** (deletes their passkeys, sessions
+  and pending invite; they need a new invite).
+
+### Why this shape
+- A forwarded invite is useless once used. If someone uses it first, the real
+  person finds it spent, and the organiser sees who signed in when, removes
+  that access and sends a new invite.
+- It needs no email service or third-party login, so it costs a hoster nothing.
+- Passkeys belong to the site's domain. **A hoster should settle the final
+  address before inviting anyone**: moving from `*.workers.dev` to a custom
+  domain means everyone signs up again.
+
+Implementation: SimpleWebAuthn (`@simplewebauthn/server` on the site,
+`@simplewebauthn/browser` in the UI), MIT-licensed and run on Node and on
+Cloudflare Workers.
 
 ---
 
@@ -249,8 +290,8 @@ start disappearing; Unsplash photos must stay linked either way.
 
 No email or push in v1. When the organiser opens or closes a vote, the panel
 produces a ready-to-paste message for the group chat: what opened/closed, the
-deadline or the winner, and each person's private link. The group chat is
-already where they are.
+deadline or the winner, and the site's address, plus a fresh invite for anyone
+who hasn't signed up yet. The group chat is already where they are.
 
 ---
 
@@ -291,24 +332,35 @@ Unsplash, Pexels and Wikimedia Commons, per §6.
 
 ## 9. Site API (v1)
 
-All member routes require the member cookie. Admin routes require
-`Authorization: Bearer <ADMIN_TOKEN>`.
+Member routes require the session cookie (§5). Admin routes require
+`Authorization: Bearer <ADMIN_TOKEN>`. Passkey steps come in pairs: `options`
+returns WebAuthn options and a `flowId`; `verify` takes the `flowId` and the
+browser's response. A flow expires after 5 minutes and can be used once.
 
 | method | path | who | notes |
 |---|---|---|---|
-| `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
-| `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
-| `POST` | `/api/admin/members` | panel | `[{ id, name }]`; issues (or reissues, revoking) each link; returns tokens once |
-| `GET` | `/p/:planId?k=<token>` | member | exchanges the link for the cookie, redirects to `/p/:planId` |
+| `GET` | `/`, `/i/:token`, `/p/*` | anyone | the web UI; it asks the API what to show |
+| `GET` | `/api/invites/:token` | anyone | `{ member: { name }, status: valid \| used \| expired \| cancelled }`; never consumes it |
+| `POST` | `/api/invites/:token/passkey/options` | invitee | `410` unless valid |
+| `POST` | `/api/invites/:token/passkey/verify` | invitee | saves the passkey, uses up the invite, starts a session |
+| `POST` | `/api/session/options` | anyone | passkey sign-in |
+| `POST` | `/api/session/verify` | anyone | starts a session |
+| `GET` | `/api/session` | member | `{ member }` or `401` |
+| `DELETE` | `/api/session` | member | signs this device out |
 | `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
 | `GET` | `/api/plans/:planId/comments?destinationId=` | member | newest first; without a filter: the 3 most recent across the plan |
 | `POST` | `/api/plans/:planId/comments` | member | `{ destinationId, body, parentId? }` |
+| `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
+| `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
+| `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members |
+| `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
+| `POST` | `/api/admin/members/:id/invite` | panel | `{ token, expiresAt }`, returned once; cancels the previous unused invite |
+| `DELETE` | `/api/admin/members/:id/sessions` | panel | signs the member out everywhere |
+| `POST` | `/api/admin/members/:id/revoke` | panel | deletes passkeys, sessions and pending invite |
 
-Members and their links belong to the group, not to a plan: a person gets one
-link, once, and it works for every plan. Reissuing a link revokes the old one
-(and logs that person out).
+Members belong to the group, not to a plan: one sign-up works for every plan.
 
 On the site, a plan in `draft` has been published for browsing and comments
 but its vote hasn't opened.
@@ -320,7 +372,7 @@ but its vote hasn't opened.
 - **A hosted panel.** v1's panel is local only. A later option: serve it from
   the same Cloudflare deployment under `/admin`, behind Cloudflare Access for
   login, using `anthropic-api` (a Worker can't run the `claude` binary).
-- Plan-creation and "Personas y enlaces" screens in the panel (next).
+- Plan-creation screen in the panel.
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.
@@ -359,14 +411,14 @@ Considered and not the default:
    admin token, and any optional keys (Anthropic, Duffel, Unsplash, Pexels),
    checks each one, and writes `.env`.
 4. **Run the panel**: `npm run panel`, then open `http://127.0.0.1:5151`.
-   "Personas y enlaces" issues each friend's private link (§5).
+   "Personas" adds everyone and sends each a one-time invite (§5).
 5. **Research, approve, publish, open the vote**, and paste the panel's message
    into the group chat (§7).
 
 ### Secrets
 | secret | lives in | used for |
 |---|---|---|
-| `ADMIN_TOKEN` | Worker secret + panel `.env` | panel → site publishing and link issuing |
+| `ADMIN_TOKEN` | Worker secret + panel `.env` | panel → site publishing and invites |
 | `ANTHROPIC_API_KEY` | panel `.env`, optional | `anthropic-api` research |
 | `DUFFEL_API_KEY` | panel `.env`, optional | flight search and verification |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel `.env`, optional | photo search |

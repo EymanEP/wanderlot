@@ -9,6 +9,7 @@ const NAV = [
   { to: "/generar", label: "Generar" },
   { to: "/revisar", label: "Revisar" },
   { to: "/comparativa", label: "Comparativa" },
+  { to: "/personas", label: "Personas" },
 ];
 
 export function PanelNav({ className }: { className?: string }) {

@@ -428,3 +428,57 @@ export const comments: MockComment[] = [
 export function placeName(id: string): string {
   return proposals.find((p) => p.id === id)?.place.city ?? id;
 }
+
+// --- who can get in (SPEC §5) ------------------------------------------------
+
+export type InviteState = "valid" | "used" | "expired" | "cancelled";
+
+export interface MockAccess {
+  memberId: string;
+  invite: { status: InviteState; createdAt: string; expiresAt: string; usedAt: string | null } | null;
+  inviteUrl: string | null;
+  passkeys: { device: string; createdAt: string; lastUsedAt: string | null }[];
+  sessions: { device: string; createdAt: string; lastSeenAt: string }[];
+}
+
+export const SITE_URL = "https://wanderlot-grupo51.workers.dev";
+
+const joined = (memberId: string, device: string, at: string, seen: string): MockAccess => ({
+  memberId,
+  invite: { status: "used", createdAt: "2026-09-15T18:00:00Z", expiresAt: "2026-09-22T18:00:00Z", usedAt: at },
+  inviteUrl: null,
+  passkeys: [{ device, createdAt: at, lastUsedAt: seen }],
+  sessions: [{ device, createdAt: at, lastSeenAt: seen }],
+});
+
+// Four are in; Laura hasn't used her invite yet and Diego's ran out.
+export const access: MockAccess[] = [
+  {
+    ...joined("eyman", "Safari en iPhone", "2026-09-15T18:05:00Z", "2026-09-25T08:10:00Z"),
+    passkeys: [
+      { device: "Safari en iPhone", createdAt: "2026-09-15T18:05:00Z", lastUsedAt: "2026-09-25T08:10:00Z" },
+      { device: "Chrome en Mac", createdAt: "2026-09-16T09:30:00Z", lastUsedAt: "2026-09-24T21:00:00Z" },
+    ],
+    sessions: [
+      { device: "Safari en iPhone", createdAt: "2026-09-15T18:05:00Z", lastSeenAt: "2026-09-25T08:10:00Z" },
+      { device: "Chrome en Mac", createdAt: "2026-09-16T09:30:00Z", lastSeenAt: "2026-09-24T21:00:00Z" },
+    ],
+  },
+  joined("marta", "Safari en iPhone", "2026-09-15T19:40:00Z", "2026-09-23T09:00:00Z"),
+  joined("ivan", "Chrome en Android", "2026-09-16T12:15:00Z", "2026-09-25T04:10:00Z"),
+  joined("ruben", "Safari en iPhone", "2026-09-17T20:02:00Z", "2026-09-25T06:00:00Z"),
+  {
+    memberId: "laura",
+    invite: { status: "valid", createdAt: "2026-09-22T17:00:00Z", expiresAt: "2026-09-29T17:00:00Z", usedAt: null },
+    inviteUrl: `${SITE_URL}/i/3kQ9vX2mT7pLw8Rz`,
+    passkeys: [],
+    sessions: [],
+  },
+  {
+    memberId: "diego",
+    invite: { status: "expired", createdAt: "2026-09-15T18:00:00Z", expiresAt: "2026-09-22T18:00:00Z", usedAt: null },
+    inviteUrl: null,
+    passkeys: [],
+    sessions: [],
+  },
+];

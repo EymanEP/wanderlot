@@ -51,8 +51,9 @@ and never restyle primitives.
 
 ### Mock data
 
-Both UIs run entirely on `packages/mocks`; nothing calls an API, Claude or a
-flight provider yet. Each app reads and changes data through one store
+Both UIs run on `packages/mocks`; nothing calls Claude or a flight provider
+yet, and only the site's sign-in can talk to a real server (build with
+`VITE_AUTH=http`). Each app reads and changes data through one store
 (`apps/*/web/src/data/store.tsx`): swapping its actions for API calls is the
 only change needed to make a screen real. Mock-only behaviour: generation
 "streams" proposals on a timer, "Verificar con la API" flips a proposal to
@@ -65,6 +66,9 @@ Screens:
 | panel | `/generar` | search form + proposals arriving |
 | panel | `/revisar` | approve, discard, verify, publish |
 | panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
+| panel | `/personas` | who can get in: invites, passkeys, closing sessions, removing access |
+| site | `/entrar` | sign in with a passkey |
+| site | `/i/:token` | accept a one-time invite by creating a passkey |
 | site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans |
 | site | `/p/noviembre-2026/destinos/nap` | destination detail and comments |
 | site | `/p/noviembre-2026/votacion` | rank three; scoreboard hidden until close |
@@ -100,13 +104,20 @@ WANDERLOT_ADMIN_TOKEN=… npm run start -w @wanderlot/site
 npm run start -w @wanderlot/panel
 ```
 
-In development Vite proxies `/api` (and the site's `/p/…?k=` private links) to
-the API server, so open the Vite URL.
+In development Vite proxies `/api` to the API server, so open the Vite URL. To
+sign in with passkeys through Vite, start the API with
+`WANDERLOT_ORIGIN=http://localhost:5173` and build or run the UI with
+`VITE_AUTH=http`.
+
+`npm run test:e2e -w @wanderlot/site` runs the passkey flow (invite, sign-up,
+sign-out, sign-in, removed access) against the real server and UI in Chromium,
+using the browser's virtual authenticator.
 
 | variable | used by | default |
 |---|---|---|
 | `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site) |
 | `WANDERLOT_DB` | site | `data/site.sqlite` |
+| `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
 | `DUFFEL_API_KEY` | panel | — |
@@ -116,7 +127,9 @@ the API server, so open the Vite URL.
 
 - Every designed screen is built, responsive down to phone width, on mock data.
 - Backend APIs for both halves exist and are tested (vote rules, publish
-  freeze, member links, panel → site round trip) but the UIs don't call them yet.
+  freeze, one-time invites and passkeys, panel → site round trip). Sign-in in
+  the site UI can already use the real API (`VITE_AUTH=http`); the other screens
+  still run on mocks.
 - Claude research runs through `claude -p --json-schema`; it hasn't been run
   against the real binary yet.
 - The Duffel provider is a stub.

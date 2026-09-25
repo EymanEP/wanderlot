@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { NavLink, Outlet, useLocation, useParams } from "react-router";
 import { rangeLabel } from "@wanderlot/core";
-import { Avatar, Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
+import { Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
+import { AccountMenu } from "./AccountMenu.tsx";
 import { useSite } from "../data/store.tsx";
 
 function useNav() {
@@ -37,7 +38,7 @@ export function SiteShell() {
             ))}
           </nav>
         }
-        end={<Avatar initials={me.initials} name={me.name} tint="accent" size="lg" />}
+        end={<AccountMenu me={me} />}
       />
       <div className="flex flex-1 flex-col pb-20 md:pb-0">
         <Outlet />

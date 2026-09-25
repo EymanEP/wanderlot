@@ -7,7 +7,7 @@ import { Photo, Plan, type Proposal } from "@wanderlot/core";
 import type { FlightProvider, ResearchProvider, SearchRequest } from "./providers/types.ts";
 import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
-import { voteOpenedMessage } from "./announce.ts";
+import { inviteUrl, voteOpenedMessage } from "./announce.ts";
 
 export interface PanelOptions {
   store: PanelStore;
@@ -163,13 +163,45 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
     return c.json({ ok: true, published: snapshot.destinations.length, warnings });
   });
 
-  // Issues (or reissues, revoking the old one) private links for the given
-  // members. Only needed once per person, not per plan.
-  app.post("/api/members/links", async (c) => {
+  // --- Personas (SPEC §5) -------------------------------------------------
+
+  // Everyone's state from the site, plus the invite link while it's unused.
+  app.get("/api/members", async (c) => {
+    const members = await site.members();
+    return c.json(
+      members.map((m) => {
+        const local = store.invite(m.id);
+        const url = m.invite?.status === "valid" && local ? inviteUrl(siteUrl, local.token) : null;
+        return { ...m, inviteUrl: url };
+      }),
+    );
+  });
+
+  app.put("/api/members", async (c) => {
     const body = z.array(z.object({ id: z.string(), name: z.string() })).safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "expected [{id, name}]" }, 400);
-    store.setLinks(await site.issueLinks(body.data));
-    return c.json(store.links().map(({ id, name }) => ({ id, name })));
+    await site.putMembers(body.data);
+    return c.json({ ok: true });
+  });
+
+  // A fresh one-time invite; cancels the person's previous unused one.
+  app.post("/api/members/:id/invite", async (c) => {
+    const id = c.req.param("id");
+    const invite = await site.invite(id);
+    store.setInvite(id, invite);
+    return c.json({ url: inviteUrl(siteUrl, invite.token), expiresAt: invite.expiresAt });
+  });
+
+  app.delete("/api/members/:id/sessions", async (c) => {
+    await site.closeSessions(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/members/:id/revoke", async (c) => {
+    const id = c.req.param("id");
+    await site.revoke(id);
+    store.setInvite(id, null);
+    return c.json({ ok: true });
   });
 
   // Opens the vote on the site and returns the message for the group chat.
@@ -181,10 +213,8 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       .object({ deadline: z.iso.datetime({ offset: true }) })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "expected {deadline}" }, 400);
-    const links = store.links();
-    if (links.length < entry.plan.partySize) {
-      return c.json({ error: `hay ${links.length} enlaces para ${entry.plan.partySize} personas: emítelos primero` }, 409);
-    }
+    const members = await site.members();
+    if (members.length === 0) return c.json({ error: "añade a la gente en Personas antes de abrir la votación" }, 409);
     const stale = publishWarnings(entry, now()).filter(
       (w) => w.reason === "stale" && entry.editorial[w.destinationId]?.inVote !== false,
     );
@@ -196,7 +226,18 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       entry: { ...e!, plan: { ...e!.plan, status: "voting", voteDeadline: body.data.deadline } },
       result: null,
     }));
-    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, links) });
+
+    // Whoever hasn't joined gets a working invite: their unused one, or a fresh one.
+    const pending = [];
+    for (const m of members.filter((x) => x.passkeys.length === 0)) {
+      let local = m.invite?.status === "valid" ? store.invite(m.id) : undefined;
+      if (!local) {
+        local = await site.invite(m.id);
+        store.setInvite(m.id, local);
+      }
+      pending.push({ name: m.name, url: inviteUrl(siteUrl, local.token) });
+    }
+    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, pending) });
   });
 
   return app;
