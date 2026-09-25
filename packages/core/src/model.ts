@@ -25,8 +25,9 @@ export const FlightLeg = z.object({
 export type FlightLeg = z.infer<typeof FlightLeg>;
 
 export const Stay = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1), // "Piso entero, 3 habitaciones · Chiaia"
   kind: z.string().min(1), // "Apartamento", "Hotel", …
+  description: z.string().optional(), // "A 15 min andando del centro"
   nightlyCents: cents, // whole group, per night
   url: z.url().optional(),
   recommended: z.boolean().default(false),
@@ -53,6 +54,17 @@ export const Provenance = z.discriminatedUnion("kind", [
 ]);
 export type Provenance = z.infer<typeof Provenance>;
 
+// The Plan page's filter row groups destinations by these.
+export const Category = z.enum(["ciudad", "escapada", "playa", "naturaleza"]);
+export type Category = z.infer<typeof Category>;
+
+// One entry in "Qué hacer" / "Qué ver": a specific thing, not an itinerary slot.
+export const Thing = z.object({
+  title: z.string().min(1),
+  detail: z.string().optional(),
+});
+export type Thing = z.infer<typeof Thing>;
+
 export const Place = z.object({
   city: z.string().min(1),
   country: z.string().min(1),
@@ -74,11 +86,12 @@ export const Proposal = z.object({
   id,
   planId: id,
   place: Place,
+  category: Category,
   outbound: FlightLeg,
   inbound: FlightLeg,
   stays: z.array(Stay).max(2),
-  todo: z.array(z.string().min(1)),
-  see: z.array(z.string().min(1)),
+  todo: z.array(Thing),
+  see: z.array(Thing),
   provenance: Provenance,
   review: z.enum(["pending", "approved", "discarded"]),
 });
@@ -92,6 +105,7 @@ export const Destination = Proposal.omit({ review: true, planId: true }).extend(
   photos: z.array(Photo),
   inVote: z.boolean(),
   totalPerPersonCents: cents,
+  approvedAt: isoDateTime.optional(),
 });
 export type Destination = z.infer<typeof Destination>;
 

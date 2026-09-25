@@ -6,6 +6,7 @@ export function proposal(id: string, city: string, iata: string, over: Partial<P
     id,
     planId: "noviembre-2026",
     place: { city, country: "Portugal", iata },
+    category: "ciudad",
     outbound: {
       from: "MAD",
       to: iata,
@@ -27,8 +28,8 @@ export function proposal(id: string, city: string, iata: string, over: Partial<P
       priceCents: 10200,
     },
     stays: [{ name: "Apartamento Alfama", kind: "Apartamento", nightlyCents: 20400, recommended: true }],
-    todo: ["Tranvía 28 al amanecer"],
-    see: ["Mirador de Santa Luzia"],
+    todo: [{ title: "Tranvía 28 al amanecer" }],
+    see: [{ title: "Mirador de Santa Luzia", detail: "Gratis" }],
     provenance: { kind: "api", provider: "duffel", checkedAt: "2026-10-09T10:00:00Z" },
     review: "approved",
     ...over,

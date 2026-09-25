@@ -2,16 +2,17 @@
 // so every proposal comes back structured and with its sources.
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { FlightLeg, Place, Source, Stay, type Proposal } from "@wanderlot/core";
+import { Category, FlightLeg, Place, Source, Stay, Thing, type Proposal } from "@wanderlot/core";
 import type { ResearchProvider, SearchRequest } from "./types.ts";
 
 const ClaudeProposal = z.object({
   place: Place,
+  category: Category,
   outbound: FlightLeg,
   inbound: FlightLeg,
   stays: z.array(Stay).max(2),
-  todo: z.array(z.string()),
-  see: z.array(z.string()),
+  todo: z.array(Thing),
+  see: z.array(Thing),
   sources: z.array(Source).min(1),
 });
 const ClaudeOutput = z.object({ proposals: z.array(ClaudeProposal) });
@@ -27,8 +28,8 @@ export function buildPrompt(req: SearchRequest): string {
     `Salida el ${req.dateFrom} (±${req.flexDays} días), ${req.nights} noches, ${req.partySize} personas.`,
     `Tope de ${(req.maxPriceCents / 100).toFixed(0)} € por persona en total. ${stops}.`,
     req.estimateStays ? "Estima dos opciones de alojamiento para todo el grupo (precio por noche, grupo entero) y marca una como recomendada." : "No incluyas alojamiento (stays vacío).",
-    req.suggestThings ? "Añade cosas concretas que hacer y que ver (no un itinerario por días)." : "Deja todo y see vacíos.",
-    "Todos los precios en céntimos de euro, por persona para los vuelos. Fechas ISO 8601 con zona horaria.",
+    req.suggestThings ? "Añade cosas concretas que hacer y que ver, cada una con un título y un detalle práctico (no un itinerario por días)." : "Deja todo y see vacíos.",
+    "Clasifica cada destino como ciudad, escapada, playa o naturaleza. Todos los precios en céntimos de euro, por persona para los vuelos. Fechas ISO 8601 con zona horaria.",
     "Cada propuesta debe citar las páginas de donde salen los números en sources. No inventes vuelos: si no encuentras uno real, omite la propuesta.",
   ].join("\n");
 }
