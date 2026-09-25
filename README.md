@@ -68,6 +68,11 @@ Screens:
 
 Add `?estado=cerrada` to any site URL to preview it after the vote closes.
 
+`npm run build:preview -w @wanderlot/site` builds the site into one
+self-contained page (`apps/site/dist/wanderlot-sitio.html`) with in-memory
+routing and a switch between the open and the closed vote, for sharing a
+clickable preview.
+
 The panel and the site share one contract, the `Snapshot` schema in
 `packages/core`. Publishing is the only way data moves from panel to site.
 
