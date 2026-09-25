@@ -1,0 +1,16 @@
+{
+  "name": "@wanderlot/panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@wanderlot/core": "*",
+    "hono": "^4.9.0",
+    "zod": "^4.6.5"
+  }
+}
