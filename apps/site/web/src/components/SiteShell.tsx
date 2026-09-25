@@ -1,0 +1,64 @@
+import { useEffect } from "react";
+import { NavLink, Outlet, useLocation, useParams } from "react-router";
+import { rangeLabel } from "@wanderlot/core";
+import { Avatar, Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
+import { useSite } from "../data/store.tsx";
+
+function useNav() {
+  const { planId } = useParams();
+  const base = `/p/${planId}`;
+  return [
+    { to: base, label: "Destinos", end: true },
+    { to: `${base}/votacion`, label: "Votación", end: false },
+    { to: `${base}/comentarios`, label: "Comentarios", end: false },
+  ];
+}
+
+// Header on wide screens; a bottom tab bar on phones, where the group votes.
+export function SiteShell() {
+  const { plan, me } = useSite();
+  const nav = useNav();
+  const { pathname } = useLocation();
+
+  useEffect(() => window.scrollTo(0, 0), [pathname]);
+
+  return (
+    <Page>
+      <TopBar
+        variant="site"
+        brand={<Brand size="lg" sub="Grupo 51" />}
+        center={<InfoPill items={[plan.name, rangeLabel(plan.dateFrom, plan.dateTo), `${plan.partySize} personas`]} />}
+        nav={
+          <nav aria-label="Secciones" className="hidden items-center gap-6 md:flex">
+            {nav.map((n) => (
+              <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => navLinkClasses(isActive)}>
+                {n.label}
+              </NavLink>
+            ))}
+          </nav>
+        }
+        end={<Avatar initials={me.initials} name={me.name} tint="accent" size="lg" />}
+      />
+      <div className="flex flex-1 flex-col pb-20 md:pb-0">
+        <Outlet />
+      </div>
+      <nav
+        aria-label="Secciones"
+        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+      >
+        {nav.map((n) => (
+          <NavLink
+            key={n.to}
+            to={n.to}
+            end={n.end}
+            className={({ isActive }) =>
+              cn("flex h-16 items-center justify-center text-sm no-underline", isActive ? "font-bold text-ink" : "font-medium text-muted")
+            }
+          >
+            {n.label}
+          </NavLink>
+        ))}
+      </nav>
+    </Page>
+  );
+}

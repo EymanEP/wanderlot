@@ -9,20 +9,64 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 ## Layout
 
 ```
-packages/core   shared model (zod), Borda tally, trust/staleness, voting rules
-packages/ui     Tailwind theme: colours and type from the design canvas
-apps/panel      local-only app: generate, review, verify, compare, publish
+packages/core   shared model (zod), Borda tally, trust/staleness, voting rules,
+                Spanish display helpers (euros, durations, dates)
+packages/ui     the design system: tokens (theme.css), components, and a gallery
+packages/mocks  mock data for "Noviembre 2026", taken from the design canvas
+apps/panel      local-only app: Generar, Revisar, Comparativa
   src/            API (Hono)
   web/            UI (React + Tailwind, Vite)
-apps/site       published app: member links, plan view, ballots, comments
+apps/site       published app: Destinos, Destino, Votación, Comentarios
   src/            API (Hono + node:sqlite)
   web/            UI (React + Tailwind, Vite)
 ```
 
-Stack: TypeScript everywhere, React 19, Tailwind CSS 4 (via `@tailwindcss/vite`),
-Vite, Hono, zod, Vitest. Design tokens live in `packages/ui/theme.css` as
-Tailwind `@theme` variables, so classes like `bg-accent-soft`, `text-muted` and
-`border-line` match the canvas.
+Stack: TypeScript everywhere, React 19, React Router 7, Tailwind CSS 4 (via
+`@tailwindcss/vite`), Vite, Hono, zod, Vitest + Testing Library.
+
+### Design system
+
+`packages/ui` holds every visual building block; the apps compose pages from it
+and never restyle primitives.
+
+- **Tokens** live in `packages/ui/theme.css` as Tailwind `@theme` variables:
+  colours (`ink`, `muted`, `accent`, `accent-soft`, `claude`, …), the type scale
+  (`text-display`, `text-title`, `text-heading`, …), radii (`rounded-tile`,
+  `rounded-card`) and shadows (`shadow-card`, `shadow-raised`, `shadow-pop`).
+- **Components**: `Button`/`IconButton`, `Badge`/`ProvenanceBadge`, `Chip`/
+  `ChoiceChip`, `Card`, `Avatar`, `Heading`/`Text`/`PageHeader`/`SectionHeader`,
+  `StatTile`/`DataList`/`DataRow`/`ProsCons`/`BulletList`, `Photo`/`IataTile`,
+  `Notice`/`StatusDot`/`Skeleton`/`EmptyState`/toasts, `TopBar`/`Brand`/
+  `InfoPill`/`Main`/`Footer`, `IconTabs`, `Calendar`, `Dialog`, and the form
+  controls `Field`, `TextInput`, `TextArea`, `Select`, `Stepper`, `Range`,
+  `Checkbox`, `RadioCard`, `Fieldset`. Icons are in `icons.tsx`.
+- `cn()` merges classes with tailwind-merge, so a `className` passed to a
+  component always wins over its defaults.
+- **Gallery**: `npm run dev -w @wanderlot/ui` (port 5175) shows every component
+  in every state the screens use.
+
+### Mock data
+
+Both UIs run entirely on `packages/mocks`; nothing calls an API, Claude or a
+flight provider yet. Each app reads and changes data through one store
+(`apps/*/web/src/data/store.tsx`): swapping its actions for API calls is the
+only change needed to make a screen real. Mock-only behaviour: generation
+"streams" proposals on a timer, "Verificar con la API" flips a proposal to
+verified after a second, and publishing, nudging and saving show a toast.
+
+Screens:
+
+| app | route | screen |
+|---|---|---|
+| panel | `/generar` | search form + proposals arriving |
+| panel | `/revisar` | approve, discard, verify, publish |
+| panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
+| site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans |
+| site | `/p/noviembre-2026/destinos/nap` | destination detail and comments |
+| site | `/p/noviembre-2026/votacion` | rank three; scoreboard hidden until close |
+| site | `/p/noviembre-2026/comentarios` | every comment, by destination |
+
+Add `?estado=cerrada` to any site URL to preview it after the vote closes.
 
 The panel and the site share one contract, the `Snapshot` schema in
 `packages/core`. Publishing is the only way data moves from panel to site.
@@ -34,7 +78,7 @@ Requires Node ≥ 22.13 (the site uses the built-in `node:sqlite`).
 ```sh
 npm install
 npm test            # vitest, all packages
-npm run typecheck   # servers and both UIs
+npm run typecheck   # every package, servers and both UIs
 
 # development: API + Vite with hot reload, in one terminal each
 WANDERLOT_ADMIN_TOKEN=<32+ random chars> npm run dev:site    # UI on :5173, API on :8787
@@ -60,11 +104,10 @@ the API server, so open the Vite URL.
 
 ## State
 
-- Backend APIs for both halves, with tests covering the vote rules, the publish
-  freeze, member links and a panel → site round trip.
+- Every designed screen is built, responsive down to phone width, on mock data.
+- Backend APIs for both halves exist and are tested (vote rules, publish
+  freeze, member links, panel → site round trip) but the UIs don't call them yet.
 - Claude research runs through `claude -p --json-schema`; it hasn't been run
   against the real binary yet.
-- The Duffel provider is a stub; `verify` and API search need it implemented.
-- UI is a shell: the panel has its header and tabs, the site shows the plan
-  and its destinations. The screens themselves are designed in the
-  "Wanderlot · Planes de viaje" canvas and not built yet.
+- The Duffel provider is a stub.
+- Photos are labelled placeholders until sources are picked (SPEC §6).

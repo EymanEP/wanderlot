@@ -13,10 +13,12 @@
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@wanderlot/core": "*",
+    "@wanderlot/mocks": "*",
+    "@wanderlot/ui": "*",
     "hono": "^4.9.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^4.6.5",
-    "@wanderlot/ui": "*"
+    "react-router": "^7.18.4",
+    "zod": "^4.6.5"
   }
 }

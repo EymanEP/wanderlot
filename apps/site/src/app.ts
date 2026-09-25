@@ -122,11 +122,16 @@ export function createApp({ db, adminToken, now = () => new Date(), indexHtml }:
       });
       return c.redirect(`/p/${c.req.param("planId")}`);
     }
-    if (!memberFrom(c)) return c.text("Pide tu enlace al organizador", 403);
-    return indexHtml
-      ? c.html(indexHtml)
-      : c.text("La web no está compilada: npm run build -w @wanderlot/site", 503);
+    return page(c);
   });
+
+  // The web UI's own routes: /p/:planId/votacion, /p/:planId/destinos/lis, …
+  app.get("/p/:planId/*", (c) => page(c));
+
+  function page(c: Context<Env>) {
+    if (!memberFrom(c)) return c.text("Pide tu enlace al organizador", 403);
+    return indexHtml ? c.html(indexHtml) : c.text("La web no está compilada: npm run build -w @wanderlot/site", 503);
+  }
 
   function memberFrom(c: Context<Env>): Member | undefined {
     const token = getCookie(c, COOKIE);
