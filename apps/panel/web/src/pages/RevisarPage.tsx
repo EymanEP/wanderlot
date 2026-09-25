@@ -125,7 +125,7 @@ export function RevisarPage() {
         onConfirm={doPublish}
         onClose={() => setConfirming(false)}
       >
-        {risky.map((p) => p.place.city).join(", ")} {risky.length === 1 ? "llegará" : "llegarán"} al sitio con su etiqueta. Mejor verificarlas antes de que la cuadrilla vote.
+        {risky.map((p) => p.place.city).join(", ")} {risky.length === 1 ? "llegará" : "llegarán"} al sitio con su etiqueta. Mejor {risky.length === 1 ? "verificarla" : "verificarlas"} antes de que la cuadrilla vote.
       </Dialog>
     </PanelShell>
   );
