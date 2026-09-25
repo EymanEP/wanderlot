@@ -60,6 +60,22 @@ describe("access", () => {
     expect(res.headers.get("set-cookie")).toMatch(/HttpOnly/);
   });
 
+  it("serves the web UI on nested routes only with a valid cookie", async () => {
+    const withUi = createApp({ db: new SiteDb(), adminToken: ADMIN, indexHtml: "<p>ui</p>" });
+    const [issued] = (await (
+      await withUi.request("/api/admin/members", {
+        method: "POST",
+        headers: { authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
+        body: JSON.stringify([{ id: "ana", name: "Ana" }]),
+      })
+    ).json()) as { token: string }[];
+    expect((await withUi.request(`/p/${PLAN}/votacion`)).status).toBe(403);
+    const cookie = (await withUi.request(`/p/${PLAN}?k=${issued!.token}`)).headers.get("set-cookie")!.split(";")[0]!;
+    const res = await withUi.request(`/p/${PLAN}/destinos/lis`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<p>ui</p>");
+  });
+
   it("revokes the old link when a member's token is reissued", async () => {
     const old = tokens.ana;
     await admin("/members", "POST", [{ id: "ana", name: "Ana" }]);
