@@ -21,11 +21,13 @@ export interface SiteOptions {
   db: SiteDb;
   adminToken: string;
   now?: () => Date;
+  // The built web UI's index.html, served at /p/:planId once the cookie is set.
+  indexHtml?: string;
 }
 
 type Env = { Variables: { member: Member } };
 
-export function createApp({ db, adminToken, now = () => new Date() }: SiteOptions) {
+export function createApp({ db, adminToken, now = () => new Date(), indexHtml }: SiteOptions) {
   const app = new Hono<Env>();
 
   // Reads the plan and closes the vote if the sixth ballot is in or the
@@ -121,8 +123,9 @@ export function createApp({ db, adminToken, now = () => new Date() }: SiteOption
       return c.redirect(`/p/${c.req.param("planId")}`);
     }
     if (!memberFrom(c)) return c.text("Pide tu enlace al organizador", 403);
-    // Placeholder until the site UI lands; the API below is the real surface.
-    return c.html(`<!doctype html><meta charset="utf-8"><title>Wanderlot</title><p>Wanderlot · ${escapeHtml(c.req.param("planId"))}</p>`);
+    return indexHtml
+      ? c.html(indexHtml)
+      : c.text("La web no está compilada: npm run build -w @wanderlot/site", 503);
   });
 
   function memberFrom(c: Context<Env>): Member | undefined {
@@ -238,6 +241,3 @@ function tallyPlan(destinations: Snapshot["destinations"], rankings: string[][])
   );
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-}

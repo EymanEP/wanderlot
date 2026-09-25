@@ -1,4 +1,7 @@
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createPanel } from "./app.ts";
 import { claudeProvider } from "./providers/claude.ts";
 import { duffelProvider } from "./providers/duffel.ts";
@@ -16,6 +19,11 @@ const app = createPanel({
   site: siteClient(siteUrl, adminToken),
   siteUrl,
 });
+
+// Built UI (npm run build). In development Vite serves it instead.
+const webRoot = relative(process.cwd(), join(dirname(fileURLToPath(import.meta.url)), "../dist/web"));
+app.use("/*", serveStatic({ root: webRoot }));
+app.get("*", serveStatic({ root: webRoot, path: "index.html" }));
 
 // Local only: API keys and the claude binary never face the network.
 serve({ fetch: app.fetch, port, hostname: "127.0.0.1" });

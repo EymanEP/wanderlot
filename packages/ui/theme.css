@@ -1,0 +1,39 @@
+/* Design tokens from the "Wanderlot · Planes de viaje" canvas, shared by the
+   panel and the site. Import after tailwindcss. */
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Helvetica Neue", Helvetica, sans-serif;
+
+  --color-ink: #1a1a18;
+  --color-ink-2: #4a4a45;
+  --color-muted: #6b6b66;
+  --color-faint: #b8b8b2;
+  --color-line: #dcdcd6;
+  --color-line-soft: #e6e6e2;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f2ef;
+
+  --color-accent: #0e6b60;
+  --color-accent-hover: #0a524a;
+  --color-accent-soft: #e4f0ee;
+
+  /* Provenance badges (SPEC §3). */
+  --color-verified: #0a524a;
+  --color-verified-soft: #e4f0ee;
+  --color-claude: #8a5200;
+  --color-claude-soft: #fdf0dc;
+}
+
+@layer base {
+  body {
+    @apply bg-surface font-sans text-ink antialiased;
+  }
+  a {
+    @apply text-accent hover:text-accent-hover;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}

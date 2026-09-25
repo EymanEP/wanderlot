@@ -4,13 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "tsx watch src/server.ts",
+    "dev:web": "vite",
+    "build": "vite build",
     "start": "tsx src/server.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
     "@wanderlot/core": "*",
     "hono": "^4.9.0",
-    "zod": "^4.6.5"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5",
+    "@wanderlot/ui": "*"
   }
 }

@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core && tsc -p apps/site && tsc -p apps/panel",
+    "typecheck": "tsc -p packages/core && tsc -p apps/site && tsc -p apps/panel && tsc -p apps/site/web && tsc -p apps/panel/web",
+    "build": "npm run build -w @wanderlot/site -w @wanderlot/panel",
     "dev:panel": "npm run dev -w @wanderlot/panel",
     "dev:site": "npm run dev -w @wanderlot/site"
   },
@@ -16,9 +17,16 @@
     "node": ">=22.13"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
+    "vite": "^8.3.1",
     "vitest": "^5.0.2"
   }
 }
