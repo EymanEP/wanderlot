@@ -10,9 +10,19 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 
 ```
 packages/core   shared model (zod), Borda tally, trust/staleness, voting rules
-apps/panel      local-only API: generate, review, verify, compare, publish
-apps/site       published API: member links, plan view, ballots, comments
+packages/ui     Tailwind theme: colours and type from the design canvas
+apps/panel      local-only app: generate, review, verify, compare, publish
+  src/            API (Hono)
+  web/            UI (React + Tailwind, Vite)
+apps/site       published app: member links, plan view, ballots, comments
+  src/            API (Hono + node:sqlite)
+  web/            UI (React + Tailwind, Vite)
 ```
+
+Stack: TypeScript everywhere, React 19, Tailwind CSS 4 (via `@tailwindcss/vite`),
+Vite, Hono, zod, Vitest. Design tokens live in `packages/ui/theme.css` as
+Tailwind `@theme` variables, so classes like `bg-accent-soft`, `text-muted` and
+`border-line` match the canvas.
 
 The panel and the site share one contract, the `Snapshot` schema in
 `packages/core`. Publishing is the only way data moves from panel to site.
@@ -24,14 +34,20 @@ Requires Node ≥ 22.13 (the site uses the built-in `node:sqlite`).
 ```sh
 npm install
 npm test            # vitest, all packages
-npm run typecheck
+npm run typecheck   # servers and both UIs
 
-# site (default :8787)
-WANDERLOT_ADMIN_TOKEN=<32+ random chars> npm run dev:site
+# development: API + Vite with hot reload, in one terminal each
+WANDERLOT_ADMIN_TOKEN=<32+ random chars> npm run dev:site    # UI on :5173, API on :8787
+WANDERLOT_ADMIN_TOKEN=<same token> npm run dev:panel         # UI on 127.0.0.1:5174, API on :5151
 
-# panel (127.0.0.1:5151 only)
-WANDERLOT_ADMIN_TOKEN=<same token> WANDERLOT_SITE_URL=http://localhost:8787 npm run dev:panel
+# production: build the UIs, then each server serves its own
+npm run build
+WANDERLOT_ADMIN_TOKEN=… npm run start -w @wanderlot/site
+npm run start -w @wanderlot/panel
 ```
+
+In development Vite proxies `/api` (and the site's `/p/…?k=` private links) to
+the API server, so open the Vite URL.
 
 | variable | used by | default |
 |---|---|---|
@@ -49,5 +65,6 @@ WANDERLOT_ADMIN_TOKEN=<same token> WANDERLOT_SITE_URL=http://localhost:8787 npm 
 - Claude research runs through `claude -p --json-schema`; it hasn't been run
   against the real binary yet.
 - The Duffel provider is a stub; `verify` and API search need it implemented.
-- No UI yet: both apps expose JSON APIs only. The screens are designed in the
-  "Wanderlot · Planes de viaje" canvas.
+- UI is a shell: the panel has its header and tabs, the site shows the plan
+  and its destinations. The screens themselves are designed in the
+  "Wanderlot · Planes de viaje" canvas and not built yet.
