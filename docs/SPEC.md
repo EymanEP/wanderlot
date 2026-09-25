@@ -47,9 +47,10 @@ One candidate the research produced. Never leaves the machine unless approved.
 |---|---|
 | `id`, `planId` | |
 | `place` | city, country, IATA code |
+| `category` | `ciudad` \| `escapada` \| `playa` \| `naturaleza`: the Plan page's filter |
 | `outbound`, `inbound` | flight legs (§1.1) |
-| `stays` | 0–2 accommodation options, one may be `recommended` |
-| `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver") |
+| `stays` | 0–2 accommodation options (`name`, `kind`, `description?`, whole-group `nightlyCents`), one may be `recommended` |
+| `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver"), each `{ title, detail? }` |
 | `provenance` | §3 |
 | `review` | `pending` \| `approved` \| `discarded` |
 | `sources` | list of `{label, url}` — required when provenance is `claude` |
