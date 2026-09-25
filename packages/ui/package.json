@@ -4,6 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
+    ".": "./src/index.ts",
     "./theme.css": "./theme.css"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "dependencies": {
+    "tailwind-merge": "^3.7.0"
   }
 }
