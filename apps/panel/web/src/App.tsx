@@ -1,68 +1,69 @@
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { Link, Navigate, Route, Routes } from "react-router";
+import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
+import { PanelShell } from "./components/PanelShell.tsx";
+import { usePanel } from "./data/store.tsx";
+import { ComparativaPage } from "./pages/ComparativaPage.tsx";
+import { GenerarPage } from "./pages/GenerarPage.tsx";
+import { NewPlanPage } from "./pages/NewPlanPage.tsx";
+import { VotacionPage } from "./pages/VotacionPage.tsx";
+import { PersonasPage } from "./pages/PersonasPage.tsx";
+import { RevisarPage } from "./pages/RevisarPage.tsx";
 
-type Plan = { id: string; name: string; status: "draft" | "voting" | "closed" };
-
-const TABS = [
-  { id: "generar", label: "Generar" },
-  { id: "revisar", label: "Revisar" },
-  { id: "comparativa", label: "Comparativa" },
-] as const;
-type Tab = (typeof TABS)[number]["id"];
+// Generar, Revisar and Comparativa work on a plan; without one, make one.
+function RequirePlan({ children }: { children: ReactNode }) {
+  const { state } = usePanel();
+  if (state.loading) {
+    return (
+      <Page>
+        <div aria-busy="true" className="mx-auto flex w-full max-w-[1100px] flex-col gap-4 px-8 py-12">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+        </div>
+      </Page>
+    );
+  }
+  if (state.error) {
+    return (
+      <PanelShell showPlan={false}>
+        <main className="mx-auto w-full max-w-[720px] px-4 py-12">
+          <EmptyState title="El panel no arranca">{state.error}</EmptyState>
+        </main>
+      </PanelShell>
+    );
+  }
+  if (!state.plan) {
+    return (
+      <PanelShell showPlan={false}>
+        <main className="mx-auto w-full max-w-[720px] px-4 py-12">
+          <EmptyState
+            title="Todavía no hay ningún plan"
+            action={
+              <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
+                Crear el primero
+              </Link>
+            }
+          >
+            Un plan es una ventana de viaje: sus fechas, quién va y cuánto gastar.
+          </EmptyState>
+        </main>
+      </PanelShell>
+    );
+  }
+  return children;
+}
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("generar");
-  const [plans, setPlans] = useState<Plan[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/plans")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`API ${r.status}`))))
-      .then(setPlans)
-      .catch((e: Error) => setError(e.message));
-  }, []);
-
   return (
-    <div className="min-h-screen">
-      <header className="flex items-center gap-8 border-b border-line px-8 py-4">
-        <div className="flex items-baseline gap-2">
-          <span className="text-lg font-extrabold tracking-tight">Wanderlot</span>
-          <span className="text-sm text-muted">Panel local</span>
-        </div>
-        <nav className="flex gap-1" aria-label="Secciones">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              aria-current={tab === t.id ? "page" : undefined}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                tab === t.id ? "bg-accent-soft text-accent-hover" : "text-ink-2 hover:bg-surface-2"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-8 py-10">
-        <h1 className="text-3xl font-extrabold tracking-tight">{TABS.find((t) => t.id === tab)!.label}</h1>
-        <p className="mt-2 text-muted">Nada llega al sitio de la cuadrilla hasta que tú lo apruebes.</p>
-
-        <section className="mt-8 rounded-xl border border-line p-6">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-muted">Planes</h2>
-          {error && <p className="mt-3 text-claude">No se pudo leer la API del panel: {error}</p>}
-          {plans?.length === 0 && <p className="mt-3 text-ink-2">Todavía no hay ningún plan.</p>}
-          <ul className="mt-3 divide-y divide-line-soft">
-            {plans?.map((p) => (
-              <li key={p.id} className="flex items-center justify-between py-3">
-                <span className="font-semibold">{p.name}</span>
-                <span className="text-sm text-muted">{p.status}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </main>
-    </div>
+    <Routes>
+      <Route index element={<Navigate to="/generar" replace />} />
+      <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
+      <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
+      <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
+      <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
+      <Route path="/personas" element={<PersonasPage />} />
+      <Route path="/planes/nuevo" element={<NewPlanPage />} />
+      <Route path="*" element={<Navigate to="/generar" replace />} />
+    </Routes>
   );
 }

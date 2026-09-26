@@ -8,15 +8,28 @@
     "dev:api": "tsx watch src/server.ts",
     "dev:web": "vite",
     "build": "vite build",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-sitio.html",
+    "test:e2e": "vite build && tsx e2e/passkeys.e2e.ts",
+    "test:e2e:worker": "vite build && tsx e2e/passkeys.e2e.ts --worker",
+    "dev:worker": "vite build && wrangler d1 migrations apply wanderlot --local && wrangler dev"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.2",
     "@wanderlot/core": "*",
+    "@wanderlot/mocks": "*",
+    "@wanderlot/ui": "*",
     "hono": "^4.9.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "zod": "^4.6.5",
-    "@wanderlot/ui": "*"
+    "react-router": "^7.18.4",
+    "zod": "^4.6.5"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260926.1",
+    "wrangler": "^4.141.0"
   }
 }

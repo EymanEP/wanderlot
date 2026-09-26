@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in the site or the panel doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. In the panel, …
+        2. …
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part
+      options:
+        - The friends' site
+        - The organiser's panel
+        - Setup or deployment
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where it runs
+      description: Browser and device, and for the site whether it's on Cloudflare or Node.
+      placeholder: Safari on iPhone · Cloudflare
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors or logs
+      description: Browser console, terminal output or a screenshot. Remove tokens and invite links first.
+      render: text

@@ -3,17 +3,30 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { Photo, Plan, type Proposal } from "@wanderlot/core";
-import type { FlightProvider, ResearchProvider, SearchRequest } from "./providers/types.ts";
-import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
+import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
+import { searchAll, type PhotoSource } from "./providers/photos.ts";
+import { localOnly } from "./guard.ts";
+import { SiteError, buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
-import { voteOpenedMessage } from "./announce.ts";
+import { inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage } from "./announce.ts";
+
+// What this computer can do, found at startup (SPEC §8).
+export interface PanelStatus {
+  research: "claude-cli" | "anthropic-api" | "none";
+  flights: "duffel" | "none";
+  photos: ("wikimedia" | "unsplash" | "pexels")[];
+}
 
 export interface PanelOptions {
   store: PanelStore;
+  status?: PanelStatus;
   flights: FlightProvider;
   research: ResearchProvider;
+  photos?: PhotoSource[];
   site: SiteClient;
+  // Host:port values the panel answers to (see guard.ts); unset in tests.
+  hosts?: string[];
   siteUrl: string;
   now?: () => Date;
 }
@@ -41,12 +54,77 @@ const EditorialBody = z
   })
   .partial();
 
-export function createPanel({ store, flights, research, site, siteUrl, now = () => new Date() }: PanelOptions) {
+const NewPlan = z.object({
+  name: z.string().trim().min(1).max(60),
+  origin: z.string().regex(/^[A-Z]{3}$/),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  nights: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
+  flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  partySize: z.number().int().min(1).max(30),
+  maxPriceCents: z.number().int().positive(),
+});
+
+async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
+  for await (const proposal of it) yield { proposal };
+}
+
+export function createPanel({
+  store,
+  flights,
+  research,
+  photos = [],
+  hosts,
+  site,
+  siteUrl,
+  now = () => new Date(),
+  status = { research: "none", flights: "none", photos: ["wikimedia"] },
+}: PanelOptions) {
   const app = new Hono();
+  if (hosts) app.use("*", localOnly(hosts));
+  // The panel is local, so the organiser may see what went wrong. A refusal
+  // from the site keeps its status and its (Spanish) reason.
+  app.onError((err, c) => {
+    if (err instanceof SiteError && err.status >= 400 && err.status < 500) return c.json({ error: err.reason }, err.status as 409);
+    return c.json({ error: err.message }, 500);
+  });
 
   const entryOr404 = (planId: string) => store.get(planId);
 
-  app.get("/api/plans", (c) => c.json(store.list()));
+  // What's configured here, and whether the site answers as admin.
+  app.get("/api/status", async (c) => {
+    let reachable = true;
+    let error: string | undefined;
+    try {
+      await site.settings();
+    } catch (e) {
+      reachable = false;
+      error = (e as Error).message;
+    }
+    return c.json({ ...status, site: { url: siteUrl, reachable, ...(error ? { error } : {}) } });
+  });
+
+  app.get("/api/settings", async (c) => c.json(await site.settings()));
+
+  app.put("/api/settings", async (c) => {
+    const body = GroupSettings.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid settings", issues: body.error.issues }, 400);
+    return c.json(await site.putSettings(body.data));
+  });
+
+  // Newest first.
+  app.get("/api/plans", (c) => c.json([...store.list()].reverse()));
+
+  // A new trip window, as a draft (SPEC §1).
+  app.post("/api/plans", async (c) => {
+    const body = NewPlan.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid plan", issues: body.error.issues }, 400);
+    const base = slugify(body.data.name) || "plan";
+    let id = base;
+    for (let n = 2; store.get(id); n++) id = `${base}-${n}`;
+    const plan: Plan = { ...body.data, id, dateTo: addDaysIso(body.data.dateFrom, body.data.nights), status: "draft" };
+    store.update(id, () => ({ entry: { plan, proposals: [], editorial: {} }, result: null }));
+    return c.json(plan, 201);
+  });
 
   app.get("/api/plans/:planId", (c) => {
     const entry = entryOr404(c.req.param("planId"));
@@ -78,17 +156,39 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
     };
-    const source = body.data.source === "api" ? flights.search(req, c.req.raw.signal) : research.research(req, c.req.raw.signal);
+    let source: AsyncIterable<ResearchResult>;
+    try {
+      source = body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : research.research(req, c.req.raw.signal);
+    } catch (e) {
+      // e.g. no flight provider configured
+      return c.json({ error: (e as Error).message }, 409);
+    }
 
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
       try {
-        for await (const p of source) {
+        for await (const { proposal: p, notes } of source) {
           const proposal: Proposal = { ...p, review: "pending" };
-          store.update(plan.id, (e) => ({
-            entry: { ...e!, proposals: [...e!.proposals.filter((x) => x.id !== proposal.id), proposal] },
-            result: null,
-          }));
+          store.update(plan.id, (e) => {
+            // Research's notes seed Comparativa; the organiser's edits win.
+            const prev = e!.editorial[proposal.id] ?? {};
+            const editorial = notes
+              ? {
+                  ...e!.editorial,
+                  [proposal.id]: {
+                    pros: notes.pros,
+                    cons: notes.cons,
+                    weather: notes.weather,
+                    ...prev,
+                    photoQueries: notes.photoSubjects.length ? notes.photoSubjects : (prev.photoQueries ?? []),
+                  },
+                }
+              : e!.editorial;
+            return {
+              entry: { ...e!, editorial, proposals: [...e!.proposals.filter((x) => x.id !== proposal.id), proposal] },
+              result: null,
+            };
+          });
           await s.writeln(JSON.stringify({ proposal }));
         }
         await s.writeln(JSON.stringify({ done: true }));
@@ -117,13 +217,18 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
     const { planId, id } = c.req.param();
     const proposal = store.get(planId)?.proposals.find((p) => p.id === id);
     if (!proposal) return c.json({ error: "not found" }, 404);
-    const found = await flights.verify({
-      origin: proposal.outbound.from,
-      destination: proposal.place.iata,
-      outboundDate: proposal.outbound.departAt.slice(0, 10),
-      inboundDate: proposal.inbound.departAt.slice(0, 10),
-      partySize: store.get(planId)!.plan.partySize,
-    });
+    let found;
+    try {
+      found = await flights.verify({
+        origin: proposal.outbound.from,
+        destination: proposal.place.iata,
+        outboundDate: proposal.outbound.departAt.slice(0, 10),
+        inboundDate: proposal.inbound.departAt.slice(0, 10),
+        partySize: store.get(planId)!.plan.partySize,
+      });
+    } catch (e) {
+      return c.json({ verified: false, reason: (e as Error).message });
+    }
     if (!found) return c.json({ verified: false, reason: `${flights.name} no encuentra ese itinerario` });
     const verified: Proposal = {
       ...proposal,
@@ -137,12 +242,26 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
     return c.json({ verified: true, proposal: verified });
   });
 
+  // The photo picker: every configured source at once (SPEC §6).
+  app.get("/api/photos", async (c) => {
+    const q = (c.req.query("q") ?? "").trim().slice(0, 100);
+    if (!q) return c.json({ error: "expected ?q=" }, 400);
+    const count = Math.min(Math.max(Number(c.req.query("count")) || 12, 1), 30);
+    return c.json(await searchAll(photos, q, count, c.req.raw.signal));
+  });
+
   // Comparativa: pros/cons, weather, photos, the inVote checkbox.
   app.patch("/api/plans/:planId/proposals/:id/editorial", async (c) => {
     const { planId, id } = c.req.param();
     const body = EditorialBody.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid editorial", issues: body.error.issues }, 400);
     if (!store.get(planId)?.proposals.some((p) => p.id === id)) return c.json({ error: "not found" }, 404);
+    // Newly kept photos count as downloads where the source asks for it.
+    const before = new Set((store.get(planId)!.editorial[id]?.photos ?? []).map((p) => p.url));
+    for (const photo of body.data.photos ?? []) {
+      if (before.has(photo.url)) continue;
+      photos.find((s) => s.name === photo.source)?.picked?.(photo).catch(() => {});
+    }
     store.update(planId, (e) => ({
       entry: { ...e!, editorial: { ...e!.editorial, [id]: { ...e!.editorial[id], ...body.data } } },
       result: null,
@@ -163,17 +282,95 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
     return c.json({ ok: true, published: snapshot.destinations.length, warnings });
   });
 
-  // Issues (or reissues, revoking the old one) private links for the given
-  // members. Only needed once per person, not per plan.
-  app.post("/api/members/links", async (c) => {
+  // --- Personas (SPEC §5) -------------------------------------------------
+
+  // Everyone's state from the site, plus the invite link while it's unused.
+  app.get("/api/members", async (c) => {
+    const members = await site.members();
+    return c.json(
+      members.map((m) => {
+        const local = store.invite(m.id);
+        const url = m.invite?.status === "valid" && local ? inviteUrl(siteUrl, local.token) : null;
+        return { ...m, inviteUrl: url };
+      }),
+    );
+  });
+
+  app.put("/api/members", async (c) => {
     const body = z.array(z.object({ id: z.string(), name: z.string() })).safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "expected [{id, name}]" }, 400);
-    store.setLinks(await site.issueLinks(body.data));
-    return c.json(store.links().map(({ id, name }) => ({ id, name })));
+    await site.putMembers(body.data);
+    return c.json({ ok: true });
+  });
+
+  // A fresh one-time invite; cancels the person's previous unused one.
+  app.post("/api/members/:id/invite", async (c) => {
+    const id = c.req.param("id");
+    const invite = await site.invite(id);
+    store.setInvite(id, invite);
+    return c.json({ url: inviteUrl(siteUrl, invite.token), expiresAt: invite.expiresAt });
+  });
+
+  app.delete("/api/members/:id/sessions", async (c) => {
+    await site.closeSessions(c.req.param("id"));
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/members/:id/revoke", async (c) => {
+    const id = c.req.param("id");
+    await site.revoke(id);
+    store.setInvite(id, null);
+    return c.json({ ok: true });
   });
 
   // Opens the vote on the site and returns the message for the group chat.
   // Verified in-vote prices must be fresh first (SPEC §3).
+  // Following the vote (SPEC §4, §7): who's in, a reminder for who isn't,
+  // and once closed the count and the message announcing where you're going.
+  async function voteView(planId: string, state: VoteState) {
+    const entry = store.get(planId)!;
+    // Keep the local copy of the plan in step with the site.
+    const winner = state.result?.winnerId ?? undefined;
+    if (entry.plan.status !== state.status || entry.plan.winnerDestinationId !== winner) {
+      store.update(planId, (e) => ({
+        entry: { ...e!, plan: { ...e!.plan, status: state.status, ...(winner ? { winnerDestinationId: winner } : {}) } },
+        result: null,
+      }));
+    }
+    const members = await site.members();
+    const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
+    const cities = Object.fromEntries(entry.proposals.map((p) => [p.id, p.place.city]));
+    const missing = people.filter((p) => !p.voted).map((p) => p.name);
+    const reminder = state.status === "voting" && state.voteDeadline && missing.length ? voteReminderMessage(entry.plan, state.voteDeadline, siteUrl, missing) : null;
+    // A tie waits for the organiser's pick before anything is announced.
+    const announcement =
+      state.result && (state.result.winnerId || state.result.tiedForFirst.length === 0)
+        ? voteClosedMessage(entry.plan, state.result.winnerId ? (cities[state.result.winnerId] ?? state.result.winnerId) : null, siteUrl)
+        : null;
+    return { ...state, people, cities, reminder, announcement };
+  }
+
+  app.get("/api/plans/:planId/vote", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    if (store.get(planId)!.plan.status === "draft") return c.json({ error: "la votación no está abierta" }, 409);
+    return c.json(await voteView(planId, await site.vote(planId)));
+  });
+
+  app.post("/api/plans/:planId/close", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    return c.json(await voteView(planId, await site.closeVote(planId)));
+  });
+
+  app.put("/api/plans/:planId/winner", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const body = z.object({ destinationId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {destinationId}" }, 400);
+    return c.json(await voteView(planId, await site.pickWinner(planId, body.data.destinationId)));
+  });
+
   app.post("/api/plans/:planId/open-vote", async (c) => {
     const entry = entryOr404(c.req.param("planId"));
     if (!entry) return c.json({ error: "not found" }, 404);
@@ -181,10 +378,8 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       .object({ deadline: z.iso.datetime({ offset: true }) })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "expected {deadline}" }, 400);
-    const links = store.links();
-    if (links.length < entry.plan.partySize) {
-      return c.json({ error: `hay ${links.length} enlaces para ${entry.plan.partySize} personas: emítelos primero` }, 409);
-    }
+    const members = await site.members();
+    if (members.length === 0) return c.json({ error: "añade a la gente en Personas antes de abrir la votación" }, 409);
     const stale = publishWarnings(entry, now()).filter(
       (w) => w.reason === "stale" && entry.editorial[w.destinationId]?.inVote !== false,
     );
@@ -196,7 +391,18 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       entry: { ...e!, plan: { ...e!.plan, status: "voting", voteDeadline: body.data.deadline } },
       result: null,
     }));
-    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, links) });
+
+    // Whoever hasn't joined gets a working invite: their unused one, or a fresh one.
+    const pending = [];
+    for (const m of members.filter((x) => x.passkeys.length === 0)) {
+      let local = m.invite?.status === "valid" ? store.invite(m.id) : undefined;
+      if (!local) {
+        local = await site.invite(m.id);
+        store.setInvite(m.id, local);
+      }
+      pending.push({ name: m.name, url: inviteUrl(siteUrl, local.token) });
+    }
+    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, pending) });
   });
 
   return app;

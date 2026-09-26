@@ -1,10 +1,15 @@
 # Wanderlot — spec
 
-Trip planning for one fixed group of friends (Grupo 51, six people), built as two
-halves that never blur into each other:
+Trip planning for one fixed group of friends, built as two halves that never
+blur into each other:
 
 - **Panel** — runs only on the organiser's machine. Research and curation.
-- **Site** — published, used by the six. Reading, commenting, voting.
+- **Site** — published, used by the group. Reading, commenting, voting.
+
+Wanderlot is open source (MIT) and self-hosted: **one deployment serves one
+group**. Anyone can deploy their own site for free (§11) and run the panel from
+a clone of the repo. The reference group throughout this spec and the mocks is
+Grupo 51: six people, planning from Madrid.
 
 The one rule everything else serves: **nothing reaches the site until the
 organiser approves it.** The panel generates twelve options; the group sees the
@@ -47,9 +52,10 @@ One candidate the research produced. Never leaves the machine unless approved.
 |---|---|
 | `id`, `planId` | |
 | `place` | city, country, IATA code |
+| `category` | `ciudad` \| `escapada` \| `playa` \| `naturaleza`: the Plan page's filter |
 | `outbound`, `inbound` | flight legs (§1.1) |
-| `stays` | 0–2 accommodation options, one may be `recommended` |
-| `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver") |
+| `stays` | 0–2 accommodation options (`name`, `kind`, `description?`, whole-group `nightlyCents`), one may be `recommended` |
+| `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver"), each `{ title, detail? }` |
 | `provenance` | §3 |
 | `review` | `pending` \| `approved` \| `discarded` |
 | `sources` | list of `{label, url}` — required when provenance is `claude` |
@@ -65,7 +71,7 @@ the organiser's editorial additions from Comparativa:
 
 - `pros`, `cons` — drafted by Claude, rewritten by the organiser
 - `weather` — one line for the trip month
-- `photos` — §6
+- `photos` — §6, chosen by the organiser at approval
 - `inVote` — the Comparativa checkbox; only `inVote` destinations are ballot options
 - `totalPerPersonCents` — flights + recommended stay × nights ÷ party size
 
@@ -95,7 +101,7 @@ Threads are one level deep: a reply's parent must be a top-level comment.
 ```
 
 - The panel binds to `127.0.0.1` only. API keys and the `claude` binary never
-  leave the machine.
+  leave the machine. There is no hosted panel in v1 (§10).
 - **Publish** is the only way data crosses. It sends a **snapshot**: the plan
   plus its approved destinations, validated against one shared schema
   (`packages/core`). The site stores snapshots verbatim; it never computes
@@ -148,7 +154,7 @@ provider (or sources) and the check date.
 
 ### Rule — Borda count over the top three
 Each member ranks the `inVote` destinations: first gets 3 points, second 2,
-third 1. Six members × 6 points = 36 points in play.
+third 1: six points per person, so 36 in play for a group of six.
 
 - A ballot ranks exactly `min(3, n)` distinct destinations, where `n` is the
   number of `inVote` destinations. (With 2 destinations: 3 and 2 points.)
@@ -164,7 +170,8 @@ Order by, in turn:
 3. `totalPerPersonCents`, ascending (cheaper wins)
 
 If two destinations are still level after all three, the result is a **tie**
-and the organiser picks in the panel. There is no hidden fourth rule.
+and the organiser picks one of the tied destinations in the panel's Votación
+screen; the site then shows it as the winner. There is no hidden fourth rule.
 
 ### Lifecycle
 ```
@@ -174,7 +181,9 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 - **The scoreboard is hidden while `voting`.** Visible to everyone at all times:
   who has voted and who hasn't (names only, never rankings).
 - The vote closes the moment the sixth ballot arrives or the deadline passes,
-  whichever is first. Closing is checked on every read, so no cron is needed.
+  whichever is first. ("Sixth" means the group's `partySize`.) Closing is checked on every read, so no cron is needed.
+- The organiser can also close it early from the panel's Votación screen
+  ("Cerrar ya"), once at least one ballot is in. It counts what's there.
 - Once `closed`, ballots are read-only and the full scoreboard is shown:
   points, first places, and each member's ranking.
 - Each member sees their own ballot at all times ("Tu 1.ª opción" on Plan cards).
@@ -184,76 +193,218 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 ## 5. Identity on the site
 
-Six known people, no sign-up. Each member gets **one private link**:
-`https://<site>/p/<planId>?k=<token>`.
+A small, known group, no passwords. People sign in with a **passkey**: Face ID,
+a fingerprint or the device PIN, stored by their phone or password manager.
+The organiser brings each person in with a **one-time invite**.
 
-- The token is 32 random bytes, base64url. The site stores only its SHA-256.
-- The first visit sets an http-only cookie and redirects to the clean URL.
-- The panel issues the six links once and can revoke/reissue one.
-- Anyone without a valid token sees nothing — not even the plan name.
+### Invites
+- The panel asks the site for an invite for one member. The site returns a
+  link once, `https://<site>/i/<token>`, and stores only the token's SHA-256.
+- The token is 32 random bytes, base64url. An invite expires after **7 days**
+  and works **once**. Creating a new invite for someone cancels their previous
+  unused one.
+- Opening the link shows "¿Eres Laura?" and asks her to create a passkey.
+  **Only finishing that consumes the invite.** Merely opening the link (a
+  WhatsApp link preview, a second tap) changes nothing.
+- A used, expired or cancelled invite says so and tells the person to ask the
+  organiser for a new one.
+
+### Signing in
+- Coming back needs only the site's address: "Entrar", then the device's
+  passkey prompt. Passkeys are discoverable, so nobody types a name.
+- A passkey synced by iCloud Keychain or Google Password Manager works on the
+  person's other devices; a browser can also sign in with a phone passkey by
+  scanning a QR code. Otherwise the organiser sends a new invite, which adds a
+  passkey on the new device.
+- Signing in creates a **session**: a random token in an http-only, `Secure`,
+  `SameSite=Lax` cookie, stored hashed on the site, valid **180 days** from last
+  use (refreshed at most once a day).
+- Without a session the site shows only the sign-in screen: not the plan name,
+  not who is in the group.
+
+### What the organiser can do (panel → "Personas")
+- Add people, and see each one's state: *sin invitar*, *invitación pendiente*,
+  *invitación caducada*, or *dentro* with their passkeys and devices.
+- Send a new invite, **close sessions** (signs the person out everywhere; their
+  passkeys still work), or **remove access** (deletes their passkeys, sessions
+  and pending invite; they need a new invite).
+
+### Why this shape
+- A forwarded invite is useless once used. If someone uses it first, the real
+  person finds it spent, and the organiser sees who signed in when, removes
+  that access and sends a new invite.
+- It needs no email service or third-party login, so it costs a hoster nothing.
+- Passkeys belong to the site's domain. **A hoster should settle the final
+  address before inviting anyone**: moving from `*.workers.dev` to a custom
+  domain means everyone signs up again.
+
+Implementation: SimpleWebAuthn (`@simplewebauthn/server` on the site,
+`@simplewebauthn/browser` in the UI), MIT-licensed and run on Node and on
+Cloudflare Workers.
 
 ---
 
 ## 6. Photos
 
-Picked by the organiser at approval time in Revisar, never scraped.
+Photos are **linked, not hosted**: the site shows each image straight from the
+photo service that serves it, so a deployment stores no image files. That is
+only safe for images whose licence allows reuse and whose service allows
+direct linking, so photos come **only from three services**:
 
-- Hero shot: Unsplash or Pexels.
-- Specific landmarks: Wikimedia Commons.
-- Google Images is not a source (licensing).
+| source | used for | direct linking | attribution | key |
+|---|---|---|---|---|
+| Unsplash | hero and mood shots | **required** by its API rules: use the `urls` it returns | photographer + Unsplash, with `utm_source=wanderlot&utm_medium=referral` links; call `download_location` when a photo is chosen | free API key |
+| Pexels | hero and mood shots | allowed: use the `src` it returns | "Foto de X en Pexels", linked | free API key |
+| Wikimedia Commons | specific landmarks ("Castel dell'Ovo") | allowed but discouraged (files can be renamed or deleted); link a sized thumbnail | author + licence (usually CC BY-SA), linked | none (send a descriptive User-Agent) |
 
-Each photo stores `{ url, source, author, license, sourceUrl }`, and the site
-renders the attribution. v1 hotlinks the provider URL; copying files to our own
-storage is a later decision.
+**Claude never supplies an image URL.** An arbitrary image Claude finds on the
+web is usually copyrighted, may block direct linking, may be moved or deleted,
+and would let a third-party site log every friend who opens the page. So the
+work is split:
+
+1. **Claude picks what to show.** With each proposal it suggests three photo
+   subjects as search terms: a hero ("Bahía de Nápoles") and landmarks the
+   proposal mentions ("Pompeya", "Spaccanapoli").
+2. **The panel finds candidates** for a subject (or anything the organiser
+   types) through every configured service's own search API at once, results
+   interleaved (`GET /api/photos?q=`). With no keys, Wikimedia alone works.
+3. **The panel filters candidates**: Wikimedia results need a reusable licence
+   (CC0, public domain, CC BY, CC BY-SA) and get their author in plain text; a
+   service that fails is reported in the picker while the others still show.
+4. **The organiser picks** in Revisar's photo picker, up to four in order: the
+   first is the hero, the rest tiles. Keeping a new Unsplash photo triggers its
+   download event.
+5. **Publish carries the choice** with its credits. The site renders the image
+   from the service's URL and the credit under it. An image that fails to load
+   falls back to the labelled placeholder.
+
+Each photo stores:
+
+```
+{ url, width, height, source: "unsplash"|"pexels"|"wikimedia",
+  author, authorUrl, license, sourceUrl, alt, downloadLocation? }
+```
+
+Copying files into our own storage (Cloudflare R2's free tier would hold
+them) is not part of v1. It becomes worth doing if linked Wikimedia images
+start disappearing; Unsplash photos must stay linked either way.
 
 ---
 
 ## 7. Telling people (v1)
 
-No email or push in v1. When the organiser opens or closes a vote, the panel
-produces a ready-to-paste message for the group chat: what opened/closed, the
-deadline or the winner, and each person's private link. The group chat is
-already where they are.
+No email or push in v1. The panel writes ready-to-paste messages for the
+group chat, each with an "Abrir WhatsApp" button:
+- **Vote opened:** the deadline and the site's address, plus a working invite
+  for anyone who hasn't signed up yet.
+- **Reminder** (while voting): names who hasn't voted, never what anyone voted.
+- **Result** (once closed and any tie broken): the winner and the site's address.
+
+The group chat is already where they are.
 
 ---
 
-## 8. Data sources
+## 8. Providers
 
-The panel talks to one flight provider at a time through a `FlightProvider`
-interface, plus the local `claude` binary through a `ResearchProvider`.
+Every outside service sits behind an interface in the panel, and each hoster
+configures only the ones they have. The panel works with none of the paid ones.
 
-| source | status to check before building on it |
+### Research (AI)
+`ResearchProvider` produces proposals, pros and cons, and photo subjects.
+
+| provider | how | cost to the hoster |
+|---|---|---|
+| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema …` | their Claude subscription, no API bill |
+| `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
+
+Other providers can implement the same interface later. Whatever the provider,
+research always yields `claude` provenance (§3): it is labelled as written by
+AI until a flight API confirms it, even when it quotes an airline's price.
+
+### Flights (optional)
+`FlightProvider` searches and verifies fares; it is the only way to `api`
+provenance.
+
+| provider | status |
 |---|---|
-| Duffel | default. Offers API with real bookable fares. |
+| Duffel (default) | real bookable fares with a live account; test mode returns made-up flights. Check its pricing for search-only use before relying on it |
 | Amadeus Self-Service | reportedly being decommissioned in 2026 — confirm before use |
 | Kiwi (Tequila) | public sign-ups reportedly closed — confirm access |
-| `claude` binary | `claude -p --output-format json --json-schema …`; always yields `claude` provenance |
 
-Claude never produces `api` provenance, even when it quotes a price it found on
-an airline site.
+Without a flight provider, every proposal stays "Lo escribió Claude" and the
+panel says so on Generar.
+
+### Photos
+Unsplash, Pexels and Wikimedia Commons, per §6.
 
 ---
 
 ## 9. Site API (v1)
 
-All member routes require the member cookie. Admin routes require
-`Authorization: Bearer <ADMIN_TOKEN>`.
+Member routes require the session cookie (§5). Admin routes require
+`Authorization: Bearer <ADMIN_TOKEN>`. Passkey steps come in pairs: `options`
+returns WebAuthn options and a `flowId`; `verify` takes the `flowId` and the
+browser's response. A flow expires after 5 minutes and can be used once.
 
 | method | path | who | notes |
 |---|---|---|---|
-| `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
-| `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
-| `POST` | `/api/admin/members` | panel | `[{ id, name }]`; issues (or reissues, revoking) each link; returns tokens once |
-| `GET` | `/p/:planId?k=<token>` | member | exchanges the link for the cookie, redirects to `/p/:planId` |
+| `GET` | `/`, `/i/:token`, `/p/*` | anyone | the web UI; it asks the API what to show |
+| `GET` | `/api/site` | anyone | `{ groupName, organiserName }`, for the sign-in screens |
+| `GET` | `/api/invites/:token` | anyone | `{ member: { name }, status: valid \| used \| expired \| cancelled }`; never consumes it |
+| `POST` | `/api/invites/:token/passkey/options` | invitee | `410` unless valid |
+| `POST` | `/api/invites/:token/passkey/verify` | invitee | saves the passkey, uses up the invite, starts a session |
+| `POST` | `/api/session/options` | anyone | passkey sign-in |
+| `POST` | `/api/session/verify` | anyone | starts a session |
+| `GET` | `/api/session` | member | `{ member }` or `401` |
+| `DELETE` | `/api/session` | member | signs this device out |
+| `GET` | `/api/plans` | member | every published plan: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity }` |
 | `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
-| `GET` | `/api/plans/:planId/comments?destinationId=` | member | newest first; without a filter: the 3 most recent across the plan |
+| `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
 | `POST` | `/api/plans/:planId/comments` | member | `{ destinationId, body, parentId? }` |
+| `PUT` | `/api/plans/:planId/comments/:commentId/like` | member | `{ on }` |
+| `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
+| `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
+| `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
+| `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted: [memberId], result }`; `result` only once closed |
+| `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
+| `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`; only among those tied for first |
+| `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members |
+| `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
+| `POST` | `/api/admin/members/:id/invite` | panel | `{ token, expiresAt }`, returned once; cancels the previous unused invite |
+| `DELETE` | `/api/admin/members/:id/sessions` | panel | signs the member out everywhere |
+| `POST` | `/api/admin/members/:id/revoke` | panel | deletes passkeys, sessions and pending invite |
 
-Members and their links belong to the group, not to a plan: a person gets one
-link, once, and it works for every plan. Reissuing a link revokes the old one
-(and logs that person out).
+Members belong to the group, not to a plan: one sign-up works for every plan.
+
+### Panel API (local)
+
+The panel's own server, for its UI only. It listens on `127.0.0.1`, answers
+only requests whose `Host` is the panel itself, and takes changes only as
+JSON from its own origin (so other web pages the organiser opens can't drive
+it). Calls that touch the site go through the admin API above.
+
+| method | path | notes |
+|---|---|---|
+| `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers |
+| `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
+| `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
+| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals and editorial notes / save the plan |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}` |
+| `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
+| `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
+| `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |
+| `GET` | `/api/photos?q=` | photo search across configured sources (§6) |
+| `POST` | `/api/plans/:planId/publish` | `{ confirm }`; `409` with warnings for unverified prices |
+| `POST` | `/api/plans/:planId/open-vote` | `{ deadline }`; returns the group-chat message |
+| `GET` | `/api/plans/:planId/vote` | who voted, reminder and result messages, the count once closed |
+| `POST` | `/api/plans/:planId/close` | close early |
+| `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie |
+| `GET` / `PUT` | `/api/members` | people and their access / add or rename |
+| `POST` | `/api/members/:id/invite` | a fresh one-time invite link |
+| `DELETE` | `/api/members/:id/sessions` | sign them out everywhere |
+| `POST` | `/api/members/:id/revoke` | remove access |
 
 On the site, a plan in `draft` has been published for browsing and comments
 but its vote hasn't opened.
@@ -262,8 +413,77 @@ but its vote hasn't opened.
 
 ## 10. Out of scope for v1 / still open
 
-- Mobile layouts of the site (the group votes from phones — next design task).
+- **A hosted panel.** v1's panel is local only. A later option: serve it from
+  the same Cloudflare deployment under `/admin`, behind Cloudflare Access for
+  login, using `anthropic-api` (a Worker can't run the `claude` binary).
 - Plan-creation screen in the panel.
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
-- Multiple groups. Grupo 51 is the only group; the model doesn't generalise it.
+- More than one group per deployment. Each group deploys its own site.
+
+---
+
+## 11. Hosting and setup
+
+### The site: Cloudflare Workers + D1 (default)
+The site is one Cloudflare Worker: it serves the built UI as static assets and
+runs the Hono API, with a D1 database (SQLite) for plans, members, ballots and
+comments. Cloudflare's free plan covers a group comfortably: D1 allows 5 M
+rows read and 100 K written per day and 5 GB of storage, and queries past the
+daily cap fail until midnight UTC rather than billing. Workers and D1 don't
+sleep, so the site answers instantly after weeks of silence between trips.
+
+Storage sits behind one interface, written once in SQL over two drivers:
+**D1** on Cloudflare and **`node:sqlite`** for tests, local development, and
+anyone running the Node server themselves. Both apply the same migrations
+(`apps/site/migrations/`). The Worker handles only `/api/*`; Cloudflare serves
+the built UI and falls back to it for page addresses.
+
+Considered and not the default:
+- **Vercel Hobby + Neon Postgres.** Free, but Hobby is for non-commercial
+  personal use only and lets Vercel use deployed content to train AI models,
+  a poor fit for a group's private comments; and it means two accounts and a
+  Postgres version of the storage layer.
+- **Supabase.** Free projects pause after a week without database activity,
+  and a group site sits idle for weeks between trips.
+
+### What a hoster does
+1. **Get the code and a Cloudflare account**: clone the repo, `npm install`, and
+   `npx wrangler login` once.
+2. **Run `npm run setup`**. It offers to deploy the site to Cloudflare
+   (`npm run deploy:site`: creates the D1 database the first time, applies
+   migrations, deploys the Worker, and generates and stores `ADMIN_TOKEN`),
+   checks the panel can reach it, looks for the `claude` command, asks for any
+   optional keys (Anthropic, Duffel, Unsplash, Pexels), and writes `.env`.
+3. **Decide the final address before inviting anyone** (§5): the free
+   `*.workers.dev` one, or a custom domain added in Cloudflare's dashboard.
+   With a custom domain, set the Worker variable `ORIGIN` to it.
+4. **Run the panel**: `npm run panel`, then open `http://127.0.0.1:5151`.
+   "Personas" adds everyone and sends each a one-time invite (§5).
+5. **Research, approve, publish, open the vote**, and paste the panel's message
+   into the group chat (§7).
+
+`npm run deploy:site` is safe to re-run after pulling new code: it applies new
+migrations and redeploys. A "Deploy to Cloudflare" button can come later; with
+this repo's workspaces the script is the reliable path.
+
+Self-hosting without Cloudflare: `apps/site/src/server.ts` runs the same site on
+Node with `node:sqlite` (`WANDERLOT_ORIGIN`, `WANDERLOT_ADMIN_TOKEN`,
+`WANDERLOT_DB`).
+
+### Secrets
+| secret | lives in | used for |
+|---|---|---|
+| `ADMIN_TOKEN` | Worker secret + panel `.env` (as `WANDERLOT_ADMIN_TOKEN`) | panel → site publishing and invites |
+| `ANTHROPIC_API_KEY` | panel `.env`, optional | `anthropic-api` research |
+| `DUFFEL_API_KEY` | panel `.env`, optional | flight search and verification |
+| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel `.env`, optional | photo search |
+
+The site holds no provider keys at all: photos are picked in the panel and
+published as plain URLs with their credits.
+
+---
+
+## 12. Licence
+
+MIT. Photos keep their own licences (§6); the site shows each credit.

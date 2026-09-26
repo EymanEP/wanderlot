@@ -1,40 +1,136 @@
 # Wanderlot
 
-Trip planning for Grupo 51: a **local panel** where the organiser researches
-and curates destinations, and a **published site** where the six friends read,
-comment and vote. Nothing reaches the site until the organiser approves it.
+[![CI](https://github.com/EymanEP/wanderlot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EymanEP/wanderlot/actions/workflows/ci.yml)
 
+An open-source project for planning trips between friends. One person
+organises: a **local panel** on their computer researches destinations with
+Claude and curates them. Everyone else gets a **published site** where the
+group reads the proposals, comments, and votes on where to go (each friend ranks
+their top three). Nothing reaches the site until the organiser approves it.
+
+Anyone can host their own copy for their group: one deployment serves one group
+of friends. The site runs free on Cloudflare (Workers + D1); the panel runs on
+the organiser's own computer. Friends sign in with passkeys from a one-time
+invite, with no accounts or passwords, and can add the site to their home
+screen like an app. Hosting and setup:
+[`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+
+MIT licensed; contributions welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 The full design is in [`docs/SPEC.md`](docs/SPEC.md).
+
+| The friends' site | Ranking on a phone |
+|---|---|
+| ![A plan on the site: four destinations with prices, and the latest comments](docs/screenshots/site-plan.png) | ![Votación on a phone: the vote so far and your three picks](docs/screenshots/site-votacion-phone.png) |
+
+| The organiser's panel: reviewing proposals | Following the vote |
+|---|---|
+| ![Revisar: proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![Votación in the panel: who has voted, remind, close early](docs/screenshots/panel-votacion.png) |
+
+<sub>Screenshots use the demo data, so photos appear as labelled placeholders.</sub>
 
 ## Layout
 
 ```
-packages/core   shared model (zod), Borda tally, trust/staleness, voting rules
-packages/ui     Tailwind theme: colours and type from the design canvas
-apps/panel      local-only app: generate, review, verify, compare, publish
+packages/core   shared model (zod), Borda tally, trust/staleness, voting rules,
+                Spanish display helpers (euros, durations, dates)
+packages/ui     the design system: tokens (theme.css), components, and a gallery
+packages/mocks  mock data for "Noviembre 2026", taken from the design canvas
+apps/panel      local-only app: Generar, Revisar, Comparativa
   src/            API (Hono)
   web/            UI (React + Tailwind, Vite)
-apps/site       published app: member links, plan view, ballots, comments
-  src/            API (Hono + node:sqlite)
+apps/site       published app: Destinos, Destino, Votación, Comentarios
+  src/            API (Hono): Cloudflare Worker + D1, or Node + node:sqlite
+  migrations/     the database schema, for both
   web/            UI (React + Tailwind, Vite)
 ```
 
-Stack: TypeScript everywhere, React 19, Tailwind CSS 4 (via `@tailwindcss/vite`),
-Vite, Hono, zod, Vitest. Design tokens live in `packages/ui/theme.css` as
-Tailwind `@theme` variables, so classes like `bg-accent-soft`, `text-muted` and
-`border-line` match the canvas.
+Stack: TypeScript everywhere, React 19, React Router 7, Tailwind CSS 4 (via
+`@tailwindcss/vite`), Vite, Hono, zod, Vitest + Testing Library.
+
+### Design system
+
+`packages/ui` holds every visual building block; the apps compose pages from it
+and never restyle primitives.
+
+- **Tokens** live in `packages/ui/theme.css` as Tailwind `@theme` variables:
+  colours (`ink`, `muted`, `accent`, `accent-soft`, `claude`, …), the type scale
+  (`text-display`, `text-title`, `text-heading`, …), radii (`rounded-tile`,
+  `rounded-card`) and shadows (`shadow-card`, `shadow-raised`, `shadow-pop`).
+- **Components**: `Button`/`IconButton`, `Badge`/`ProvenanceBadge`, `Chip`/
+  `ChoiceChip`, `Card`, `Avatar`, `Heading`/`Text`/`PageHeader`/`SectionHeader`,
+  `StatTile`/`DataList`/`DataRow`/`ProsCons`/`BulletList`, `Photo`/`IataTile`,
+  `Notice`/`StatusDot`/`Skeleton`/`EmptyState`/toasts, `TopBar`/`Brand`/
+  `InfoPill`/`Main`/`Footer`, `IconTabs`, `Calendar`, `Dialog`, and the form
+  controls `Field`, `TextInput`, `TextArea`, `Select`, `Stepper`, `Range`,
+  `Checkbox`, `RadioCard`, `Fieldset`. Icons are in `icons.tsx`.
+- `cn()` merges classes with tailwind-merge, so a `className` passed to a
+  component always wins over its defaults.
+- **Gallery**: `npm run dev -w @wanderlot/ui` (port 5175) shows every component
+  in every state the screens use.
+
+### Mock data
+
+Both UIs talk to their own server by default. Build or run them with
+`VITE_DATA=mock` to use `packages/mocks` instead (the previews do). Each app
+reads and changes data through one interface (`SiteSource` in
+`apps/site/web/src/data/source.ts`, `PanelBackend` in
+`apps/panel/web/src/data/backend.ts`) with an HTTP and a mock implementation.
+In the mocks, generation "streams" the design's twelve proposals on a timer and
+"Verificar con la API" flips a proposal to verified after a second.
+
+Screens:
+
+| app | route | screen |
+|---|---|---|
+| panel | `/planes/nuevo` | create a plan: name, dates, origin, people, budget |
+| panel | `/generar` | search form + proposals arriving |
+| panel | `/revisar` | approve, discard, verify, publish |
+| panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
+| panel | `/votacion` | who has voted, reminder, close early, tie-break, result message |
+| panel | `/personas` | group name, who can get in: invites, passkeys, closing sessions, removing access |
+| site | `/entrar` | sign in with a passkey |
+| site | `/i/:token` | accept a one-time invite by creating a passkey |
+| site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans |
+| site | `/p/noviembre-2026/destinos/nap` | destination detail and comments |
+| site | `/p/noviembre-2026/votacion` | rank three; scoreboard hidden until close |
+| site | `/p/noviembre-2026/comentarios` | every comment, by destination |
+
+Add `?estado=cerrada` to any site URL to preview it after the vote closes.
+
+`npm run build:preview -w <package>` builds a UI into one self-contained HTML
+page with in-memory routing, for sharing a clickable preview:
+`@wanderlot/site` (with a switch between the open and the closed vote),
+`@wanderlot/panel` (set `VITE_SITE_URL` for its "Ver sitio" link) and
+`@wanderlot/ui` (the gallery).
 
 The panel and the site share one contract, the `Snapshot` schema in
 `packages/core`. Publishing is the only way data moves from panel to site.
 
+## Hosting your own
+
+One deployment serves one group. The site runs free on Cloudflare Workers + D1;
+the panel runs on the organiser's computer.
+
+```sh
+git clone https://github.com/EymanEP/wanderlot && cd wanderlot
+npm install
+npx wrangler login     # once, with a free Cloudflare account
+npm run setup          # deploys the site, connects the panel, writes .env
+npm run panel          # http://127.0.0.1:5151 → Personas → invite your friends
+```
+
+Passkeys belong to the site's address, so settle on it (the `workers.dev` one
+or a custom domain) before inviting anyone. After pulling new code, run
+`npm run deploy:site` again. Details: [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+
 ## Running
 
-Requires Node ≥ 22.13 (the site uses the built-in `node:sqlite`).
+Requires Node ≥ 22.13 (the Node site uses the built-in `node:sqlite`).
 
 ```sh
 npm install
 npm test            # vitest, all packages
-npm run typecheck   # servers and both UIs
+npm run typecheck   # every package, servers and both UIs
 
 # development: API + Vite with hot reload, in one terminal each
 WANDERLOT_ADMIN_TOKEN=<32+ random chars> npm run dev:site    # UI on :5173, API on :8787
@@ -46,25 +142,67 @@ WANDERLOT_ADMIN_TOKEN=… npm run start -w @wanderlot/site
 npm run start -w @wanderlot/panel
 ```
 
-In development Vite proxies `/api` (and the site's `/p/…?k=` private links) to
-the API server, so open the Vite URL.
+In development Vite proxies `/api` to the API server, so open the Vite URL. To
+sign in with passkeys through Vite, start the API with
+`WANDERLOT_ORIGIN=http://localhost:5173`.
+
+`npm run dev:worker -w @wanderlot/site` runs the site as a Cloudflare Worker
+locally (`wrangler dev`, local D1; copy `apps/site/.dev.vars.example` to
+`.dev.vars` first).
+
+`npm run test:e2e` builds both UIs and runs, in Chromium with the browser's
+virtual authenticator:
+
+- the round trip (`e2e/roundtrip.e2e.ts`): in the panel, create a plan, name
+  the group, add a friend, research with a stand-in `claude`, approve, publish
+  and open the vote; then the friend takes the invite from the WhatsApp
+  message, creates a passkey and sees the plan;
+- the site on its own (`apps/site/e2e/passkeys.e2e.ts`): invite, passkey
+  sign-up, vote, comment, like, sign-out, sign-in, removed access.
+
+`npm run test:e2e:worker -w @wanderlot/site` runs the site checks against the
+Worker in `wrangler dev` with a local D1 (no Cloudflare account needed). CI
+(`.github/workflows/ci.yml`) runs typecheck, unit tests and all of the above on
+every push and pull request.
+
+The panel reads these from `.env` (written by `npm run setup`) or the environment.
 
 | variable | used by | default |
 |---|---|---|
-| `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site) |
+| `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site; on Cloudflare it's the `ADMIN_TOKEN` secret) |
 | `WANDERLOT_DB` | site | `data/site.sqlite` |
+| `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
+| `ANTHROPIC_API_KEY` | panel | — (research through the API when the `claude` command isn't installed) |
 | `DUFFEL_API_KEY` | panel | — |
+| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
 
 ## State
 
-- Backend APIs for both halves, with tests covering the vote rules, the publish
-  freeze, member links and a panel → site round trip.
-- Claude research runs through `claude -p --json-schema`; it hasn't been run
-  against the real binary yet.
-- The Duffel provider is a stub; `verify` and API search need it implemented.
-- UI is a shell: the panel has its header and tabs, the site shows the plan
-  and its destinations. The screens themselves are designed in the
-  "Wanderlot · Planes de viaje" canvas and not built yet.
+- Every designed screen is built, responsive down to phone width.
+- Both UIs run on their servers: plans are created and researched in the
+  panel, published to the site, and voted on by friends with passkeys. The
+  whole path is covered end to end.
+- Research runs through `claude -p --json-schema` or, without the command, the
+  Anthropic API with web search; both return proposals plus pros, cons,
+  weather and photo subjects. Neither has been run against the real service
+  from CI; they're tested with recorded shapes.
+- Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
+  (with keys) and publishes the chosen ones with their credits (SPEC §6).
+- The organiser follows the vote in the panel: who has voted, a reminder for
+  the rest, closing early, breaking a tie, and the result message.
+- Friends can install the site on their phone's home screen.
+- The Duffel provider is a stub, so every price is labelled as written by
+  Claude until a flight API is connected.
+
+## Contributing
+
+Issues and pull requests are welcome; start with
+[CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately
+([SECURITY.md](SECURITY.md)).
+
+## Licence
+
+[MIT](LICENSE). Photos shown on a site keep their own licences and credits.

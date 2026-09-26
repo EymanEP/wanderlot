@@ -34,8 +34,19 @@ describe("claude research provider", () => {
     expect(args).toContain("--json-schema");
     expect(args[args.indexOf("--json-schema") + 1]).toBe(JSON.stringify(outputSchema));
     expect(out).toHaveLength(1);
-    expect(out[0]!.provenance).toEqual({ kind: "claude", sources });
-    expect(out[0]!.id).toBe("lis-1");
+    expect(out[0]!.proposal.provenance).toEqual({ kind: "claude", sources });
+    expect(out[0]!.proposal.id).toBe("lis-1");
+    // Older answers without notes still parse.
+    expect(out[0]!.notes).toEqual({ pros: [], cons: [], weather: "", photoSubjects: [] });
+  });
+
+  it("passes Comparativa notes and photo subjects through", async () => {
+    const notes = { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C · lluvioso", photoSubjects: ["Alfama Lisboa"] };
+    const provider = claudeProvider(async () => JSON.stringify({ structured_output: { proposals: [{ ...lisbon, sources, ...notes }] } }));
+    const out = [];
+    for await (const p of provider.research(req)) out.push(p);
+    expect(out[0]!.notes).toEqual(notes);
+    expect(out[0]!.proposal).not.toHaveProperty("pros");
   });
 
   it("rejects proposals without sources", async () => {

@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
-data/
+/data/
+apps/*/data/
 *.sqlite
 *.sqlite-*
+.dev.vars
+.wrangler/
