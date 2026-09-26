@@ -43,7 +43,8 @@ export interface SearchValues {
 }
 
 // The form starts from the plan; dates, people and budget are saved back to it.
-export function searchFromPlan(plan: Plan): SearchValues {
+// Without a flight API, searches go through Claude.
+export function searchFromPlan(plan: Plan, flightsConnected = false): SearchValues {
   return {
     origin: `${airportCity(plan.origin)} · ${plan.origin}`,
     scope: "any",
@@ -57,7 +58,7 @@ export function searchFromPlan(plan: Plan): SearchValues {
     stops: "direct",
     estimateStays: true,
     suggestThings: true,
-    source: "api",
+    source: flightsConnected ? "api" : "claude",
     provider: "duffel",
   };
 }
@@ -173,7 +174,15 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
 
       <Fieldset legend="Fuente de datos" variant="muted">
         <div className="flex flex-col gap-2 sm:flex-row">
-          <RadioCard name="fuente" title="API de vuelos" description="Precios reales" checked={v.source === "api"} onChange={() => set("source", "api")} />
+          <RadioCard
+            name="fuente"
+            title="API de vuelos"
+            description={flightsConnected ? "Precios reales" : "Sin conectar todavía"}
+            checked={v.source === "api"}
+            disabled={!flightsConnected}
+            className={flightsConnected ? undefined : "cursor-not-allowed opacity-50"}
+            onChange={() => set("source", "api")}
+          />
           <RadioCard name="fuente" title="Claude" description="Con fuentes a verificar" checked={v.source === "claude"} onChange={() => set("source", "claude")} />
         </div>
         <div className="flex items-center gap-2">

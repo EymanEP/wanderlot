@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import type { Plan, Proposal } from "@wanderlot/core";
 import { euros } from "@wanderlot/core";
-import { Badge, Button, Card, Heading, IataTile, ProvenanceBadge, Skeleton, buttonClasses } from "@wanderlot/ui";
+import { Badge, Button, Card, Heading, IataTile, ProvenanceBadge, buttonClasses } from "@wanderlot/ui";
 import { generatedLine, total, trustOf } from "../lib/view.ts";
 
 export interface ProposalRowProps {
@@ -44,19 +44,6 @@ export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVe
           Revisar
         </Link>
       )}
-    </Card>
-  );
-}
-
-export function ProposalRowLoading() {
-  return (
-    <Card as="article" variant="dashed" padding="none" aria-busy="true" className="flex items-center gap-[18px] px-[18px] py-4">
-      <div className="size-[66px] shrink-0 rounded-xl bg-surface-4" />
-      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-        <Skeleton className="h-[13px] w-[190px] max-w-full" />
-        <Skeleton className="h-[11px] w-[360px] max-w-full" />
-      </div>
-      <span className="shrink-0 text-sm text-muted">Consultando vuelos…</span>
     </Card>
   );
 }

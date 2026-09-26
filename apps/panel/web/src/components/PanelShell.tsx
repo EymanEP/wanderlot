@@ -72,6 +72,19 @@ function Status() {
   return <StatusDot>claude sin conectar</StatusDot>;
 }
 
+// The site runs older code than this panel: say so everywhere, since several
+// screens quietly depend on it.
+function SiteOutdated() {
+  const { status } = usePanel().state;
+  if (!status?.site.reachable || !status.site.outdated) return null;
+  return (
+    <div role="status" className="border-b border-claude/20 bg-claude-soft px-4 py-2.5 text-center text-sm text-claude sm:px-8">
+      Tu sitio ({status.site.url}) tiene una versión anterior al panel: las ideas del grupo, los PIN y otras novedades no funcionarán hasta que lo
+      actualices con <code className="font-semibold">npm run deploy:site</code>.
+    </div>
+  );
+}
+
 export function PanelShell({ end, showPlan = true, children, tone = "white" }: PanelShellProps) {
   return (
     <Page className={tone === "canvas" ? "bg-canvas" : undefined}>
@@ -91,6 +104,7 @@ export function PanelShell({ end, showPlan = true, children, tone = "white" }: P
       <div className="border-b border-line-soft bg-surface px-4 py-2 md:hidden">
         <PanelNav className="overflow-x-auto" />
       </div>
+      <SiteOutdated />
       {children}
     </Page>
   );

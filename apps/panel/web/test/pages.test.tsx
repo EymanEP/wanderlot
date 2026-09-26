@@ -19,11 +19,11 @@ HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
   this.dispatchEvent(new Event("close"));
 };
 
-function renderAt(path: string) {
+function renderAt(path: string, tickMs = 2) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
-        <PanelProvider backend={mockBackend({ tickMs: 2, verifyMs: 2 })}>
+        <PanelProvider backend={mockBackend({ tickMs, verifyMs: 2 })}>
           <App />
         </PanelProvider>
       </ToastProvider>
@@ -34,13 +34,17 @@ function renderAt(path: string) {
 describe("Generar", () => {
   it("starts from the plan and streams a new search in", async () => {
     const user = userEvent.setup();
-    renderAt("/generar");
+    // Slow enough to see the search while it runs.
+    renderAt("/generar", 40);
     await screen.findByRole("heading", { name: "Nueva búsqueda" });
     expect(screen.getAllByRole("article")).toHaveLength(12);
     await user.click(screen.getByRole("button", { name: "Buscar 12 más" }));
-    expect(screen.getByText("Consultando vuelos…")).toBeTruthy();
-    expect(await screen.findByText("Búsqueda terminada")).toBeTruthy();
-    expect(screen.getByText("12 propuestas")).toBeTruthy();
+    const progress = await screen.findByRole("region", { name: "Búsqueda en curso" });
+    expect(within(progress).getByRole("button", { name: "Detener" })).toBeTruthy();
+    expect((await within(progress).findAllByText(/^Buscando «/)).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Búsqueda terminada", undefined, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Búsqueda en curso" })).toBeNull();
+    expect(screen.getByText("12 propuestas nuevas")).toBeTruthy();
     // Approved ones keep their decision across a new search.
     expect(screen.getAllByRole("article")).toHaveLength(12);
   });
@@ -58,7 +62,7 @@ describe("Generar", () => {
     expect(within(ideas).queryByRole("listitem", { name: "Oporto" })).toBeNull();
 
     await user.click(within(azores).getByRole("button", { name: "Investigar" }));
-    expect(await within(azores).findByText("Investigada")).toBeTruthy();
+    expect(await within(azores).findByText("Investigada", undefined, { timeout: 5000 })).toBeTruthy();
     expect(screen.getAllByText("Idea de Iván").length).toBeGreaterThan(0);
   });
 

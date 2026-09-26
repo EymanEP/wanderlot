@@ -67,7 +67,7 @@ export function PersonasPage() {
         {state.plan && state.members.length > 0 && <TripCard />}
 
         <Notice tone="neutral">
-          Cada invitación sirve una vez y caduca en 7 días: quien la abre elige un PIN de 6 números y desde entonces entra con su nombre y ese PIN desde cualquier dispositivo. Si alguien reenvía una invitación ya usada, no sirve. Si alguien olvida su PIN, mándale una invitación nueva.
+          Cada invitación sirve una vez y caduca en 7 días: quien la abre elige un PIN de 4 números y desde entonces entra con su nombre y ese PIN desde cualquier dispositivo. Si alguien reenvía una invitación ya usada, no sirve. Si alguien olvida su PIN, mándale una invitación nueva.
         </Notice>
 
         <ul className="m-0 flex list-none flex-col gap-2.5 p-0">

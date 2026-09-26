@@ -18,9 +18,12 @@ const PANEL = `http://127.0.0.1:${PANEL_PORT}`;
 const ADMIN = "roundtrip-".padEnd(40, "x");
 const dir = mkdtempSync(join(tmpdir(), "wanderlot-e2e-"));
 
-// A stand-in for `claude -p … --output-format json`: three canned proposals in
-// the shape the real command returns.
+// A stand-in for `claude -p … --output-format stream-json`: a couple of research
+// steps, then three canned proposals in the shape the real command returns.
 const canned = {
+  type: "result",
+  subtype: "success",
+  is_error: false,
   structured_output: {
     proposals: proposals
       .filter((p) => ["lis", "nap", "rak"].includes(p.id))
@@ -30,9 +33,17 @@ const canned = {
       })),
   },
 };
-writeFileSync(join(dir, "claude.json"), JSON.stringify(canned));
+const steps = [
+  { type: "assistant", message: { content: [{ type: "text", text: "Busco destinos de sol para noviembre." }] } },
+  { type: "assistant", message: { content: [{ type: "tool_use", name: "WebSearch", input: { query: "vuelos Madrid Lisboa noviembre" } }] } },
+];
+writeFileSync(join(dir, "steps.ndjson"), steps.map((l) => JSON.stringify(l)).join("\n") + "\n");
+writeFileSync(join(dir, "result.ndjson"), JSON.stringify(canned) + "\n");
 const fakeClaude = join(dir, "claude");
-writeFileSync(fakeClaude, `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "claude.json")}"\n`);
+writeFileSync(
+  fakeClaude,
+  `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "steps.ndjson")}"\nsleep 1\ncat "${join(dir, "result.ndjson")}"\n`,
+);
 chmodSync(fakeClaude, 0o755);
 
 function start(cmd: string[], cwd: string, env: Record<string, string>, ready: string): Promise<ChildProcess> {
@@ -97,6 +108,7 @@ try {
   await org.getByRole("link", { name: "Generar" }).first().click();
   await org.getByLabel("Claude").check();
   await org.getByRole("button", { name: "Generar 12 propuestas" }).click();
+  await org.getByText("Buscando «vuelos Madrid Lisboa noviembre»").waitFor();
   await org.getByText("Búsqueda terminada").waitFor();
   assert.equal(await org.getByRole("article").count(), 3);
   console.log("✓ panel: 3 proposals researched");
@@ -126,8 +138,8 @@ try {
   const ana = await phone.newPage();
   await ana.goto(invite!);
   await ana.getByText("Eyman te ha invitado a Grupo 51").waitFor();
-  await ana.getByLabel("Tu PIN").fill("480193");
-  await ana.getByLabel("Repítelo").fill("480193");
+  await ana.getByLabel("Tu PIN").fill("4801");
+  await ana.getByLabel("Repítelo").fill("4801");
   await ana.getByRole("button", { name: "Guardar PIN y entrar" }).click();
   await ana.getByRole("heading", { level: 1, name: "Noviembre 2026" }).waitFor();
   for (const city of ["Lisboa", "Nápoles", "Marrakech"]) await ana.getByRole("link", { name: city }).first().waitFor();

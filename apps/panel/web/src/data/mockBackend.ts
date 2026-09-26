@@ -172,11 +172,14 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       entries.set(p.id, { ...entry(p.id), plan: p });
       return p;
     },
-    async generate(planId, opts, onProposal, signal) {
+    async generate(planId, opts, onProposal, signal, onStep) {
       // A friend's idea: one proposal for that place, credited to them.
       const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;
       if (idea) {
-        await wait(tickMs * 2, signal);
+        onStep?.({ kind: "note", text: `Busco cómo ir a ${idea.place} desde Madrid en esas fechas.` });
+        await wait(tickMs, signal);
+        onStep?.({ kind: "search", query: `vuelos Madrid ${idea.place} noviembre 2026` });
+        await wait(tickMs, signal);
         const known = mockProposals.find((p) => p.place.city.toLowerCase() === idea.place.toLowerCase());
         const base = known ?? { ...mockProposals[0]!, place: { city: idea.place, country: "", iata: idea.place.slice(0, 3).toUpperCase() } };
         const taken = new Set(entry(planId).proposals.map((p) => p.id));
@@ -193,8 +196,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       const e = entry(planId);
       const pool = planId === "noviembre-2026" ? ARRIVAL.map((id) => mockProposals.find((p) => p.id === id)!) : [];
       entries.set(planId, { ...e, proposals: e.proposals.filter((p) => p.review !== "pending") });
+      onStep?.({ kind: "note", text: "Voy a buscar vuelos directos desde Madrid para esas fechas y comparar precios." });
       for (const p of pool) {
-        await wait(tickMs, signal);
+        onStep?.({ kind: "search", query: `vuelos directos Madrid ${p.place.city} noviembre 2026 precio` });
+        await wait(tickMs / 2, signal);
+        onStep?.({ kind: "read", host: "skyscanner.es", url: `https://www.skyscanner.es/vuelos/mad/${p.place.iata.toLowerCase()}` });
+        await wait(tickMs / 2, signal);
         const fresh: Proposal = { ...p, review: e.proposals.find((x) => x.id === p.id)?.review === "approved" ? "approved" : "pending" };
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals.filter((x) => x.id !== p.id), fresh] });

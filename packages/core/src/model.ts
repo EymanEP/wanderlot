@@ -227,3 +227,8 @@ export interface SuggestionView {
   // The proposal researched from it, once there is one.
   proposalId: string | null;
 }
+
+// The site's admin API version. Bumped whenever the panel starts needing
+// something new from the site, so it can tell the organiser to redeploy
+// (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
+export const SITE_API_VERSION = 5;

@@ -113,13 +113,13 @@ export function mockAuthClient(startSignedIn = true): AuthClient {
     invite: async (token) => ({ name: ME.name, status: states[token] ?? "valid" }),
     acceptInviteWithPin: async (_token, pin) => {
       await wait();
-      if (!/^\d{6}$/.test(pin)) throw new AuthError("El PIN son 6 números");
+      if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
       return (member = { id: ME.id, name: ME.name });
     },
-    // The design's PIN for everyone is 480193.
+    // The design's PIN for everyone is 4801.
     signInWithPin: async (name, pin) => {
       await wait();
-      if (pin !== "480193" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
+      if (pin !== "4801" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
       return (member = { id: ME.id, name: ME.name });
     },
     acceptInvite: async () => {
