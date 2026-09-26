@@ -1,12 +1,18 @@
 # Wanderlot
 
-Trip planning for Grupo 51: a **local panel** where the organiser researches
-and curates destinations, and a **published site** where the six friends read,
-comment and vote. Nothing reaches the site until the organiser approves it.
+An open-source project for planning trips between friends. One person
+organises: a **local panel** on their computer researches destinations with
+Claude and curates them. Everyone else gets a **published site** where the
+group reads the proposals, comments, and votes on where to go (each friend ranks
+their top three). Nothing reaches the site until the organiser approves it.
 
-Wanderlot is open source and self-hosted: one deployment serves one group of
-friends. The site runs free on Cloudflare (Workers + D1); the panel runs on the
-organiser's own computer. Hosting and setup: [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+Anyone can host their own copy for their group: one deployment serves one group
+of friends. The site runs free on Cloudflare (Workers + D1); the panel runs on
+the organiser's own computer. Friends sign in with passkeys from a one-time
+invite, with no accounts or passwords. Hosting and setup:
+[`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+
+MIT licensed; contributions welcome.
 
 The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 
