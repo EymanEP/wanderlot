@@ -223,6 +223,7 @@ describe("with everyone signed in", () => {
   beforeEach(async () => {
     for (const f of FRIENDS) await join(f);
     expect((await admin(`/plans/${PLAN}`, "PUT", snapshot(four()))).status).toBe(200);
+    expect((await admin(`/plans/${PLAN}/members`, "PUT", FRIENDS)).status).toBe(200);
   });
 
   describe("the group", () => {

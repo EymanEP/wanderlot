@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Button, Heading, LockIcon, Notice, Skeleton, Text, buttonClasses } from "@wanderlot/ui";
 import { AuthLayout } from "../components/AuthLayout.tsx";
+import { PinField } from "../components/PinField.tsx";
 import { AuthError, useAuth, type InviteStatus } from "../data/auth.tsx";
 
 type Loaded = { name: string; status: InviteStatus } | null;
@@ -9,21 +10,24 @@ type Loaded = { name: string; status: InviteStatus } | null;
 const spent = (organiser: string): Record<Exclude<InviteStatus, "valid">, { title: string; body: string }> => ({
   used: {
     title: "Esta invitación ya se usó",
-    body: `Cada invitación sirve una vez. Si ya creaste tu passkey, entra con ella. Si no fuiste tú, avisa a ${organiser}.`,
+    body: `Cada invitación sirve una vez. Si ya elegiste tu PIN, entra con tu nombre y tu PIN. Si no fuiste tú, avisa a ${organiser}.`,
   },
   expired: { title: "Esta invitación caducó", body: `Las invitaciones duran 7 días. Pide una nueva a ${organiser}.` },
   cancelled: { title: "Esta invitación ya no vale", body: `Se mandó una más nueva. Busca el último enlace o pide otro a ${organiser}.` },
 });
 
-// Opening this page never uses the invite; only creating the passkey does.
+// Opening this page never uses the invite; only choosing a PIN (or creating a
+// passkey) does.
 export function InvitePage() {
   const { token = "" } = useParams();
   const auth = useAuth();
   const organiser = auth.group.organiserName;
   const navigate = useNavigate();
   const [invite, setInvite] = useState<Loaded | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"pin" | "passkey" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pin, setPin] = useState("");
+  const [again, setAgain] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -36,21 +40,27 @@ export function InvitePage() {
     };
   }, [auth.client, token]);
 
-  const accept = async () => {
-    setBusy(true);
+  const run = async (how: "pin" | "passkey", go: () => Promise<unknown>) => {
+    setBusy(how);
     setError(null);
     try {
-      await auth.acceptInvite(token);
+      await go();
       navigate("/", { replace: true });
     } catch (e) {
       setError(e instanceof AuthError ? e.message : "Algo ha fallado. Vuelve a intentarlo.");
-      setBusy(false);
+      setBusy(null);
     }
+  };
+
+  const withPin = (e: FormEvent) => {
+    e.preventDefault();
+    if (pin !== again) return setError("Los dos PIN no coinciden");
+    void run("pin", () => auth.acceptInviteWithPin(token, pin));
   };
 
   const signInLink = (
     <Link to="/entrar" className={buttonClasses({ variant: "secondary", size: "lg", block: true })}>
-      Entrar con mi passkey
+      Entrar con mi nombre y PIN
     </Link>
   );
 
@@ -86,17 +96,21 @@ export function InvitePage() {
         <Heading as="h1" size="headline">
           ¿Eres {invite.name}?
         </Heading>
-        <Text>
-          Crea tu passkey y ya está: la próxima vez entras en el sitio con Face ID, tu huella o el PIN del móvil. Sin contraseñas.
-        </Text>
+        <Text>Elige un PIN de 6 números. Con tu nombre y ese PIN entras desde el móvil, el portátil o donde quieras.</Text>
       </div>
-      {!auth.client.supported() && (
-        <Notice>Este navegador no admite passkeys. Abre este enlace en Safari, Chrome o Edge actualizados.</Notice>
-      )}
       {error && <Notice role="alert">{error}</Notice>}
-      <Button variant="primary" size="lg" block icon={<LockIcon size={18} />} onClick={accept} disabled={busy || !auth.client.supported()}>
-        {busy ? "Esperando a tu passkey…" : "Crear mi passkey"}
-      </Button>
+      <form onSubmit={withPin} className="flex flex-col gap-4" aria-label="Elegir PIN">
+        <PinField label="Tu PIN" value={pin} onChange={setPin} autoComplete="new-password" autoFocus />
+        <PinField label="Repítelo" value={again} onChange={setAgain} autoComplete="new-password" />
+        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 6 || again.length !== 6}>
+          {busy === "pin" ? "Entrando…" : "Guardar PIN y entrar"}
+        </Button>
+      </form>
+      {auth.client.supported() && (
+        <Button variant="ghost" block onClick={() => void run("passkey", () => auth.acceptInvite(token))} disabled={busy !== null}>
+          {busy === "passkey" ? "Esperando a tu passkey…" : "Prefiero Face ID o huella en este dispositivo"}
+        </Button>
+      )}
       <Text size="sm" tone="muted" className="border-t border-line-faint pt-4">
         Esta invitación sirve una vez y es solo para {invite.name}. Si no eres {invite.name}, cierra esta página y avisa a {organiser}.
       </Text>

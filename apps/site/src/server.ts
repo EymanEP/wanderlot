@@ -28,6 +28,8 @@ const app = createApp({
   store: new SqliteStore(dbPath),
   adminToken,
   rp: { name: "Wanderlot", origin },
+  // Keys the PIN hashes; without it, the admin token does.
+  ...(process.env.WANDERLOT_PIN_SECRET ? { pinSecret: process.env.WANDERLOT_PIN_SECRET } : {}),
   // Generous for a group of friends, tight enough to stop a flood of writes.
   limit: memoryLimiter(60, 60_000),
   ...(indexHtml ? { indexHtml } : {}),

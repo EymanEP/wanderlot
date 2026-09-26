@@ -193,9 +193,22 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 ## 5. Identity on the site
 
-A small, known group, no passwords. People sign in with a **passkey**: Face ID,
-a fingerprint or the device PIN, stored by their phone or password manager.
-The organiser brings each person in with a **one-time invite**.
+A small, known group, no passwords to remember beyond a short PIN. The
+organiser brings each person in with a **one-time invite**; they choose a
+**6-digit PIN** and from then on sign in with **their name and PIN** on any
+device. A **passkey** (Face ID, a fingerprint) is an optional extra for
+whoever wants it on a given device.
+
+### Trips
+- Members belong to the group, and the organiser puts them on **trips**
+  (plans): who goes is chosen when the trip is created and can change later
+  in Personas.
+- A member sees only the trips they're on: the list, the plan, its comments,
+  results and vote. Any other trip answers "not found", as if it didn't exist.
+- The vote waits for the trip's people: it closes when **all of them** have
+  voted, or at the deadline. A ballot from someone later taken off the trip
+  no longer counts.
+- Invites in the vote-opened message go only to the trip's people.
 
 ### Invites
 - The panel asks the site for an invite for one member. The site returns a
@@ -203,19 +216,31 @@ The organiser brings each person in with a **one-time invite**.
 - The token is 32 random bytes, base64url. An invite expires after **7 days**
   and works **once**. Creating a new invite for someone cancels their previous
   unused one.
-- Opening the link shows "¿Eres Laura?" and asks her to create a passkey.
-  **Only finishing that consumes the invite.** Merely opening the link (a
-  WhatsApp link preview, a second tap) changes nothing.
+- Opening the link shows "¿Eres Laura?" and asks her to choose a PIN (typed
+  twice), or to create a passkey on this device instead. **Only finishing that
+  consumes the invite.** Merely opening the link (a WhatsApp link preview, a
+  second tap) changes nothing.
 - A used, expired or cancelled invite says so and tells the person to ask the
-  organiser for a new one.
+  organiser for a new one. A new invite is also how someone resets a
+  forgotten PIN.
+
+### PINs
+- Six digits; obvious ones (all the same digit, 123456, 654321, repeated
+  pairs or triples) are refused.
+- Stored as an HMAC-SHA256 of the PIN with a per-member salt, keyed by a
+  server secret (`PIN_SECRET`, set by `npm run deploy:site`; the admin token
+  if unset). Six digits are too few to survive a copied database on their
+  own; the secret means the database alone can't test guesses.
+- Signing in takes a name (accents, case and spacing ignored; the member id
+  works too) and the PIN. A wrong name and a wrong PIN get the same answer.
+- **Five wrong PINs in a row lock that person out for 15 minutes.** Each
+  address is also rate-limited on the sign-in routes. Changing the PIN means
+  a new invite.
+- Names must be unique within the group, since people sign in with them.
 
 ### Signing in
-- Coming back needs only the site's address: "Entrar", then the device's
-  passkey prompt. Passkeys are discoverable, so nobody types a name.
-- A passkey synced by iCloud Keychain or Google Password Manager works on the
-  person's other devices; a browser can also sign in with a phone passkey by
-  scanning a QR code. Otherwise the organiser sends a new invite, which adds a
-  passkey on the new device.
+- Coming back needs only the site's address: "Entrar", then name and PIN, or
+  "Entrar con passkey" on a device that has one.
 - Signing in creates a **session**: a random token in an http-only, `Secure`,
   `SameSite=Lax` cookie, stored hashed on the site, valid **180 days** from last
   use (refreshed at most once a day).
@@ -223,20 +248,23 @@ The organiser brings each person in with a **one-time invite**.
   not who is in the group.
 
 ### What the organiser can do (panel → "Personas")
-- Add people, and see each one's state: *sin invitar*, *invitación pendiente*,
-  *invitación caducada*, or *dentro* with their passkeys and devices.
+- Add people, choose who goes on the selected trip, and see each one's state:
+  *sin invitar*, *invitación pendiente*, *invitación caducada*, or *dentro*
+  with their PIN (and whether it's locked), passkeys and devices.
 - Send a new invite, **close sessions** (signs the person out everywhere; their
-  passkeys still work), or **remove access** (deletes their passkeys, sessions
-  and pending invite; they need a new invite).
+  PIN and passkeys still work), or **remove access** (deletes their PIN,
+  passkeys, sessions and pending invite; they need a new invite).
 
 ### Why this shape
 - A forwarded invite is useless once used. If someone uses it first, the real
   person finds it spent, and the organiser sees who signed in when, removes
   that access and sends a new invite.
 - It needs no email service or third-party login, so it costs a hoster nothing.
+- A PIN works on any device, including a laptop with no passkey, which a
+  passkey-only sign-in made awkward.
 - Passkeys belong to the site's domain. **A hoster should settle the final
-  address before inviting anyone**: moving from `*.workers.dev` to a custom
-  domain means everyone signs up again.
+  address before inviting anyone**: passkeys made on `*.workers.dev` don't
+  work on a custom domain (PINs do).
 
 Implementation: SimpleWebAuthn (`@simplewebauthn/server` on the site,
 `@simplewebauthn/browser` in the UI), MIT-licensed and run on Node and on
@@ -351,13 +379,15 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/`, `/i/:token`, `/p/*` | anyone | the web UI; it asks the API what to show |
 | `GET` | `/api/site` | anyone | `{ groupName, organiserName }`, for the sign-in screens |
 | `GET` | `/api/invites/:token` | anyone | `{ member: { name }, status: valid \| used \| expired \| cancelled }`; never consumes it |
+| `POST` | `/api/invites/:token/pin` | invitee | `{ pin }`: sets the PIN, uses up the invite, starts a session |
 | `POST` | `/api/invites/:token/passkey/options` | invitee | `410` unless valid |
 | `POST` | `/api/invites/:token/passkey/verify` | invitee | saves the passkey, uses up the invite, starts a session |
+| `POST` | `/api/session/pin` | anyone | `{ name, pin }`; `401` for a wrong name or PIN alike, `429` when locked out |
 | `POST` | `/api/session/options` | anyone | passkey sign-in |
 | `POST` | `/api/session/verify` | anyone | starts a session |
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
-| `GET` | `/api/plans` | member | every published plan: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity }` |
+| `GET` | `/api/plans` | member | the trips they're on: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity }` |
 | `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
@@ -370,13 +400,15 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted: [memberId], result }`; `result` only once closed |
 | `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
 | `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`; only among those tied for first |
-| `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members |
+| `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |
+| `GET` / `PUT` | `/api/admin/plans/:planId/members` | panel | who is on the trip: `[memberId]` |
 | `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
 | `POST` | `/api/admin/members/:id/invite` | panel | `{ token, expiresAt }`, returned once; cancels the previous unused invite |
 | `DELETE` | `/api/admin/members/:id/sessions` | panel | signs the member out everywhere |
-| `POST` | `/api/admin/members/:id/revoke` | panel | deletes passkeys, sessions and pending invite |
+| `POST` | `/api/admin/members/:id/revoke` | panel | deletes PIN, passkeys, sessions and pending invite |
 
-Members belong to the group, not to a plan: one sign-up works for every plan.
+Members belong to the group: one sign-up works for every trip they're put on.
+Member routes under `/api/plans/:planId` answer `404` to anyone not on the trip.
 
 ### Panel API (local)
 
@@ -390,7 +422,8 @@ it). Calls that touch the site go through the admin API above.
 | `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers |
 | `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
-| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals and editorial notes / save the plan |
+| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
+| `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
 | `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}` |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |

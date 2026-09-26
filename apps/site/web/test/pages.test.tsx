@@ -111,24 +111,36 @@ describe("Signing in", () => {
   it("sends a signed-out visitor to Entrar and back to where they were going", async () => {
     const user = userEvent.setup();
     renderAt("/p/noviembre-2026/votacion", false, false);
-    expect(await screen.findByRole("heading", { name: "Entra con tu passkey" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Entra en Grupo 51" })).toBeTruthy();
     expect(screen.queryByText("Noviembre 2026")).toBeNull();
+    // From a laptop: name and PIN, no passkey needed. A wrong PIN says so.
+    await user.type(screen.getByLabelText("Tu nombre"), "Eyman");
+    await user.type(screen.getByLabelText("PIN"), "111222");
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
+    expect(await screen.findByText("Nombre o PIN incorrectos")).toBeTruthy();
+    await user.type(screen.getByLabelText("PIN"), "480193");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
   });
 
-  it("accepts an invite with a passkey", async () => {
+  it("accepts an invite by choosing a PIN", async () => {
     const user = userEvent.setup();
     renderAt("/i/demo", false, false);
     expect(await screen.findByRole("heading", { name: "¿Eres Eyman?" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Crear mi passkey" }));
+    await user.type(screen.getByLabelText("Tu PIN"), "480193");
+    await user.type(screen.getByLabelText("Repítelo"), "480194");
+    await user.click(screen.getByRole("button", { name: "Guardar PIN y entrar" }));
+    expect(await screen.findByText("Los dos PIN no coinciden")).toBeTruthy();
+    await user.clear(screen.getByLabelText("Repítelo"));
+    await user.type(screen.getByLabelText("Repítelo"), "480193");
+    await user.click(screen.getByRole("button", { name: "Guardar PIN y entrar" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" })).toBeTruthy();
   });
 
   it("explains a used invite and offers signing in", async () => {
     renderAt("/i/usada", false, false);
     expect(await screen.findByRole("heading", { name: "Esta invitación ya se usó" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Entrar con mi passkey" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Entrar con mi nombre y PIN" })).toBeTruthy();
   });
 
   it("signs this device out from the account menu", async () => {
@@ -136,6 +148,6 @@ describe("Signing in", () => {
     renderAt("/p/noviembre-2026");
     await user.click(await screen.findByRole("button", { name: "Tu cuenta" }));
     await user.click(screen.getByRole("button", { name: "Cerrar sesión en este dispositivo" }));
-    expect(await screen.findByRole("heading", { name: "Entra con tu passkey" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Entra en Grupo 51" })).toBeTruthy();
   });
 });

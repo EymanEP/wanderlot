@@ -227,8 +227,20 @@ describe("Nuevo plan", () => {
     await user.click(screen.getByRole("button", { name: "2026-12-05" }));
     await user.click(screen.getByRole("button", { name: "2026-12-09" }));
     expect(screen.getByText(/5 – 9 dic · 4 noches/)).toBeTruthy();
+    // Everyone's ticked; Diego isn't coming to this one.
+    expect(screen.getByText("6 personas")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Diego" }));
+    expect(screen.getByText("5 personas")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Crear el plan" }));
     expect(await screen.findByText(/Todavía no hay propuestas para Puente de diciembre/)).toBeTruthy();
-    expect(screen.getAllByText(/4 noches/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/4 noches · 5 personas/).length).toBeGreaterThan(0);
+
+    // Personas shows who goes on it, and changes it.
+    await user.click(screen.getAllByRole("link", { name: "Personas" })[0]!);
+    const trip = await screen.findByRole("form", { name: "Quién va a Puente de diciembre" });
+    expect((within(trip).getByRole("checkbox", { name: "Diego" }) as HTMLInputElement).checked).toBe(false);
+    await user.click(within(trip).getByRole("checkbox", { name: "Diego" }));
+    await user.click(within(trip).getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText("Guardado: 6 personas van a Puente de diciembre")).toBeTruthy();
   });
 });

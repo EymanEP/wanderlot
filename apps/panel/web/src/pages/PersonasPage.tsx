@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Card, Dialog, Field, Heading, Notice, PageHeader, TextInput, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PersonRow, personState } from "../components/PersonRow.tsx";
+import { WhoGoes } from "../components/WhoGoes.tsx";
 import { usePanel } from "../data/store.tsx";
 
 // Who can get into the group's site (SPEC §5).
@@ -63,9 +64,10 @@ export function PersonasPage() {
         )}
 
         <GroupCard />
+        {state.plan && state.members.length > 0 && <TripCard />}
 
         <Notice tone="neutral">
-          Cada invitación sirve una vez y caduca en 7 días: quien la abre crea su passkey (Face ID, huella o el PIN del móvil) y desde entonces entra con la dirección del sitio. Si alguien reenvía una invitación ya usada, no sirve.
+          Cada invitación sirve una vez y caduca en 7 días: quien la abre elige un PIN de 6 números y desde entonces entra con su nombre y ese PIN desde cualquier dispositivo. Si alguien reenvía una invitación ya usada, no sirve. Si alguien olvida su PIN, mándale una invitación nueva.
         </Notice>
 
         <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
@@ -77,7 +79,7 @@ export function PersonasPage() {
               now={now}
               onInvite={() => void run(async () => copy(await invite(m.id)))}
               onCopy={copy}
-              onCloseSessions={() => void run(() => closeSessions(m.id), `${m.name} tendrá que volver a entrar con su passkey`)}
+              onCloseSessions={() => void run(() => closeSessions(m.id), `${m.name} tendrá que volver a entrar con su PIN`)}
               onRevoke={() => setRevoking(m.id)}
             />
           ))}
@@ -105,7 +107,7 @@ export function PersonasPage() {
           if (id) void run(() => revoke(id), `${who?.name} ya no puede entrar. Mándale una invitación nueva cuando quieras.`);
         }}
       >
-        Se borran sus passkeys y se cierran sus sesiones en todos sus dispositivos. Sus votos y comentarios se quedan.
+        Se borran su PIN y sus passkeys y se cierran sus sesiones en todos sus dispositivos. Sus votos y comentarios se quedan.
       </Dialog>
     </PanelShell>
   );
@@ -146,6 +148,37 @@ function GroupCard() {
           {({ inputId }) => <TextInput id={inputId} value={organiserName} onChange={(e) => setOrganiserName(e.target.value)} placeholder="Como te conoce el grupo" />}
         </Field>
         <Button type="submit" variant="dark" className="h-[46px]" disabled={!dirty || !groupName.trim() || !organiserName.trim()}>
+          Guardar
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+// Who goes on the selected trip; the site shows it only to them.
+function TripCard() {
+  const { state, setParticipants } = usePanel();
+  const toast = useToast();
+  const plan = state.plan!;
+  const [going, setGoing] = useState(state.participants);
+  useEffect(() => setGoing(state.participants), [state.participants]);
+  const dirty = going.length !== state.participants.length || going.some((id) => !state.participants.includes(id));
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    try {
+      await setParticipants(going);
+      toast(`Guardado: ${going.length} ${going.length === 1 ? "persona va" : "personas van"} a ${plan.name}`);
+    } catch (err) {
+      toast(`No se pudo guardar: ${(err as Error).message}`);
+    }
+  };
+
+  return (
+    <Card as="form" variant="flat" onSubmit={save} aria-label={`Quién va a ${plan.name}`} className="flex flex-col gap-4">
+      <WhoGoes people={state.members} value={going} onChange={setGoing} legend={`Quién va a ${plan.name}`} />
+      <div>
+        <Button type="submit" variant="primary" disabled={!dirty}>
           Guardar
         </Button>
       </div>

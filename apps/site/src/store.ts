@@ -38,6 +38,14 @@ export interface Session {
   userAgent: string | null;
 }
 
+export interface MemberPin {
+  hash: string;
+  salt: string;
+  setAt: string;
+  failed: number;
+  lockedUntil: string | null;
+}
+
 export interface Flow {
   challenge: string;
   purpose: "register" | "login";
@@ -60,6 +68,17 @@ export interface SiteStore {
   upsertMembers(members: Member[]): Promise<void>;
   members(): Promise<Member[]>;
   member(id: string): Promise<Member | undefined>;
+
+  // who is on each trip (SPEC §5): a member sees only their trips
+  planMembers(planId: string): Promise<string[]>;
+  setPlanMembers(planId: string, memberIds: string[]): Promise<void>;
+  planIdsFor(memberId: string): Promise<string[]>;
+
+  // PINs: stored as a keyed hash, never the PIN itself
+  pin(memberId: string): Promise<MemberPin | undefined>;
+  setPin(memberId: string, hash: string, salt: string, at: string): Promise<void>;
+  recordPinFailure(memberId: string, failed: number, lockedUntil: string | null): Promise<void>;
+  deletePin(memberId: string): Promise<void>;
 
   // invites: the token is only ever stored hashed
   createInvite(invite: { id: string; memberId: string; tokenHash: string; createdAt: string; expiresAt: string }): Promise<void>;

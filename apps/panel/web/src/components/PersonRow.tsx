@@ -6,7 +6,7 @@ import { Avatar, Badge, Button, Card, type BadgeTone } from "@wanderlot/ui";
 export type PersonState = "inside" | "pending" | "expired" | "none";
 
 export function personState(a: Access): PersonState {
-  if (a.passkeys.length > 0) return "inside";
+  if (a.passkeys.length > 0 || a.pin) return "inside";
   if (a.invite?.status === "valid") return "pending";
   if (a.invite && a.invite.status !== "used") return "expired";
   return "none";
@@ -43,7 +43,7 @@ export function PersonRow({ member: m, access: a, now, onInvite, onCopy, onClose
         </div>
         <span className="text-[13px] text-ink-2">
           {state === "inside" &&
-            `${a.passkeys.map((p) => p.device ?? "Un dispositivo").join(" y ")}${lastSeen ? ` · última vez ${relativeTime(lastSeen, now)}` : " · sin sesión abierta"}`}
+            `${[...(a.pin ? [a.pin.locked ? "PIN bloqueado por intentos fallidos" : "Con PIN"] : []), ...a.passkeys.map((p) => p.device ?? "Un dispositivo")].join(" · ")}${lastSeen ? ` · última vez ${relativeTime(lastSeen, now)}` : " · sin sesión abierta"}`}
           {state === "pending" && `Invitación enviada el ${longDate(a.invite!.createdAt)} · caduca el ${deadlineLabel(a.invite!.expiresAt)}`}
           {state === "expired" && `Su invitación caducó el ${longDate(a.invite!.expiresAt)} sin usarse`}
           {state === "none" && "Todavía no le has mandado invitación"}

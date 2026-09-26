@@ -9,6 +9,8 @@ export interface Env {
   // The site's public address (set by `npm run deploy:site`). Passkeys belong
   // to it, so once people have signed up it must not change.
   ORIGIN?: string;
+  // Keys the PIN hashes (set by `npm run deploy:site`); falls back to ADMIN_TOKEN.
+  PIN_SECRET?: string;
   // Cloudflare's rate limiter (wrangler.jsonc), for sign-in attempts.
   AUTH_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
 }
@@ -28,6 +30,7 @@ export default {
       store: new D1Store(env.DB),
       adminToken: env.ADMIN_TOKEN,
       rp: { name: "Wanderlot", origin: env.ORIGIN },
+      ...(env.PIN_SECRET ? { pinSecret: env.PIN_SECRET } : {}),
       ...(limiter ? { limit: async (key: string) => (await limiter.limit({ key })).success } : {}),
     });
     return app.fetch(request);

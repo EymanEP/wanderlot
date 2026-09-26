@@ -11,6 +11,7 @@ export interface Access {
   invite: { status: "valid" | "used" | "expired" | "cancelled"; createdAt: string; expiresAt: string; usedAt: string | null } | null;
   inviteUrl: string | null;
   passkeys: { device: string | null; createdAt: string; lastUsedAt: string | null }[];
+  pin: { setAt: string; locked: boolean } | null;
   sessions: { device: string | null; createdAt: string; lastSeenAt: string }[];
 }
 
@@ -30,6 +31,8 @@ export interface PlanEntry {
   plan: Plan;
   proposals: Proposal[];
   editorial: Record<string, Partial<Editorial>>;
+  // Member ids on this trip (SPEC §5).
+  participants?: string[];
 }
 
 export interface SearchOptions {
@@ -56,7 +59,7 @@ export interface VoteView extends VoteState {
   announcement: string | null;
 }
 
-export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents">;
+export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
 
 export interface PanelBackend {
   now(): Date;
@@ -67,6 +70,7 @@ export interface PanelBackend {
   plan(planId: string): Promise<PlanEntry | null>;
   createPlan(p: NewPlan): Promise<Plan>;
   savePlan(p: Plan): Promise<Plan>;
+  setParticipants(planId: string, memberIds: string[]): Promise<PlanEntry>;
   // Calls onProposal as each one arrives; resolves when the search ends.
   generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal): Promise<void>;
   review(planId: string, id: string, review: Review): Promise<void>;
@@ -117,6 +121,7 @@ export const httpBackend: PanelBackend = {
   },
   createPlan: (p) => call<Plan>("/api/plans", "POST", p),
   savePlan: (p) => call<Plan>(`/api/plans/${enc(p.id)}`, "PUT", p),
+  setParticipants: (planId, ids) => call<PlanEntry>(`/api/plans/${enc(planId)}/participants`, "PUT", ids),
   async generate(planId, opts, onProposal, signal) {
     const res = await fetch(`/api/plans/${enc(planId)}/generate`, {
       method: "POST",

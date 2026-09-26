@@ -24,7 +24,7 @@ VITE_DATA=mock npm run dev:web -w @wanderlot/panel   # the organiser's panel
 npm run dev -w @wanderlot/ui                         # every component, in every state
 ```
 
-To run everything for real (API servers and passkeys), see
+To run everything for real (API servers, PINs and passkeys), see
 [Running](README.md#running) in the README.
 
 ## Before you open a pull request
@@ -80,8 +80,10 @@ it describes, update it in the same pull request.
   URLs (SPEC §6).
 - **The vote.** Nobody sees the count, the organiser included, until it
   closes (SPEC §4).
-- **Security.** Sign-in is passkeys plus one-time invites (SPEC §5), the site
-  sends a strict CSP, and the panel only answers its own pages. Report
+- **Who sees what.** A friend sees only the trips they're on (SPEC §5).
+- **Security.** Sign-in is one-time invites plus a PIN (or a passkey), with
+  lockout (SPEC §5); the site sends a strict CSP, and the panel only answers
+  its own pages. Report
   vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 
 ## Licence

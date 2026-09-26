@@ -74,6 +74,16 @@ export async function deploySite() {
     console.log("  saved to Cloudflare and .env");
   }
 
+  step("PIN_SECRET secret");
+  // Keys the PIN hashes, so a copy of the database alone can't be used to
+  // test PINs. Set once: changing it means everyone needs a new invite.
+  if (secrets.ok && secrets.out.includes('"PIN_SECRET"')) {
+    console.log("  already set");
+  } else {
+    if (!wrangler(["secret", "put", "PIN_SECRET"], { input: randomToken(), quiet: true }).ok) fail("Couldn't save the secret.");
+    console.log("  saved to Cloudflare");
+  }
+
   step("Public address (ORIGIN)");
   // Passkeys are tied to one address, so the Worker needs it fixed rather
   // than trusting each request's hostname. WANDERLOT_ORIGIN in .env wins

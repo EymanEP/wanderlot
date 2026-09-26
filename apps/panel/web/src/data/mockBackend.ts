@@ -74,7 +74,13 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     ]),
   );
   let settings: GroupSettings = { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" };
-  let members: MemberAccess[] = mockMembers.map((m) => ({ id: m.id, name: m.name, ...mockAccess.find((a) => a.memberId === m.id)! }));
+  // Whoever is inside in the design signed up with a PIN (and a passkey, as drawn).
+  let members: MemberAccess[] = mockMembers.map((m) => {
+    const a = mockAccess.find((x) => x.memberId === m.id)!;
+    return { id: m.id, name: m.name, ...a, pin: a.passkeys[0] ? { setAt: a.passkeys[0].createdAt, locked: false } : null };
+  });
+  // Who goes on each trip: everyone on the design's plans.
+  const participants = new Map<string, string[]>(mockPlans.map((p) => [p.id, mockMembers.map((m) => m.id)]));
   const entry = (id: string) => {
     const e = entries.get(id);
     if (!e) throw new Error("not found");
@@ -104,7 +110,8 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       voted: ballots.map((b) => b.memberId),
       result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
     };
-    const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
+    const going = participants.get(planId) ?? [];
+    const people = members.filter((m) => going.includes(m.id)).map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
     const missing = people.filter((p) => !p.voted).map((p) => p.name);
     const winner = state.result?.winnerId;
     return {
@@ -138,14 +145,24 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     settings: async () => settings,
     saveSettings: async (s) => (settings = s),
     plans: async () => [...entries.values()].map((e) => e.plan),
-    plan: async (id) => entries.get(id) ?? null,
+    plan: async (id) => {
+      const e = entries.get(id);
+      return e ? { ...e, participants: participants.get(id) ?? [] } : null;
+    },
     async createPlan(p) {
       const base = slugify(p.name) || "plan";
       let id = base;
       for (let n = 2; entries.has(id); n++) id = `${base}-${n}`;
-      const plan: Plan = { ...p, id, dateTo: addDaysIso(p.dateFrom, p.nights), status: "draft" };
+      const { participants: going, ...fields } = p;
+      const plan: Plan = { ...fields, id, dateTo: addDaysIso(p.dateFrom, p.nights), status: "draft" };
       entries.set(id, { plan, proposals: [], editorial: {} });
+      participants.set(id, going);
       return plan;
+    },
+    async setParticipants(planId, ids) {
+      participants.set(planId, ids);
+      setPlan(planId, { partySize: Math.max(1, ids.length) });
+      return { ...entry(planId), participants: ids };
     },
     async savePlan(p) {
       entries.set(p.id, { ...entry(p.id), plan: p });
@@ -214,7 +231,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     async putMembers(list) {
       for (const m of list) {
         if (members.some((x) => x.id === m.id)) patchMember(m.id, { name: m.name });
-        else members = [...members, { id: m.id, name: m.name, memberId: m.id, invite: null, inviteUrl: null, passkeys: [], sessions: [] }];
+        else members = [...members, { id: m.id, name: m.name, memberId: m.id, invite: null, inviteUrl: null, passkeys: [], pin: null, sessions: [] }];
       }
     },
     async invite(id) {
@@ -228,6 +245,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       const m = members.find((x) => x.id === id);
       patchMember(id, {
         passkeys: [],
+        pin: null,
         sessions: [],
         inviteUrl: null,
         invite: m?.invite?.status === "valid" ? { ...m.invite, status: "cancelled" } : (m?.invite ?? null),
