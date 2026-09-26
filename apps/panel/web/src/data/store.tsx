@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, PublishStatus, Review, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -65,6 +65,7 @@ export interface PanelApi {
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
   setPrices: (id: string, prices: CheckedPrices) => Promise<void>;
+  extract: (id: string, kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
   suggestions: () => Promise<SuggestionView[]>;
   dismissSuggestion: (id: string) => Promise<SuggestionView[]>;
   publish: () => Promise<number>;
@@ -290,6 +291,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         patch((s) => ({ proposals: s.proposals.filter((p) => p.review === "approved") }));
         return removed;
       },
+      extract: (id, kind, images) => backend.extract(need(), id, kind, images),
       async setPrices(id, prices) {
         const updated = await backend.setPrices(need(), id, prices);
         patch((s) => ({ proposals: s.proposals.map((p) => (p.id === id ? updated : p)) }));

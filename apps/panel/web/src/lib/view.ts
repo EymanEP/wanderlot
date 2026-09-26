@@ -5,6 +5,7 @@ import {
   flightPriceCents,
   mediumDate,
   eurosGrouped,
+  flightDetailsKnown,
   stayGroupCents,
   stayShareCents,
   thingsCount,
@@ -54,9 +55,10 @@ export function flightsPrice(p: Proposal): string {
   return `${euros(flightPriceCents(p))} ida y vuelta por persona`;
 }
 
-// "Directo · 1 h 20 m · TAP Air Portugal"
+// "Directo · 1 h 20 m · TAP Air Portugal", or "BIO ⇄ AMS" when only the
+// price was checked by hand and research's times would mislead.
 export function flightSummary(p: Proposal): string {
-  return `${tripLabel(p.outbound)} · ${p.outbound.carrier}`;
+  return flightDetailsKnown(p) ? `${tripLabel(p.outbound)} · ${p.outbound.carrier}` : `${p.outbound.from} ⇄ ${p.outbound.to}`;
 }
 
 // "Directo · 1 h 20 m · TAP Air Portugal · alojamiento ≈ 1 428 € en total"

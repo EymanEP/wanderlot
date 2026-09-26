@@ -65,7 +65,8 @@ export function wikimedia(fetcher: Fetch = fetch): PhotoSource {
           if (!info?.thumburl || !REUSABLE.test(license)) return [];
           return [
             {
-              url: standardImageUrl(info.thumburl),
+              // Without the tracking query Wikimedia adds to thumbnail links.
+              url: standardImageUrl(String(info.thumburl).split("?")[0]!),
               width: info.thumbwidth,
               height: info.thumbheight,
               source: "wikimedia",

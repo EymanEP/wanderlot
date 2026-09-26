@@ -1,4 +1,5 @@
 import type { FlightLeg, FlightProviderName, Proposal, Source } from "@wanderlot/core";
+import type { ExtractRequest } from "./extract.ts";
 
 // What Generar asks for (SPEC §1, Plan).
 export interface SearchRequest {
@@ -59,6 +60,9 @@ export type ResearchProgress =
 // even when it quotes an airline price (SPEC §8).
 export interface ResearchProvider {
   research(req: SearchRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): AsyncIterable<ResearchResult>;
+  // Reads a screenshot of a flight or a stay; resolves to the raw answer,
+  // shaped by extract.ts's schema for that kind.
+  extract(req: ExtractRequest, signal?: AbortSignal): Promise<unknown>;
 }
 
 export type { Source };

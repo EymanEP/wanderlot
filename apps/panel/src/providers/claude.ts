@@ -2,7 +2,11 @@
 // so every proposal comes back structured and with its sources. It streams
 // its steps (stream-json), so Generar can show each search as it happens.
 import { spawn } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { extractJsonSchema, extractPrompt } from "./extract.ts";
 import { ResearchOutput, buildPrompt, outputSchema, toResults } from "./research.ts";
 import type { ResearchProgress, ResearchProvider } from "./types.ts";
 
@@ -52,11 +56,70 @@ export function progressOf(event: Event): ResearchProgress[] {
   });
 }
 
+// Runs `claude` and returns its structured answer, relaying its steps.
+async function answer(run: Runner, args: string[], signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown> {
+  let result: Event | undefined;
+  await run(
+    args,
+    (line) => {
+      let event: Event;
+      try {
+        event = JSON.parse(line) as Event;
+      } catch {
+        return;
+      }
+      if (event.type === "result") result = event;
+      else for (const p of progressOf(event)) onProgress?.(p);
+    },
+    signal,
+  );
+  if (!result) throw new Error("claude terminó sin dar resultado");
+  if (result.is_error) throw new Error(`claude no pudo terminar: ${String(result.result ?? result.subtype ?? "error")}`);
+  return result.structured_output ?? (typeof result.result === "string" ? JSON.parse(result.result) : result.result);
+}
+
+const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" } as const;
+
 export function claudeProvider(run: Runner = runClaude): ResearchProvider {
   return {
+    async extract(req, signal) {
+      // The screenshots go in a folder of their own, the only place this run
+      // may read from.
+      const dir = await mkdtemp(join(tmpdir(), "wanderlot-captura-"));
+      try {
+        const files = await Promise.all(
+          req.images.map(async (img, i) => {
+            const file = join(dir, `captura-${i + 1}.${EXT[img.mediaType]}`);
+            await writeFile(file, Buffer.from(img.data, "base64"));
+            return file;
+          }),
+        );
+        return await answer(
+          run,
+          [
+            "-p",
+            extractPrompt(req, files),
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--json-schema",
+            JSON.stringify(extractJsonSchema(req.kind)),
+            "--tools",
+            "Read",
+            "--allowedTools",
+            "Read",
+            "--add-dir",
+            dir,
+          ],
+          signal,
+        );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
     async *research(req, signal, onProgress) {
-      let result: Event | undefined;
-      await run(
+      const payload = await answer(
+        run,
         [
           "-p",
           buildPrompt(req),
@@ -72,21 +135,9 @@ export function claudeProvider(run: Runner = runClaude): ResearchProvider {
           "--allowedTools",
           RESEARCH_TOOLS,
         ],
-        (line) => {
-          let event: Event;
-          try {
-            event = JSON.parse(line) as Event;
-          } catch {
-            return;
-          }
-          if (event.type === "result") result = event;
-          else for (const p of progressOf(event)) onProgress?.(p);
-        },
         signal,
+        onProgress,
       );
-      if (!result) throw new Error("claude terminó sin dar resultado");
-      if (result.is_error) throw new Error(`claude no pudo terminar: ${String(result.result ?? result.subtype ?? "error")}`);
-      const payload = result.structured_output ?? (typeof result.result === "string" ? JSON.parse(result.result) : result.result);
       yield* toResults(req, ResearchOutput.parse(payload));
     },
   };

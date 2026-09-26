@@ -1,7 +1,9 @@
 // Security headers for every page and API response. On Cloudflare the built
 // UI is served before the Worker runs, so web/public/_headers repeats these
 // (a test keeps the two in step).
-export const PHOTO_HOSTS = ["https://images.unsplash.com", "https://images.pexels.com", "https://upload.wikimedia.org"];
+// Wikimedia serves originals from upload.wikimedia.org and, since 2026,
+// thumbnails from thumb.wikimedia.org.
+export const PHOTO_HOSTS = ["https://images.unsplash.com", "https://images.pexels.com", "https://upload.wikimedia.org", "https://thumb.wikimedia.org"];
 
 export const SECURITY_HEADERS: Record<string, string> = {
   "Content-Security-Policy": [

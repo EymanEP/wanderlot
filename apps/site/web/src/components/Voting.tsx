@@ -1,12 +1,12 @@
 // Pieces of the Votación page.
 import { Link } from "react-router";
-import { euros, tripLabel, type Destination, type TallyResult } from "@wanderlot/core";
+import { euros, type Destination, type TallyResult } from "@wanderlot/core";
 import type { Person } from "../data/store.tsx";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, Button, Card, Heading, IataTile, IconButton, LockIcon, Text, TrophyIcon, buttonClasses, cn } from "@wanderlot/ui";
-import { pointsWord } from "../lib/view.ts";
+import { flightLabel, pointsWord } from "../lib/view.ts";
 
 function meta(d: Destination): string {
-  return `${d.place.country} · ${euros(d.totalPerPersonCents)} por persona · ${tripLabel(d.outbound).toLowerCase().replace(" · ", " ")}`;
+  return `${d.place.country} · ${euros(d.totalPerPersonCents)} por persona · ${flightLabel(d)}`;
 }
 
 function PointsBox({ points, strong }: { points: number; strong: boolean }) {

@@ -86,7 +86,8 @@ export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
 }
 
 // "Ida  07:20 MAD → 09:55 NAP  sáb 7 nov · Ryanair FR 8564 · directo  52 €"
-export function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) {
+// Without its own price when the organiser checked the round trip as a whole.
+export function FlightLegRow({ label, leg, price = true }: { label: string; leg: FlightLeg; price?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 rounded-tile border border-line-soft px-[18px] py-3.5">
       <span className="w-14 shrink-0 text-[13px] font-bold text-muted">{label}</span>
@@ -96,7 +97,24 @@ export function FlightLegRow({ label, leg }: { label: string; leg: FlightLeg }) 
       <span className="min-w-0 flex-1 text-sm text-ink-2 max-sm:order-last max-sm:basis-full max-sm:pl-[74px]">
         {shortDate(leg.departAt)} · {leg.carrier} {leg.flightNumber} · {stopsLabel(leg.stops).toLowerCase()}
       </span>
-      <span className="ml-auto shrink-0 text-base font-bold tabular-nums">{euros(leg.priceCents)}</span>
+      {price && <span className="ml-auto shrink-0 text-base font-bold tabular-nums">{euros(leg.priceCents)}</span>}
+    </div>
+  );
+}
+
+// "Ida y vuelta  MAD ⇄ NAP  104 € por persona": the price the organiser
+// checked, when that's what there is to show.
+export function FlightTotalRow({ from, to, cents }: { from: string; to: string; cents: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 rounded-tile border border-line-soft px-[18px] py-3.5">
+      <span className="shrink-0 text-[13px] font-bold text-muted">Ida y vuelta</span>
+      <span className="shrink-0 text-[15px] font-bold">
+        {from} ⇄ {to}
+      </span>
+      <span className="ml-auto flex shrink-0 items-baseline gap-1.5">
+        <span className="text-base font-bold tabular-nums">{euros(cents)}</span>
+        <span className="text-xs text-muted">por persona</span>
+      </span>
     </div>
   );
 }
@@ -111,7 +129,13 @@ export function StayOption({ stay, nights, partySize }: { stay: Stay; nights: nu
     >
       <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
         <span className="text-[15px] font-bold">
-          {stay.name}
+          {stay.url ? (
+            <a href={stay.url} target="_blank" rel="noreferrer" className="text-ink underline decoration-line underline-offset-2 hover:text-accent">
+              {stay.name}
+            </a>
+          ) : (
+            stay.name
+          )}
           {stay.recommended && <span className="sr-only"> (recomendado)</span>}
         </span>
         {stay.description && <span className="text-[13px] text-ink-2">{stay.description}</span>}

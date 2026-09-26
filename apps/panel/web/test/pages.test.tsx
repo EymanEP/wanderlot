@@ -238,6 +238,47 @@ describe("Revisar · precios", () => {
   });
 });
 
+describe("Revisar · capturas", () => {
+  it("fills the prices from screenshots of the flight and the Airbnb, and keeps the times", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    expect(dialog.getByText(/verá solo el precio, sin horarios/)).toBeTruthy();
+
+    const shot = new File(["png"], "vuelo.png", { type: "image/png" });
+    await user.upload(dialog.getByLabelText("Leer captura del vuelo"), shot);
+    expect(await dialog.findByText(/^Ida · 11:55 MAD → 14:05 KRK/)).toBeTruthy();
+    expect((dialog.getByLabelText("Vuelo, ida y vuelta · € por persona") as HTMLInputElement).value).toBe("272");
+
+    await user.upload(dialog.getByLabelText("Leer captura del alojamiento"), new File(["png"], "airbnb.png", { type: "image/png" }));
+    expect(await dialog.findByDisplayValue("Apartamento con terraza en De Pijp")).toBeTruthy();
+    expect((dialog.getByLabelText("Alojamiento · € en total") as HTMLInputElement).value).toBe("1512");
+
+    // Something that isn't an image is refused here, before reaching Claude.
+    // (A file picker told to show only images can still be talked into a PDF.)
+    await userEvent.setup({ applyAccept: false }).upload(dialog.getByLabelText("Leer captura del vuelo"), new File(["%PDF"], "billete.pdf", { type: "application/pdf" }));
+    expect(await dialog.findByText("Sube capturas en PNG, JPG, WebP o GIF")).toBeTruthy();
+
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    const after = await screen.findByRole("article", { name: "Cracovia" });
+    // The checked times show; the stay is theirs.
+    expect(await within(after).findByText(/^Vuelos: 272 € ida y vuelta por persona · Directo · 2 h 10 m · KLM/)).toBeTruthy();
+    expect(within(after).getByText(/Apartamento con terraza en De Pijp$/)).toBeTruthy();
+  });
+
+  it("hides research's times when only the price was checked", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await within(screen.getByRole("article", { name: "Cracovia" })).findByText("Vuelos: 144 € ida y vuelta por persona · MAD ⇄ KRK")).toBeTruthy();
+  });
+});
+
 describe("Revisar · fotos", () => {
   it("picks photos in order from Claude's suggestions and shows the cover", async () => {
     const user = userEvent.setup();

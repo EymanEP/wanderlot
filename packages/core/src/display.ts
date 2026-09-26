@@ -43,6 +43,13 @@ export function stopsLabel(stops: number): string {
   return stops === 1 ? "1 escala" : `${stops} escalas`;
 }
 
+// Whether a proposal's flight times, dates and numbers can be shown: always,
+// except when the organiser checked only the price by hand (research's guess
+// at the times would sit beside a real price).
+export function flightDetailsKnown(p: Pick<Proposal, "provenance">): boolean {
+  return p.provenance.kind !== "organiser" || p.provenance.flightDetails === true;
+}
+
 // "Directo · 1 h 20 m"
 export function tripLabel(leg: FlightLeg): string {
   return `${stopsLabel(leg.stops)} · ${legDuration(leg)}`;
@@ -193,7 +200,7 @@ export function slugify(text: string): string {
 export const WIKIMEDIA_WIDTHS = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840] as const;
 
 export function standardImageUrl(url: string): string {
-  const m = /^(https:\/\/upload\.wikimedia\.org\/.+\/thumb\/.+\/)(\d+)px-([^/]+)$/.exec(url);
+  const m = /^(https:\/\/(?:upload|thumb)\.wikimedia\.org\/.+\/thumb\/.+\/)(\d+)px-([^/]+)$/.exec(url);
   if (!m) return url;
   const width = Number(m[2]);
   if ((WIKIMEDIA_WIDTHS as readonly number[]).includes(width)) return url;

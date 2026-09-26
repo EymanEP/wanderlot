@@ -3,7 +3,8 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { extractedFields } from "./providers/extract.ts";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -31,6 +32,31 @@ export interface PanelOptions {
   siteUrl: string;
   now?: () => Date;
 }
+
+const CheckedLeg = FlightLeg.omit({ priceCents: true });
+const PricesBody = z.object({
+  flightCents: z.number().int().min(0).max(10_000_000),
+  stayCents: z.number().int().min(0).max(100_000_000).optional(),
+  // Read from a screenshot and reviewed: the flights' real times, together.
+  outbound: CheckedLeg.optional(),
+  inbound: CheckedLeg.optional(),
+  stay: z
+    .object({
+      name: z.string().trim().min(1).max(120),
+      description: z.string().trim().max(200).optional(),
+      url: z.url({ protocol: /^https$/ }).optional(),
+    })
+    .optional(),
+});
+
+// Screenshots for "Leer captura": up to 4 images, each under ~5 MB.
+const ExtractBody = z.object({
+  kind: z.enum(["flight", "stay"]),
+  images: z
+    .array(z.object({ mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]), data: z.string().min(1).max(7_000_000) }))
+    .min(1)
+    .max(4),
+});
 
 const GenerateBody = z.object({
   source: z.enum(["api", "claude"]),
@@ -380,26 +406,53 @@ export function createPanel({
   // check, and goes stale the same way (SPEC §3).
   app.post("/api/plans/:planId/proposals/:id/prices", async (c) => {
     const { planId, id } = c.req.param();
-    const body = z
-      .object({
-        flightCents: z.number().int().min(0).max(10_000_000),
-        stayCents: z.number().int().min(0).max(100_000_000).optional(),
-      })
-      .safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {flightCents, stayCents?}: one person's flights there and back, and the whole stay, in cents" }, 400);
+    const body = PricesBody.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {flightCents, stayCents?, outbound?, inbound?, stay?}: one person's flights there and back, and the whole stay, in cents" }, 400);
+    if (!body.data.outbound !== !body.data.inbound) return c.json({ error: "outbound and inbound go together" }, 400);
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
+    const prev = proposal.provenance;
+    // Times checked now, or on an earlier check that this one keeps.
+    const flightDetails = body.data.outbound !== undefined || (prev.kind === "organiser" && prev.flightDetails === true) || prev.kind === "api";
     const updated: Proposal = {
       ...applyCheckedPrices(proposal, body.data, entry.plan.nights),
       provenance: {
         kind: "organiser",
         checkedAt: now().toISOString(),
-        sources: proposal.provenance.kind === "api" ? [] : proposal.provenance.sources,
+        sources: prev.kind === "api" ? [] : prev.sources,
+        ...(flightDetails ? { flightDetails: true } : {}),
       },
     };
     store.update(planId, (e) => ({ entry: { ...e!, proposals: e!.proposals.map((p) => (p.id === id ? updated : p)) }, result: null }));
     return c.json(updated);
+  });
+
+  // "Leer captura": Claude reads a screenshot of the flights or the stay and
+  // the price dialog fills in what it found, for the organiser to review.
+  // Nothing is saved here.
+  app.post("/api/plans/:planId/proposals/:id/extract", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = ExtractBody.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "Sube entre 1 y 4 capturas en PNG, JPG, WebP o GIF, de menos de 5 MB cada una" }, 400);
+    const entry = store.get(planId);
+    const proposal = entry?.proposals.find((p) => p.id === id);
+    if (!entry || !proposal) return c.json({ error: "not found" }, 404);
+    if (status.research === "none") return c.json({ error: "Para leer capturas hace falta Claude: ejecuta npm run setup" }, 409);
+    const { plan } = entry;
+    const raw = await research.extract(
+      {
+        kind: body.data.kind,
+        images: body.data.images,
+        context: { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize },
+      },
+      c.req.raw.signal,
+    );
+    try {
+      return c.json(extractedFields(body.data.kind, raw));
+    } catch {
+      return c.json({ error: "No he sabido leer esa captura. Prueba con otra más clara." }, 422);
+    }
   });
 
   // Comparativa: pros/cons, weather, photos, the inVote checkbox.
