@@ -36,6 +36,7 @@ export function buildPrompt(req: SearchRequest): string {
     req.nearbyAirports
       ? `También vale salir de otro aeropuerto a unas 2 horas de ${req.origin} por carretera o tren si el vuelo sale mejor; pon el aeropuerto real de salida en outbound.from y el de llegada de vuelta en inbound.to, y menciónalo en los contras.`
       : `Sal siempre de ${req.origin}.`,
+    ...(req.exclude?.length ? [`Ya tenemos propuestas para: ${req.exclude.join(", ")}. Busca destinos distintos a esos.`] : []),
     `Salida el ${req.dateFrom} (±${req.flexDays} días), ${req.nights} noches, ${req.partySize} personas.`,
     req.maxPriceCents === null
       ? `Sin tope de precio, pero busca buena relación calidad-precio. ${stops}.`

@@ -37,7 +37,7 @@ describe("Generar", () => {
     renderAt("/generar");
     await screen.findByRole("heading", { name: "Nueva búsqueda" });
     expect(screen.getAllByRole("article")).toHaveLength(12);
-    await user.click(screen.getByRole("button", { name: "Generar 12 propuestas" }));
+    await user.click(screen.getByRole("button", { name: "Buscar 12 más" }));
     expect(screen.getByText("Consultando vuelos…")).toBeTruthy();
     expect(await screen.findByText("Búsqueda terminada")).toBeTruthy();
     expect(screen.getByText("12 propuestas")).toBeTruthy();
@@ -52,10 +52,10 @@ describe("Generar", () => {
     expect(screen.getAllByText(/7 – 14 nov · 7 noches/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "2026-11-20" }));
     expect(screen.getByText("Ahora elige el día de vuelta")).toBeTruthy();
-    expect((screen.getByRole("button", { name: /^Generar/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /^Buscar/ }) as HTMLButtonElement).disabled).toBe(true);
     await user.click(screen.getByRole("button", { name: "2026-11-30" }));
     expect(screen.getAllByText(/20 – 30 nov · 10 noches/).length).toBeGreaterThan(0);
-    expect((screen.getByRole("button", { name: /^Generar/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /^Buscar/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -94,6 +94,32 @@ describe("Revisar", () => {
     await user.click(await screen.findByLabelText("Ocultar las que no estén verificadas"));
     expect(screen.queryByRole("article", { name: "Edimburgo" })).toBeNull();
     expect(screen.getAllByRole("article")).toHaveLength(10);
+  });
+});
+
+describe("Revisar · precios", () => {
+  it("takes prices checked by hand and labels them so", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    expect(within(card).getByText("Lo escribió Claude")).toBeTruthy();
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    const outbound = dialog.getByLabelText(/^Ida/);
+    await user.clear(outbound);
+    await user.type(outbound, "abc");
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await dialog.findByText(/Escribe cada precio en euros/)).toBeTruthy();
+    await user.clear(outbound);
+    await user.type(outbound, "61,50");
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+
+    expect(await screen.findByText("Cracovia: precios comprobados a mano")).toBeTruthy();
+    const after = screen.getByRole("article", { name: "Cracovia" });
+    expect(within(after).getByText("Comprobado a mano")).toBeTruthy();
+    expect(within(after).getByText(/Comprobado a mano · /)).toBeTruthy();
+    expect(within(after).getByRole("button", { name: "cambiar precios" })).toBeTruthy();
   });
 });
 

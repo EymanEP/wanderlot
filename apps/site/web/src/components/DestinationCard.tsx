@@ -25,7 +25,7 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
         className="h-[240px] rounded-2xl sm:h-[310px]"
         top={
           <>
-            {winner ? <Badge tone="dark" size="md">Destino elegido</Badge> : <ProvenanceBadge trust={trust} size="md" />}
+            {winner ? <Badge tone="dark" size="md">Destino elegido</Badge> : <ProvenanceBadge trust={trust} size="md" label={trust === "verified" && d.provenance.kind === "organiser" ? "Comprobado" : "short"} />}
             <IconButton
               label={saved ? `Quitar ${d.place.city} de guardados` : `Guardar ${d.place.city}`}
               aria-pressed={saved}

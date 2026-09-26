@@ -75,13 +75,15 @@ export interface SearchFormProps {
   initial: SearchValues;
   onSubmit: (v: SearchValues) => void;
   count?: number;
+  // Proposals already on the trip: a new search adds to them.
+  existing?: number;
   running?: boolean;
   flightsConnected: boolean;
   // First day that can be picked.
   min: string;
 }
 
-export function SearchForm({ initial, onSubmit, count = 12, running, flightsConnected, min }: SearchFormProps) {
+export function SearchForm({ initial, onSubmit, count = 12, existing = 0, running, flightsConnected, min }: SearchFormProps) {
   const [v, setV] = useState(initial);
   const set = <K extends keyof SearchValues>(k: K, value: SearchValues[K]) => setV((s) => ({ ...s, [k]: value }));
 
@@ -193,7 +195,7 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
       </Fieldset>
 
       <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running || !v.end}>
-        {running ? "Buscando…" : `Generar ${count} propuestas`}
+        {running ? "Buscando…" : existing ? `Buscar ${count} más` : `Generar ${count} propuestas`}
       </Button>
     </form>
   );

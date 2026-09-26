@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, PanelBackend, PhotoResults, Review, SearchOptions, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, Review, SearchOptions, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -53,6 +53,7 @@ export interface PanelApi {
   verify: (id: string) => Promise<{ verified: boolean; reason?: string }>;
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
+  setPrices: (id: string, prices: CheckedPrices) => Promise<void>;
   publish: () => Promise<number>;
   openVote: (deadline: string) => Promise<string>;
   vote: () => Promise<VoteView>;
@@ -206,7 +207,6 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         const ctl = new AbortController();
         abort.current = ctl;
         patch((s) => ({
-          proposals: s.proposals.filter((p) => p.review !== "pending"),
           generation: { running: true, received: 0, requested: opts.count, stopped: false, error: null },
         }));
         backend
@@ -256,6 +256,10 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         backend.editorial(pid, id, change).catch(() => loadPlan(pid));
       },
       searchPhotos: (q) => backend.searchPhotos(q),
+      async setPrices(id, prices) {
+        const updated = await backend.setPrices(need(), id, prices);
+        patch((s) => ({ proposals: s.proposals.map((p) => (p.id === id ? updated : p)) }));
+      },
       async publish() {
         return (await backend.publish(need())).published;
       },

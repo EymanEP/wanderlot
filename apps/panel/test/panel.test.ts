@@ -3,7 +3,7 @@ import type { Proposal } from "@wanderlot/core";
 import { createPanel } from "../src/app.ts";
 import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
-import type { FlightProvider, ResearchProvider } from "../src/providers/types.ts";
+import type { FlightProvider, ResearchProvider, SearchRequest } from "../src/providers/types.ts";
 import type { PhotoSource } from "../src/providers/photos.ts";
 import { createApp } from "../../site/src/app.ts";
 import { SqliteStore } from "../../site/src/sqlite.ts";
@@ -21,6 +21,7 @@ const claudeSources = { kind: "claude" as const, sources: [{ label: "x", url: "h
 let clock: Date;
 let panel: ReturnType<typeof createPanel>;
 let picked: string[] = [];
+let lastRequest: SearchRequest | undefined;
 let site: ReturnType<typeof createApp>;
 
 const call = async (path: string, method = "GET", body?: unknown) => {
@@ -40,8 +41,10 @@ beforeEach(async () => {
   clock = new Date("2026-10-10T12:00:00Z");
   site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: SITE }, now: () => clock });
 
+  lastRequest = undefined;
   const research: ResearchProvider = {
-    async *research() {
+    async *research(req) {
+      lastRequest = req;
       yield {
         proposal: strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })),
         notes: { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoSubjects: ["Alfama Lisboa"] },
@@ -106,6 +109,14 @@ describe("panel → site", () => {
     expect(lines.map((l) => l.proposal?.id ?? "done")).toEqual(["lis", "nap", "edi", "done"]);
     const { data } = await json(`/api/plans/${PLAN}`);
     expect(data.proposals.every((p: Proposal) => p.review === "pending")).toBe(true);
+    // A second search adds to the list with fresh ids, keeping decisions, and
+    // tells research what's already there.
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    const again = (await json(`/api/plans/${PLAN}`)).data;
+    expect(again.proposals.map((p: Proposal) => p.id)).toEqual(["lis", "nap", "edi", "lis-2", "nap-2", "edi-2"]);
+    expect(again.proposals.find((p: Proposal) => p.id === "lis").review).toBe("approved");
+    expect(lastRequest?.exclude).toEqual(["Lisboa (LIS)", "Nápoles (NAP)", "Edimburgo (EDI)"]);
     // Research's notes seed Comparativa and the photo picker.
     expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
   });
@@ -126,6 +137,14 @@ describe("panel → site", () => {
     const first = await json(`/api/plans/${PLAN}/publish`, "POST", {});
     expect(first.status).toBe(409);
     expect(first.data.warnings.map((w: any) => w.destinationId)).toEqual(["lis", "nap"]);
+
+    // Prices checked by hand: bad input refused; saved ones count as checked.
+    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: -1, inboundCents: 0 })).status).toBe(400);
+    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: 6100, inboundCents: 5200, stayNightlyCents: 21000 });
+    expect(checked.data.outbound.priceCents).toBe(6100);
+    expect(checked.data.inbound.priceCents).toBe(5200);
+    expect(checked.data.provenance).toEqual({ kind: "organiser", checkedAt: clock.toISOString(), sources: claudeSources.sources });
+    expect((await json(`/api/plans/${PLAN}/publish`, "POST", {})).data.warnings.map((w: any) => w.destinationId)).toEqual(["lis"]);
 
     // Verifying Lisbon turns it green; Edinburgh has no match and stays amber.
     const v = await json(`/api/plans/${PLAN}/proposals/lis/verify`, "POST");

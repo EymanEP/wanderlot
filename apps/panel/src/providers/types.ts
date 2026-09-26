@@ -17,6 +17,8 @@ export interface SearchRequest {
   // Also consider airports within about two hours of the origin.
   nearbyAirports: boolean;
   count: number;
+  // Destinations already proposed for this trip: look for others.
+  exclude?: string[];
 }
 
 export interface Itinerary {

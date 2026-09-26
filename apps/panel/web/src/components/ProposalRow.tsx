@@ -26,7 +26,7 @@ export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVe
             {p.place.city}
           </Heading>
           <span className="text-sm text-muted">{p.place.country}</span>
-          <ProvenanceBadge trust={trust} label={trust === "stale" ? "Caducado" : "short"} />
+          <ProvenanceBadge trust={trust} label={trust === "stale" ? "Caducado" : p.provenance.kind === "organiser" ? "Comprobado" : "short"} />
         </div>
         <span className="text-sm text-ink-2">{generatedLine(p, plan)}</span>
       </div>

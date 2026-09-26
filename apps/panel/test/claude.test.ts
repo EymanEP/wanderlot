@@ -75,6 +75,11 @@ describe("claude research provider", () => {
     expect(prompt).not.toContain("€ por persona en total");
     expect(prompt).toContain("otro aeropuerto a unas 2 horas de MAD");
   });
+
+  it("names what's already proposed so a new search looks elsewhere", () => {
+    expect(buildPrompt(req)).not.toContain("Ya tenemos");
+    expect(buildPrompt({ ...req, exclude: ["Lisboa (LIS)", "Oporto (OPO)"] })).toContain("Ya tenemos propuestas para: Lisboa (LIS), Oporto (OPO)");
+  });
 });
 
 describe("the schema handed to `claude --json-schema`", () => {

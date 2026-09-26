@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type VoteState } from "@wanderlot/core";
+import { addDaysIso, baseStay, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
@@ -189,6 +189,19 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     async editorial(planId, id, patch) {
       const e = entry(planId);
       entries.set(planId, { ...e, editorial: { ...e.editorial, [id]: { ...e.editorial[id], ...patch } } });
+    },
+    async setPrices(planId, id, { outboundCents, inboundCents, stayNightlyCents }) {
+      patchProposal(planId, id, (p) => {
+        const stay = baseStay(p.stays);
+        return {
+          ...p,
+          outbound: { ...p.outbound, priceCents: outboundCents },
+          inbound: { ...p.inbound, priceCents: inboundCents },
+          stays: p.stays.map((s) => (s === stay && stayNightlyCents !== undefined ? { ...s, nightlyCents: stayNightlyCents } : s)),
+          provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: p.provenance.kind === "api" ? [] : p.provenance.sources },
+        };
+      });
+      return entry(planId).proposals.find((p) => p.id === id)!;
     },
     async searchPhotos(query) {
       await wait(Math.min(tickMs, 400));

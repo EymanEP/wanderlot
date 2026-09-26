@@ -3,6 +3,7 @@ import { useLocation } from "react-router";
 import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PhotoPicker } from "../components/PhotoPicker.tsx";
+import { PriceDialog } from "../components/PriceDialog.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
 import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
@@ -11,7 +12,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, setEditorial, searchPhotos } = usePanel();
+  const { state, now, setReview, verify, publish, setEditorial, searchPhotos, setPrices } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -21,6 +22,7 @@ export function RevisarPage() {
   const [hideUnverified, setHideUnverified] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<string | null>(null);
   const plan = usePlan();
   const pickingProposal = state.proposals.find((p) => p.id === picking);
 
@@ -124,6 +126,7 @@ export function RevisarPage() {
                 onReview={(r) => setReview(p.id, r)}
                 photos={state.editorial[p.id]?.photos ?? []}
                 onPickPhotos={() => setPicking(p.id)}
+                onEditPrices={() => setPricing(p.id)}
                 onVerify={() =>
                   verify(p.id).then((r) => toast(r.verified ? `${p.place.city}: verificado con la API` : `${p.place.city}: ${r.reason ?? "no se pudo verificar"}`))
                 }
@@ -132,6 +135,16 @@ export function RevisarPage() {
           </section>
         )}
       </main>
+
+      <PriceDialog
+        proposal={state.proposals.find((p) => p.id === pricing)}
+        onClose={() => setPricing(null)}
+        onSave={async (prices) => {
+          const city = state.proposals.find((p) => p.id === pricing)?.place.city;
+          await setPrices(pricing!, prices);
+          toast(`${city}: precios comprobados a mano`);
+        }}
+      />
 
       <PhotoPicker
         open={pickingProposal !== undefined}

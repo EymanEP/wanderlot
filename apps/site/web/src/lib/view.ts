@@ -52,7 +52,9 @@ export function sourcesFor(d: Destination): string[] {
   const flights =
     d.provenance.kind === "api"
       ? `Vuelos · ${PROVIDER_LABEL[d.provenance.provider]} · ${mediumDate(d.provenance.checkedAt)}`
-      : `Vuelos · Claude, ${d.provenance.sources.length} fuentes sin verificar`;
+      : d.provenance.kind === "organiser"
+        ? `Vuelos · comprobados a mano el ${mediumDate(d.provenance.checkedAt)}`
+        : `Vuelos · Claude, ${d.provenance.sources.length} fuentes sin verificar`;
   return [flights, "Alojamiento · anuncios revisados a mano", `Clima · medias de ${d.weather ? "noviembre" : "la época"}, AEMET`];
 }
 

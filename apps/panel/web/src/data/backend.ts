@@ -60,6 +60,14 @@ export interface VoteView extends VoteState {
   announcement: string | null;
 }
 
+// Prices the organiser checked by hand, in cents: flights per person each way,
+// the recommended stay per night for the whole group.
+export interface CheckedPrices {
+  outboundCents: number;
+  inboundCents: number;
+  stayNightlyCents?: number;
+}
+
 export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
 
 export interface PanelBackend {
@@ -77,6 +85,7 @@ export interface PanelBackend {
   review(planId: string, id: string, review: Review): Promise<void>;
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
+  setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
   searchPhotos(query: string): Promise<PhotoResults>;
   publish(planId: string): Promise<{ published: number }>;
   openVote(planId: string, deadline: string): Promise<{ message: string }>;
@@ -155,6 +164,7 @@ export const httpBackend: PanelBackend = {
   review: async (planId, id, review) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/review`, "POST", { review })),
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
+  setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
   searchPhotos: (q) => call<PhotoResults>(`/api/photos?q=${enc(q)}`),
   // The screens confirm unverified prices themselves before calling this.
   publish: (planId) => call<{ published: number }>(`/api/plans/${enc(planId)}/publish`, "POST", { confirm: true }),

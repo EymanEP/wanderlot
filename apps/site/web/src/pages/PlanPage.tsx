@@ -63,7 +63,7 @@ export function PlanPage() {
   const draft = plan.status === "draft";
   const [from, to] = [shortDate(plan.dateFrom), shortDate(plan.dateTo)];
   const weekday = (s: string) => ({ lun: "lunes", mar: "martes", mié: "miércoles", jue: "jueves", vie: "viernes", sáb: "sábado", dom: "domingo" })[s.split(" ")[0]!] ?? "";
-  const checkedAt = destinations.map((d) => (d.provenance.kind === "api" ? d.provenance.checkedAt : null)).filter(Boolean).sort()[0];
+  const checkedAt = destinations.map((d) => (d.provenance.kind !== "claude" ? d.provenance.checkedAt : null)).filter(Boolean).sort()[0];
 
   return (
     <Main>

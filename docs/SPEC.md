@@ -122,16 +122,18 @@ Threads are one level deep: a reply's parent must be a top-level comment.
 
 ## 3. Trust model
 
-Every figure on the site traces to where it came from. Provenance has exactly
-two kinds:
+Every figure on the site traces to where it came from. Provenance has three
+kinds:
 
 | kind | badge | meaning |
 |---|---|---|
 | `api` | green **Verificado con la API** | price and schedule returned by a flight API; carries `provider` and `checkedAt` |
+| `organiser` | green **Comprobado a mano** | the organiser checked the real prices (airline, booking site) and typed them in Revisar; carries `checkedAt`, and research's `sources` for reference |
 | `claude` | amber **Lo escribió Claude** | produced by Claude from web research; carries `sources`, not yet checked |
 
 **Staleness.** Prices move, so a verification has a shelf life. A verified
-proposal whose `checkedAt` is older than **72 hours** is *stale*. Staleness is
+proposal (by API or by hand) whose `checkedAt` is older than **72 hours** is
+*stale*. Staleness is
 derived, not a third provenance kind:
 
 - On the site, a verified badge always shows its age: "Verificado hace 3 días".
@@ -143,7 +145,13 @@ derived, not a third provenance kind:
 "Verificar con la API" on a `claude` proposal searches the same route and dates
 on the configured flight provider. If it finds a matching itinerary, provenance
 becomes `api`. If not, the proposal keeps its `claude` badge and the panel says
-why.
+why. Without a flight API, "poner precios reales" on any proposal lets the
+organiser type the checked prices (each flight per person, the recommended stay
+per night); provenance becomes `organiser`.
+
+A new search in Generar adds to a trip's proposals and never replaces them:
+research is told which destinations are already there, and each new proposal
+gets an unused id.
 
 Every destination page has a "De dónde salen los números" card listing the
 provider (or sources) and the check date.

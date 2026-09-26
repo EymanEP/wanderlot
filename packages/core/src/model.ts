@@ -44,12 +44,20 @@ export type Source = z.infer<typeof Source>;
 export const FlightProviderName = z.enum(["duffel", "amadeus", "kiwi"]);
 export type FlightProviderName = z.infer<typeof FlightProviderName>;
 
-// Exactly two kinds. Staleness is derived from checkedAt, never stored (§3).
+// Where a proposal's prices come from (SPEC §3): a flight API, the organiser
+// checking the real prices by hand, or Claude's web research. Staleness is
+// derived from checkedAt, never stored.
 export const Provenance = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("api"),
     provider: FlightProviderName,
     checkedAt: isoDateTime,
+  }),
+  z.object({
+    kind: z.literal("organiser"),
+    checkedAt: isoDateTime,
+    // Research's links, kept for reference.
+    sources: z.array(Source).default([]),
   }),
   z.object({
     kind: z.literal("claude"),

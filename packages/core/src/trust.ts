@@ -14,12 +14,14 @@ export function trustState(p: Provenance, now: Date): TrustState {
   return { kind: ageMs > STALE_AFTER_MS ? "stale" : "verified", ageMs };
 }
 
-// Badge copy as the site shows it.
-export function trustLabel(state: TrustState): string {
+// Badge copy as the site shows it. A price the organiser checked by hand says
+// so ("Comprobado"), rather than claiming a flight API confirmed it.
+export function trustLabel(state: TrustState, by: Provenance["kind"] = "api"): string {
   if (state.kind === "unverified") return "Lo escribió Claude";
+  const verb = by === "organiser" ? "Comprobado" : "Verificado";
   const hours = Math.floor(state.ageMs / 3_600_000);
-  if (hours < 1) return "Verificado hace un momento";
-  if (hours < 24) return `Verificado hace ${hours} h`;
+  if (hours < 1) return `${verb} hace un momento`;
+  if (hours < 24) return `${verb} hace ${hours} h`;
   const days = Math.floor(hours / 24);
-  return `Verificado hace ${days} ${days === 1 ? "día" : "días"}`;
+  return `${verb} hace ${days} ${days === 1 ? "día" : "días"}`;
 }

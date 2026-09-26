@@ -16,10 +16,12 @@ export interface ReviewCardProps {
   canVerify: boolean;
   photos: PhotoData[];
   onPickPhotos: () => void;
+  // Type in prices checked by hand.
+  onEditPrices: () => void;
 }
 
 // A proposal as the organiser judges it: photo, provenance, facts, decision.
-export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, photos, onPickPhotos }: ReviewCardProps) {
+export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, photos, onPickPhotos, onEditPrices }: ReviewCardProps) {
   const [showSources, setShowSources] = useState(false);
   const trust = trustOf(p, now);
   const approved = p.review === "approved";
@@ -51,7 +53,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             <Badge tone="white" size="md">
               {CATEGORY_LABEL[p.category]}
             </Badge>
-            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : "long"} size="md" withIcon />
+            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : p.provenance.kind === "organiser" ? "Comprobado a mano" : "long"} size="md" withIcon />
           </>
         }
       />
@@ -77,12 +79,12 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
 
         {trust === "unverified" && <Notice>Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar.</Notice>}
         {trust === "stale" && (
-          <Notice tone="neutral">El precio se consultó {trustText(p, now).replace("Verificado ", "")}. Vuelve a verificarlo antes de abrir la votación.</Notice>
+          <Notice tone="neutral">El precio se consultó {trustText(p, now).replace(/^(Verificado|Comprobado) /, "")}. Vuelve a comprobarlo antes de abrir la votación.</Notice>
         )}
 
         {showSources && (
           <ul id={`${p.id}-sources`} className="m-0 flex list-none flex-col gap-1.5 rounded-xl bg-surface-2 p-3 text-[13px]">
-            {p.provenance.kind === "claude" ? (
+            {p.provenance.kind !== "api" ? (
               p.provenance.sources.map((s) => (
                 <li key={s.url}>
                   <a href={s.url} target="_blank" rel="noreferrer" className="font-semibold">
@@ -108,7 +110,11 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               onClick={() => setShowSources((x) => !x)}
               className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover"
             >
-              {p.provenance.kind === "claude" ? "ver enlaces" : "ver respuesta"}
+              {p.provenance.kind === "api" ? "ver respuesta" : "ver enlaces"}
+            </button>{" "}
+            ·{" "}
+            <button type="button" onClick={onEditPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
+              {p.provenance.kind === "organiser" ? "cambiar precios" : "poner precios reales"}
             </button>
           </span>
           <div className="flex shrink-0 gap-2">
