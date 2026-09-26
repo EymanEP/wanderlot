@@ -1,7 +1,7 @@
 // Pieces of the Votación page.
 import { Link } from "react-router";
 import { euros, tripLabel, type Destination, type TallyResult } from "@wanderlot/core";
-import type { MockMember } from "@wanderlot/mocks";
+import type { Person } from "../data/store.tsx";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, Button, Card, Heading, IataTile, IconButton, LockIcon, Text, TrophyIcon, buttonClasses, cn } from "@wanderlot/ui";
 import { pointsWord } from "../lib/view.ts";
 
@@ -138,7 +138,7 @@ export function Scoreboard({ result, cityOf }: { result: TallyResult; cityOf: (i
           );
         })}
       </ol>
-      <span className="text-xs text-muted">36 puntos en juego: 6 por cabeza.</span>
+      <span className="text-xs text-muted">{result.rows.reduce((s, r) => s + r.points, 0)} puntos repartidos: 6 por cabeza.</span>
     </Card>
   );
 }
@@ -148,13 +148,14 @@ export function Participation({
   voted,
   meId,
   closed,
-  onNudge,
+  nudgeHref,
 }: {
-  members: MockMember[];
+  members: Person[];
   voted: Set<string>;
   meId: string;
   closed: boolean;
-  onNudge: (pending: MockMember[]) => void;
+  // A link that opens WhatsApp with a reminder for whoever hasn't voted.
+  nudgeHref: (pending: Person[]) => string;
 }) {
   const pending = members.filter((m) => !voted.has(m.id));
   return (
@@ -175,13 +176,15 @@ export function Participation({
         })}
       </ul>
       {!closed && pending.length > 0 && (
-        <Button onClick={() => onNudge(pending)}>Dar un toque a {pending.map((m) => m.name).join(" y ")}</Button>
+        <a href={nudgeHref(pending)} target="_blank" rel="noreferrer" className={buttonClasses({ variant: "secondary", block: true })}>
+          Dar un toque a {pending.map((m) => m.name).join(" y ")}
+        </a>
       )}
     </Card>
   );
 }
 
-export function BallotsList({ ballots, cityOf, members }: { ballots: { memberId: string; ranking: string[] }[]; cityOf: (id: string) => string; members: (id: string) => MockMember }) {
+export function BallotsList({ ballots, cityOf, members }: { ballots: { memberId: string; ranking: string[] }[]; cityOf: (id: string) => string; members: (id: string) => Person }) {
   return (
     <Card variant="muted" className="flex flex-col gap-3">
       <Heading as="h2" size="card">

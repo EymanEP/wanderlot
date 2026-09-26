@@ -6,7 +6,8 @@ import { MemoryRouter } from "react-router";
 import { ToastProvider } from "@wanderlot/ui";
 import { App } from "../src/App.tsx";
 import { AuthProvider, mockAuthClient } from "../src/data/auth.tsx";
-import { SiteProvider } from "../src/data/store.tsx";
+import { mockSource } from "../src/data/source.ts";
+import { SourceProvider } from "../src/data/store.tsx";
 
 afterEach(cleanup);
 
@@ -15,9 +16,9 @@ function renderAt(path: string, closed = false, signedIn = true) {
     <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
         <AuthProvider client={mockAuthClient(signedIn)}>
-          <SiteProvider closed={closed}>
+          <SourceProvider source={mockSource({ closed })}>
             <App />
-          </SiteProvider>
+          </SourceProvider>
         </AuthProvider>
       </ToastProvider>
     </MemoryRouter>,

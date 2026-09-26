@@ -140,3 +140,24 @@ export function initials(name: string): string {
 export function pointsFor(position: number): number {
   return Math.max(0, 3 - position);
 }
+
+export type AvatarTintName = "sand" | "lilac" | "mint" | "sky" | "rose";
+const TINTS: AvatarTintName[] = ["sand", "lilac", "mint", "sky", "rose"];
+
+// A stable colour per person, so the same friend always looks the same.
+export function avatarTint(id: string): AvatarTintName {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TINTS[h % TINTS.length]!;
+}
+
+// Cities for common Spanish departure airports; anything else shows its code.
+const AIRPORT_CITY: Record<string, string> = {
+  MAD: "Madrid", BCN: "Barcelona", VLC: "Valencia", SVQ: "Sevilla", AGP: "Málaga", BIO: "Bilbao", ALC: "Alicante",
+  PMI: "Palma", ZAZ: "Zaragoza", SCQ: "Santiago", OVD: "Asturias", VGO: "Vigo", LPA: "Gran Canaria", TFN: "Tenerife Norte",
+  IBZ: "Ibiza", GRX: "Granada", SDR: "Santander", VIT: "Vitoria", PNA: "Pamplona", LEI: "Almería",
+};
+
+export function airportCity(iata: string): string {
+  return AIRPORT_CITY[iata] ?? iata;
+}

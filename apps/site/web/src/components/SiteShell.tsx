@@ -3,7 +3,8 @@ import { NavLink, Outlet, useLocation, useParams } from "react-router";
 import { rangeLabel } from "@wanderlot/core";
 import { Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
 import { AccountMenu } from "./AccountMenu.tsx";
-import { useSite } from "../data/store.tsx";
+import { useAuth } from "../data/auth.tsx";
+import { PlanProvider, useSite } from "../data/store.tsx";
 
 function useNav() {
   const { planId } = useParams();
@@ -15,9 +16,20 @@ function useNav() {
   ];
 }
 
-// Header on wide screens; a bottom tab bar on phones, where the group votes.
+// Loads the plan in the address, then draws the chrome around its pages.
 export function SiteShell() {
+  const { planId = "" } = useParams();
+  return (
+    <PlanProvider planId={planId}>
+      <Chrome />
+    </PlanProvider>
+  );
+}
+
+// Header on wide screens; a bottom tab bar on phones, where the group votes.
+function Chrome() {
   const { plan, me } = useSite();
+  const { group } = useAuth();
   const nav = useNav();
   const { pathname } = useLocation();
 
@@ -27,7 +39,7 @@ export function SiteShell() {
     <Page>
       <TopBar
         variant="site"
-        brand={<Brand size="lg" sub="Grupo 51" />}
+        brand={<Brand size="lg" sub={group.groupName} />}
         center={<InfoPill items={[plan.name, rangeLabel(plan.dateFrom, plan.dateTo), `${plan.partySize} personas`]} />}
         nav={
           <nav aria-label="Secciones" className="hidden items-center gap-6 md:flex">

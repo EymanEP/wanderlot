@@ -225,6 +225,27 @@ describe("with everyone signed in", () => {
     expect((await admin(`/plans/${PLAN}`, "PUT", snapshot(four()))).status).toBe(200);
   });
 
+  describe("the group", () => {
+    it("shows its name publicly and lets the panel change it", async () => {
+      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Wanderlot", organiserName: "quien organiza" });
+      expect((await admin("/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" })).status).toBe(200);
+      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
+      expect(await (await admin("/settings", "GET")).json()).toMatchObject({ defaultOrigin: "MAD" });
+      expect((await admin("/settings", "PUT", { groupName: "" })).status).toBe(400);
+    });
+
+    it("lists plans with their state and winner", async () => {
+      await admin(`/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
+      for (const f of FRIENDS) await as(f, `/${PLAN}/ballot`, "PUT", { ranking: ["nap", "lis", "opo"] });
+      const list = (await (await as("ana", "")).json()) as any[];
+      expect(list).toEqual([
+        { id: PLAN, name: "Noviembre 2026", status: "closed", dateFrom: "2026-11-07", dateTo: "2026-11-14", partySize: 6, winnerCity: "nap" },
+      ]);
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.myBallot).toEqual({ ranking: ["nap", "lis", "opo"], updatedAt: clock.toISOString() });
+    });
+  });
+
   describe("publishing", () => {
     it("rejects an invalid snapshot", async () => {
       expect((await admin(`/plans/${PLAN}`, "PUT", snapshot([destination("lis", { totalPerPersonCents: -1 })]))).status).toBe(400);
@@ -309,9 +330,23 @@ describe("with everyone signed in", () => {
         clock = new Date(clock.getTime() + (i + 1) * 1000);
         await post("dani", { destinationId: d, body: `Me gusta ${d}` });
       }
-      const recent = (await (await as("eva", `/${PLAN}/comments`)).json()) as any[];
+      const recent = (await (await as("eva", `/${PLAN}/comments?limit=3`)).json()) as any[];
       expect(recent.map((c) => c.destinationId)).toEqual(["opo", "nap", "lis"]);
       expect(recent[2].body).toBe("Yo, llueve poco");
+      expect(((await (await as("eva", `/${PLAN}/comments`)).json()) as any[]).length).toBe(4);
+      expect(((await (await as("eva", `/${PLAN}/comments?destinationId=lis`)).json()) as any[]).length).toBe(2);
+    });
+
+    it("counts likes per person and shows mine", async () => {
+      const root = (await (await as("ana", `/${PLAN}/comments`, "POST", { destinationId: "lis", body: "¿Lisboa?" })).json()) as any;
+      expect(root).toMatchObject({ likes: 0, likedByMe: false });
+      for (const m of ["bea", "carlos", "bea"]) await as(m, `/${PLAN}/comments/${root.id}/like`, "PUT", { on: true });
+      const forBea = (await (await as("bea", `/${PLAN}/comments`)).json()) as any[];
+      expect(forBea[0]).toMatchObject({ likes: 2, likedByMe: true });
+      await as("bea", `/${PLAN}/comments/${root.id}/like`, "PUT", { on: false });
+      const forAna = (await (await as("ana", `/${PLAN}/comments`)).json()) as any[];
+      expect(forAna[0]).toMatchObject({ likes: 1, likedByMe: false });
+      expect((await as("ana", `/${PLAN}/comments/nope/like`, "PUT", { on: true })).status).toBe(404);
     });
   });
 });

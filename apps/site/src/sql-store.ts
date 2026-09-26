@@ -1,6 +1,6 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
-import type { Ballot, Comment, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
 import type { Flow, Invite, Passkey, Session, SiteStore, StoredPlan } from "./store.ts";
 
 export type Row = Record<string, unknown>;
@@ -26,17 +26,29 @@ export class SqlStore implements SiteStore {
     return this.sql.run(sql, ...args);
   }
 
+  // --- settings ------------------------------------------------------------
+
+  async settings(): Promise<Partial<GroupSettings>> {
+    const rows = await this.all("select key, value from settings");
+    return Object.fromEntries(rows.map((r) => [r.key as string, JSON.parse(r.value as string)]));
+  }
+
+  async putSettings(s: GroupSettings) {
+    await this.run("delete from settings");
+    for (const [k, v] of Object.entries(s)) {
+      if (v !== undefined) await this.run("insert into settings (key, value) values (?, ?)", k, JSON.stringify(v));
+    }
+  }
+
   // --- plans ---------------------------------------------------------------
+
+  async plans() {
+    return (await this.all("select * from plans order by published_at desc")).map((row) => ({ id: row.id as string, ...toPlan(row) }));
+  }
 
   async getPlan(id: string): Promise<StoredPlan | undefined> {
     const row = await this.get("select * from plans where id = ?", id);
-    if (!row) return undefined;
-    return {
-      snapshot: JSON.parse(row.snapshot as string) as Snapshot,
-      status: row.status as PlanStatus,
-      voteDeadline: (row.vote_deadline as string | null) ?? undefined,
-      winnerDestinationId: (row.winner_destination_id as string | null) ?? undefined,
-    };
+    return row ? toPlan(row) : undefined;
   }
 
   async upsertSnapshot(s: Snapshot): Promise<void> {
@@ -241,13 +253,45 @@ export class SqlStore implements SiteStore {
     );
   }
 
-  async commentsFor(planId: string, destinationId: string) {
-    return (await this.all("select * from comments where plan_id = ? and destination_id = ? order by created_at desc", planId, destinationId)).map(toComment);
+  async comments(planId: string, opts: { destinationId?: string; limit?: number } = {}) {
+    const args: Value[] = [planId];
+    let sql = "select * from comments where plan_id = ?";
+    if (opts.destinationId) {
+      sql += " and destination_id = ?";
+      args.push(opts.destinationId);
+    }
+    sql += " order by created_at desc, rowid desc";
+    if (opts.limit) {
+      sql += " limit ?";
+      args.push(opts.limit);
+    }
+    return (await this.all(sql, ...args)).map(toComment);
   }
 
-  async recentComments(planId: string, limit: number) {
-    return (await this.all("select * from comments where plan_id = ? order by created_at desc limit ?", planId, limit)).map(toComment);
+  async setLike(commentId: string, memberId: string, on: boolean, at: string) {
+    if (on) await this.run("insert into comment_likes (comment_id, member_id, created_at) values (?, ?, ?) on conflict do nothing", commentId, memberId, at);
+    else await this.run("delete from comment_likes where comment_id = ? and member_id = ?", commentId, memberId);
   }
+
+  async likes(planId: string, memberId: string) {
+    const rows = await this.all(
+      `select l.comment_id as id, count(*) as n, sum(case when l.member_id = ? then 1 else 0 end) as mine
+       from comment_likes l join comments c on c.id = l.comment_id
+       where c.plan_id = ? group by l.comment_id`,
+      memberId,
+      planId,
+    );
+    return new Map(rows.map((r) => [r.id as string, { count: Number(r.n), mine: Number(r.mine) > 0 }]));
+  }
+}
+
+function toPlan(row: Row): StoredPlan {
+  return {
+    snapshot: JSON.parse(row.snapshot as string) as Snapshot,
+    status: row.status as PlanStatus,
+    voteDeadline: (row.vote_deadline as string | null) ?? undefined,
+    winnerDestinationId: (row.winner_destination_id as string | null) ?? undefined,
+  };
 }
 
 function toInvite(r: Row): Invite {

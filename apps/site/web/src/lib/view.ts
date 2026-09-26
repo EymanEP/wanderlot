@@ -10,7 +10,7 @@ import {
   type Destination,
   type Plan,
 } from "@wanderlot/core";
-import type { MockMember } from "@wanderlot/mocks";
+import type { Person } from "../data/store.tsx";
 import type { Trust } from "@wanderlot/ui";
 
 export const PROVIDER_LABEL = { duffel: "Duffel", amadeus: "Amadeus", kiwi: "Kiwi" } as const;
@@ -43,8 +43,9 @@ export function pointsWord(n: number): string {
   return n === 1 ? "PUNTO" : "PUNTOS";
 }
 
-export function memberOf(members: MockMember[], id: string): MockMember {
-  return members.find((m) => m.id === id) ?? { id, name: id, initials: id.slice(0, 2).toUpperCase(), tint: "sand" };
+export function memberOf(members: Person[], id: string): Person {
+  // Someone who has since left the group still shows on old comments.
+  return members.find((m) => m.id === id) ?? { id, name: "Alguien", initials: "?", tint: "sand" };
 }
 
 export function sourcesFor(d: Destination): string[] {

@@ -1,6 +1,5 @@
 import { Link, useParams } from "react-router";
 import { euros, longDate, pointsFor, tripLabel } from "@wanderlot/core";
-import { photoLabels } from "@wanderlot/mocks";
 import {
   BulletList,
   Card,
@@ -15,13 +14,15 @@ import {
 } from "@wanderlot/ui";
 import { CommentComposer, CommentThread } from "../components/Comments.tsx";
 import { FlightLegRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
+import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { memberOf, perNightLabel, rankLabel, sourcesFor, trustOf } from "../lib/view.ts";
 
 export function DestinoPage() {
   const site = useSite();
   const { planId, destinationId } = useParams();
-  const { plan, destinations, members, me, now, myRanking, ballots, result, closed } = site;
+  const { plan, destinations, members, me, now, myRanking, voted, result, closed } = site;
+  const { group } = useAuth();
   const base = `/p/${planId}`;
   const d = destinations.find((x) => x.id === destinationId);
 
@@ -40,13 +41,12 @@ export function DestinoPage() {
     );
   }
 
-  const photos = photoLabels[d.id] ?? { hero: `Foto de ${d.place.city}`, tiles: ["Foto", "Foto", "Foto"], count: 0 };
   const myPos = myRanking.indexOf(d.id);
   const myPoints = myPos >= 0 ? pointsFor(myPos) : 0;
   const trust = trustOf(d, now);
   const comments = site.comments.filter((c) => c.destinationId === d.id);
   const month = new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" }).format(new Date(`${plan.dateFrom}T12:00:00Z`));
-  const approved = d.approvedAt ? ` · aprobado por Eyman el ${longDate(d.approvedAt)}` : "";
+  const approved = d.approvedAt ? ` · aprobado por ${group.organiserName} el ${longDate(d.approvedAt)}` : "";
   const days = `del ${Number(plan.dateFrom.slice(8))} al ${Number(plan.dateTo.slice(8))} de ${month}`;
 
   return (
@@ -74,7 +74,7 @@ export function DestinoPage() {
         }
       />
 
-      <PhotoMosaic {...photos} />
+      <PhotoMosaic city={d.place.city} photos={d.photos} landmarks={d.see.map((s) => s.title)} />
 
       <section aria-label="Resumen" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatTile label="Vuelo" value={tripLabel(d.outbound)} />
@@ -118,8 +118,8 @@ export function DestinoPage() {
         <aside className="flex shrink-0 flex-col gap-4 lg:w-[380px]">
           <VoteStatusCard
             closed={closed}
-            deadline={longDate(plan.voteDeadline!)}
-            cast={ballots.length}
+            deadline={plan.voteDeadline ? longDate(plan.voteDeadline) : null}
+            cast={voted.size}
             of={plan.partySize}
             myPoints={myPoints}
             {...(result ? { points: result.rows.find((r) => r.id === d.id)?.points ?? 0 } : {})}

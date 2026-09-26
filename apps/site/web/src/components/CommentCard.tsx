@@ -1,9 +1,10 @@
 import { Link } from "react-router";
 import { Avatar, Card } from "@wanderlot/ui";
-import type { MockComment, MockMember } from "@wanderlot/mocks";
+import type { CommentView } from "@wanderlot/core";
+import type { Person } from "../data/store.tsx";
 
 // A comment out of context, on the Plan page: who, where, what.
-export function CommentCard({ comment, author, place, href }: { comment: MockComment; author: MockMember; place: string; href: string }) {
+export function CommentCard({ comment, author, place, href }: { comment: CommentView; author: Person; place: string; href: string }) {
   return (
     <Card as="article" variant="flat" padding="none" radius="tile" className="flex flex-col gap-[9px] p-[18px]">
       <div className="flex items-center gap-2.5">

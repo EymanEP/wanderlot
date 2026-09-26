@@ -1,21 +1,63 @@
 // The building blocks of a destination page.
 import { Link } from "react-router";
-import { euros, eurosGrouped, localTime, shortDate, stopsLabel, stayTotalCents, type FlightLeg, type Stay } from "@wanderlot/core";
+import { euros, eurosGrouped, localTime, shortDate, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
 import { Button, Card, Heading, LockIcon, Photo, Text, buttonClasses, cn, useToast } from "@wanderlot/ui";
 
-export function PhotoMosaic({ hero, tiles, count }: { hero: string; tiles: string[]; count: number }) {
+export interface MosaicProps {
+  city: string;
+  photos: PhotoData[];
+  // Placeholder names for the tiles until photos are chosen: the landmarks.
+  landmarks: string[];
+}
+
+const SOURCE_NAME = { unsplash: "Unsplash", pexels: "Pexels", wikimedia: "Wikimedia Commons" } as const;
+
+// "Foto: Ana Pérez · Unsplash": every photo carries its credit (SPEC §6).
+function Credit({ photo }: { photo: PhotoData }) {
+  return (
+    <span className="rounded-md bg-ink/60 px-2 py-1 text-[11px] text-white">
+      Foto:{" "}
+      <a href={photo.authorUrl ?? photo.sourceUrl} target="_blank" rel="noreferrer" className="text-white underline hover:text-white">
+        {photo.author}
+      </a>{" "}
+      ·{" "}
+      <a href={photo.sourceUrl} target="_blank" rel="noreferrer" className="text-white underline hover:text-white">
+        {SOURCE_NAME[photo.source]}
+      </a>
+      {photo.source === "wikimedia" ? ` · ${photo.license}` : ""}
+    </span>
+  );
+}
+
+export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
   const toast = useToast();
+  const [hero, ...rest] = photos;
+  const tiles = [0, 1, 2].map((i) => ({ photo: rest[i], label: landmarks[i] ?? city }));
   return (
     <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
-      <Photo label={hero} className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1" />
-      {tiles.slice(0, 3).map((t, i) => (
-        <Photo key={t} label={t} labelPosition="center" className={cn("rounded-xl", i > 0 && "max-md:hidden")} />
+      <Photo
+        label={hero ? undefined : `Foto de ${city}`}
+        src={hero?.url}
+        alt={hero?.alt}
+        className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1"
+        bottom={hero ? <Credit photo={hero} /> : undefined}
+      />
+      {tiles.map((t, i) => (
+        <Photo
+          key={i}
+          label={t.photo ? undefined : t.label}
+          src={t.photo?.url}
+          alt={t.photo?.alt}
+          labelPosition="center"
+          className={cn("rounded-xl", i > 0 && "max-md:hidden", i === 2 && "hidden")}
+          bottom={t.photo ? <Credit photo={t.photo} /> : undefined}
+        />
       ))}
       <Photo
         className="rounded-xl p-3"
         bottom={
-          <Button size="sm" className="shadow-chip" onClick={() => toast("Las fotos llegarán cuando elijamos las definitivas")}>
-            Ver las {count} fotos
+          <Button size="sm" className="shadow-chip" onClick={() => toast(photos.length ? `${photos.length} fotos de ${city}` : "Las fotos llegarán cuando se elijan")}>
+            {photos.length ? `Ver las ${photos.length} fotos` : "Sin fotos todavía"}
           </Button>
         }
       />
@@ -64,7 +106,7 @@ export function StayOption({ stay, nights, partySize }: { stay: Stay; nights: nu
 
 export interface VoteStatusCardProps {
   closed: boolean;
-  deadline: string; // "10 de octubre"
+  deadline: string | null; // "10 de octubre"; null before the vote opens
   cast: number;
   of: number;
   myPoints: number; // 0 if not in my ranking
@@ -83,8 +125,10 @@ export function VoteStatusCard({ closed, deadline, cast, of, myPoints, points, v
       </div>
       <Text size="sm">
         {closed
-          ? `Se llevó ${points ?? 0} puntos de 36.`
-          : `Los puntos de cada destino se ven cuando cierre, el ${deadline}. Van ${cast} de ${of} votos.`}
+          ? `Se llevó ${points ?? 0} puntos de ${of * 6}.`
+          : deadline
+            ? `Los puntos de cada destino se ven cuando cierre, el ${deadline}. Van ${cast} de ${of} votos.`
+            : "La votación aún no está abierta."}
       </Text>
       <div className="flex items-center justify-between gap-3 border-t border-line-faint pt-[13px]">
         <span className="text-[13px] text-ink-2">{myPoints ? `Le diste ${myPoints} ${myPoints === 1 ? "punto" : "puntos"}` : "Tú no le has dado puntos"}</span>

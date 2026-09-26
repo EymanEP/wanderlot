@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { relativeTime } from "@wanderlot/core";
-import type { MockComment, MockMember } from "@wanderlot/mocks";
+import type { CommentView } from "@wanderlot/core";
+import type { Person } from "../data/store.tsx";
 import { Avatar, Button, cn, controlClasses } from "@wanderlot/ui";
 
 export interface CommentComposerProps {
-  me: MockMember;
+  me: Person;
   onSubmit: (body: string) => void;
   placeholder?: string;
   size?: "md" | "sm";
@@ -44,9 +45,9 @@ export function CommentComposer({ me, onSubmit, placeholder = "Escribe un coment
 }
 
 export interface CommentThreadProps {
-  comments: MockComment[]; // this destination's, any order
-  members: (id: string) => MockMember;
-  me: MockMember;
+  comments: CommentView[]; // this destination's, any order
+  members: (id: string) => Person;
+  me: Person;
   now: Date;
   liked: string[];
   onLike: (id: string) => void;
@@ -119,7 +120,7 @@ export function CommentThread({ comments, members, me, now, liked, onLike, onRep
   );
 }
 
-function Bubble({ comment, author, now, tone, children }: { comment: MockComment; author: MockMember; now: Date; tone: "filled" | "outline"; children?: ReactNode }) {
+function Bubble({ comment, author, now, tone, children }: { comment: CommentView; author: Person; now: Date; tone: "filled" | "outline"; children?: ReactNode }) {
   return (
     <div className={cn("flex min-w-0 flex-1 flex-col gap-[5px] rounded-2xl px-[18px] py-3.5", tone === "filled" ? "bg-surface-2" : "border border-line-soft")}>
       <div className="flex items-baseline gap-2.5">

@@ -174,3 +174,28 @@ export const Comment = z.object({
   createdAt: isoDateTime,
 });
 export type Comment = z.infer<typeof Comment>;
+
+// Who the site belongs to (SPEC §11): set by the organiser from the panel.
+export const GroupSettings = z.object({
+  groupName: z.string().trim().min(1).max(60),
+  organiserName: z.string().trim().min(1).max(60),
+  defaultOrigin: iata.optional(),
+});
+export type GroupSettings = z.infer<typeof GroupSettings>;
+
+export const DEFAULT_SETTINGS: GroupSettings = { groupName: "Wanderlot", organiserName: "quien organiza" };
+
+// A plan as the site lists it, without its destinations.
+export const PlanSummary = z.object({
+  id,
+  name: z.string(),
+  status: PlanStatus,
+  dateFrom: isoDate,
+  dateTo: isoDate,
+  partySize: z.number().int(),
+  winnerCity: z.string().nullable(),
+});
+export type PlanSummary = z.infer<typeof PlanSummary>;
+
+// A comment as members see it.
+export type CommentView = Comment & { likes: number; likedByMe: boolean };

@@ -13,7 +13,18 @@ import {
   type AuthenticationResponseJSON,
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
-import { Snapshot, effectiveStatus, freezeViolation, tally, validateRanking, type Member } from "@wanderlot/core";
+import {
+  DEFAULT_SETTINGS,
+  GroupSettings,
+  Snapshot,
+  effectiveStatus,
+  freezeViolation,
+  tally,
+  validateRanking,
+  type CommentView,
+  type Member,
+  type PlanSummary,
+} from "@wanderlot/core";
 import { base64url, fromBase64url, randomToken, safeEqual, sha256 } from "./crypto.ts";
 import type { Invite, SiteStore } from "./store.ts";
 
@@ -123,6 +134,13 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   app.get("/entrar", page);
   app.get("/i/:token", page); // never consumes the invite: link previews are harmless
   app.get("/p/*", page);
+
+  // --- the group (public): what the sign-in screen may say (SPEC §5) ---------
+
+  app.get("/api/site", async (c) => {
+    const s = { ...DEFAULT_SETTINGS, ...(await store.settings()) };
+    return c.json({ groupName: s.groupName, organiserName: s.organiserName });
+  });
 
   // --- invites (public) --------------------------------------------------------
 
@@ -290,6 +308,15 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ ok: true });
   });
 
+  admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));
+
+  admin.put("/settings", async (c) => {
+    const body = GroupSettings.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid settings", issues: body.error.issues }, 400);
+    await store.putSettings(body.data);
+    return c.json(body.data);
+  });
+
   admin.put("/members", async (c) => {
     const body = z
       .array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/), name: z.string().trim().min(1).max(60) }))
@@ -362,17 +389,31 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     await next();
   });
 
+  // Every published plan, newest first, for the plan switcher and footer.
+  api.get("/", async (c) => {
+    const list: PlanSummary[] = [];
+    for (const p of await store.plans()) {
+      const settled = (await settle(p.id))!;
+      const winner = settled.snapshot.destinations.find((d) => d.id === settled.winnerDestinationId);
+      const { plan } = settled.snapshot;
+      list.push({ id: p.id, name: plan.name, status: settled.status, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: plan.partySize, winnerCity: winner?.place.city ?? null });
+    }
+    return c.json(list);
+  });
+
   api.get("/:planId", async (c) => {
     const plan = await settle(c.req.param("planId"));
     if (!plan) return c.json({ error: "not found" }, 404);
     const me = c.get("member");
+    const mine = plan.ballots.find((b) => b.memberId === me.id);
     const voted = new Set(plan.ballots.map((b) => b.memberId));
     return c.json({
       plan: { ...plan.snapshot.plan, status: plan.status, voteDeadline: plan.voteDeadline, winnerDestinationId: plan.winnerDestinationId },
       destinations: plan.snapshot.destinations,
       publishedAt: plan.snapshot.publishedAt,
       me,
-      myRanking: plan.ballots.find((b) => b.memberId === me.id)?.ranking ?? null,
+      myRanking: mine?.ranking ?? null,
+      myBallot: mine ? { ranking: mine.ranking, updatedAt: mine.updatedAt } : null,
       // Who has voted is always visible; what they voted is not (SPEC §4).
       participation: (await store.members()).map((m) => ({ ...m, voted: voted.has(m.id) })),
     });
@@ -406,11 +447,27 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     });
   });
 
+  // All of a plan's comments with likes, newest first. ?destinationId= narrows
+  // to one destination, ?limit= to the latest few.
   api.get("/:planId/comments", async (c) => {
     const planId = c.req.param("planId");
     if (!(await store.getPlan(planId))) return c.json({ error: "not found" }, 404);
-    const destinationId = c.req.query("destinationId");
-    return c.json(destinationId ? await store.commentsFor(planId, destinationId) : await store.recentComments(planId, RECENT_COMMENTS));
+    const limit = Number(c.req.query("limit")) || undefined;
+    const destinationId = c.req.query("destinationId") || undefined;
+    const likes = await store.likes(planId, c.get("member").id);
+    const list = await store.comments(planId, { ...(destinationId ? { destinationId } : {}), ...(limit ? { limit: Math.min(limit, 100) } : {}) });
+    return c.json(list.map((cm): CommentView => ({ ...cm, likes: likes.get(cm.id)?.count ?? 0, likedByMe: likes.get(cm.id)?.mine ?? false })));
+  });
+
+  api.put("/:planId/comments/:commentId/like", async (c) => {
+    const { planId, commentId } = c.req.param();
+    const comment = await store.getComment(commentId);
+    if (!comment || comment.planId !== planId) return c.json({ error: "not found" }, 404);
+    const body = z.object({ on: z.boolean() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {on}" }, 400);
+    await store.setLike(commentId, c.get("member").id, body.data.on, iso());
+    const likes = (await store.likes(planId, c.get("member").id)).get(commentId);
+    return c.json({ likes: likes?.count ?? 0, likedByMe: likes?.mine ?? false });
   });
 
   api.post("/:planId/comments", async (c) => {
@@ -440,7 +497,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       ...(parentId ? { parentId } : {}),
     };
     await store.addComment(comment);
-    return c.json(comment, 201);
+    return c.json({ ...comment, likes: 0, likedByMe: false } satisfies CommentView, 201);
   });
 
   app.route("/api/plans", api);

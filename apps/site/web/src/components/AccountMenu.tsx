@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Avatar, Button } from "@wanderlot/ui";
-import type { MockMember } from "@wanderlot/mocks";
+import type { Person } from "../data/store.tsx";
 import { useAuth } from "../data/auth.tsx";
 
 // The avatar in the header: who you are, and signing this device out.
-export function AccountMenu({ me }: { me: MockMember }) {
+export function AccountMenu({ me }: { me: Person }) {
   const auth = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);

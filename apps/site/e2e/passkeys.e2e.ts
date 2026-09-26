@@ -54,7 +54,11 @@ const admin = async (path: string, method: string, body?: unknown) => {
 
 const browser = await chromium.launch();
 try {
-  await admin("/members", "PUT", [{ id: "ana", name: "Ana" }]);
+  // The organiser names the group, adds Ana, publishes a plan and opens the vote.
+  await admin("/settings", "PUT", { groupName: "Grupo E2E", organiserName: "Eyman" });
+  await admin("/members", "PUT", [{ id: "ana", name: "Ana" }, { id: "bea", name: "Bea" }]);
+  await admin("/plans/noviembre-2026", "PUT", snapshot([destination("lis"), destination("nap"), destination("opo")]));
+  await admin("/plans/noviembre-2026/open-vote", "POST", { deadline: "2099-01-01T00:00:00Z" });
   const { token } = await admin("/members/ana/invite", "POST");
 
   const context = await browser.newContext();
@@ -68,6 +72,7 @@ try {
   // 1. The invite: opening it twice changes nothing; creating the passkey signs her in.
   await page.goto(`${ORIGIN}/i/${token}`);
   await page.reload();
+  await page.getByText("Eyman te ha invitado a Grupo E2E").waitFor();
   await page.getByRole("heading", { name: "¿Eres Ana?" }).waitFor();
   await page.getByRole("button", { name: "Crear mi passkey" }).click();
   await page.waitForURL(`${ORIGIN}/p/noviembre-2026`);
@@ -75,20 +80,27 @@ try {
   assert.deepEqual(me, { member: { id: "ana", name: "Ana" } });
   console.log("✓ invite → passkey → signed in");
 
-  // 2. Publishing, voting and commenting run through the same storage.
-  await admin("/plans/noviembre-2026", "PUT", snapshot([destination("lis"), destination("nap"), destination("opo")]));
-  await admin("/plans/noviembre-2026/open-vote", "POST", { deadline: "2099-01-01T00:00:00Z" });
-  const ballot = await page.request.put(`${ORIGIN}/api/plans/noviembre-2026/ballot`, { data: { ranking: ["nap", "lis", "opo"] } });
-  assert.equal(ballot.status(), 200);
-  const comment = await page.request.post(`${ORIGIN}/api/plans/noviembre-2026/comments`, { data: { destinationId: "nap", body: "Pompeya sí o sí" } });
-  assert.equal(comment.status(), 201);
+  // 2. The published plan, in the real UI: vote and comment through the screens.
+  await page.getByRole("heading", { level: 1, name: "Noviembre 2026" }).waitFor();
+  await page.getByText("0 de 6 habéis votado").waitFor();
+  await page.getByRole("link", { name: "Repartir mis puntos" }).click();
+  for (const points of [3, 2, 1]) await page.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();
+  await page.getByRole("button", { name: "Votar" }).click();
+  await page.getByText("Reparto guardado").waitFor();
   const view = await (await page.request.get(`${ORIGIN}/api/plans/noviembre-2026`)).json();
-  assert.deepEqual(view.myRanking, ["nap", "lis", "opo"]);
+  assert.equal(view.myRanking.length, 3);
   assert.equal(view.participation.find((p: { id: string }) => p.id === "ana").voted, true);
-  const comments = await (await page.request.get(`${ORIGIN}/api/plans/noviembre-2026/comments`)).json();
-  assert.equal(comments[0].body, "Pompeya sí o sí");
+
+  await page.goto(`${ORIGIN}/p/noviembre-2026/destinos/nap`);
+  await page.getByPlaceholder("Escribe un comentario…").fill("Pompeya sí o sí");
+  await page.getByRole("button", { name: "Comentar" }).click();
+  await page.getByText("Pompeya sí o sí").waitFor();
+  await page.getByRole("button", { name: "Me gusta · 0" }).click();
+  await page.getByRole("button", { name: "Me gusta · 1" }).waitFor();
+  await page.reload();
+  await page.getByRole("button", { name: "Me gusta · 1" }).waitFor();
   assert.equal((await page.request.get(`${ORIGIN}/api/plans/noviembre-2026/results`)).status(), 403);
-  console.log("✓ publish, vote and comment");
+  console.log("✓ published plan shown; voted, commented and liked in the UI");
 
   // 3. The invite is spent.
   await page.goto(`${ORIGIN}/i/${token}`);

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
-import { plan } from "@wanderlot/mocks";
 import { Button, Heading, LockIcon, Notice, Text } from "@wanderlot/ui";
 import { AuthLayout } from "../components/AuthLayout.tsx";
 import { AuthError, useAuth } from "../data/auth.tsx";
@@ -11,7 +10,7 @@ export function SignInPage() {
   const location = useLocation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const back = (location.state as { from?: string } | null)?.from ?? `/p/${plan.id}`;
+  const back = (location.state as { from?: string } | null)?.from ?? "/";
 
   if (auth.state.status === "in" && !busy) return <Navigate to={back} replace />;
 
@@ -44,7 +43,7 @@ export function SignInPage() {
         {busy ? "Esperando a tu passkey…" : "Entrar"}
       </Button>
       <Text size="sm" tone="muted" className="border-t border-line-faint pt-4">
-        ¿Es la primera vez, o estás en un móvil nuevo sin tu passkey? Pide una invitación a quien organiza el grupo.
+        ¿Es la primera vez, o estás en un móvil nuevo sin tu passkey? Pide una invitación a {auth.group.organiserName}.
       </Text>
     </AuthLayout>
   );

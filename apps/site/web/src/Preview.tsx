@@ -4,23 +4,25 @@
 import { useMemo, useState } from "react";
 import { MemoryRouter, useNavigate } from "react-router";
 import { plan } from "@wanderlot/mocks";
+import { mockSource } from "./data/source.ts";
 import { Chip, ToastProvider } from "@wanderlot/ui";
 import { App } from "./App.tsx";
 import { AuthProvider, mockAuthClient, useAuth } from "./data/auth.tsx";
-import { SiteProvider } from "./data/store.tsx";
+import { SourceProvider } from "./data/store.tsx";
 
 export function Preview() {
   const [closed, setClosed] = useState(false);
   const auth = useMemo(() => mockAuthClient(), []);
+  const source = useMemo(() => mockSource({ closed }), [closed]);
   return (
     // Remount on toggle so the store starts from the matching mock state.
     <MemoryRouter key={String(closed)} initialEntries={[`/p/${plan.id}`]}>
       <ToastProvider>
         <AuthProvider client={auth}>
           <PreviewBar closed={closed} setClosed={setClosed} />
-          <SiteProvider closed={closed}>
+          <SourceProvider source={source}>
             <App />
-          </SiteProvider>
+          </SourceProvider>
         </AuthProvider>
       </ToastProvider>
     </MemoryRouter>

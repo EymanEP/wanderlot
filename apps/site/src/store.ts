@@ -1,6 +1,6 @@
 // What the site keeps, behind one async interface: node:sqlite implements it
 // (sqlite.ts) and Cloudflare D1 (d1.ts) implement it, from the same migrations/.
-import type { Ballot, Comment, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
 
 export interface StoredPlan {
   snapshot: Snapshot;
@@ -46,8 +46,13 @@ export interface Flow {
 }
 
 export interface SiteStore {
+  // settings
+  settings(): Promise<Partial<GroupSettings>>;
+  putSettings(s: GroupSettings): Promise<void>;
+
   // plans
   getPlan(id: string): Promise<StoredPlan | undefined>;
+  plans(): Promise<(StoredPlan & { id: string })[]>;
   upsertSnapshot(s: Snapshot): Promise<void>;
   setStatus(planId: string, status: PlanStatus, fields?: { voteDeadline?: string; winnerDestinationId?: string | null }): Promise<void>;
 
@@ -92,6 +97,9 @@ export interface SiteStore {
   // comments
   getComment(id: string): Promise<Comment | undefined>;
   addComment(c: Comment): Promise<void>;
-  commentsFor(planId: string, destinationId: string): Promise<Comment[]>;
-  recentComments(planId: string, limit: number): Promise<Comment[]>;
+  // Newest first; optionally one destination's, optionally only the latest few.
+  comments(planId: string, opts?: { destinationId?: string; limit?: number }): Promise<Comment[]>;
+  setLike(commentId: string, memberId: string, on: boolean, at: string): Promise<void>;
+  // Like counts for a plan's comments, and which ones this member liked.
+  likes(planId: string, memberId: string): Promise<Map<string, { count: number; mine: boolean }>>;
 }

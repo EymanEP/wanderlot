@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 import { daysUntil, deadlineLabel, longDate } from "@wanderlot/core";
 import { Button, Card, EmptyState, Footer, Heading, Main, SectionHeader, Text, useToast } from "@wanderlot/ui";
 import { BallotsList, LockedScoreboard, OutsideRow, Participation, RankRow, Scoreboard } from "../components/Voting.tsx";
+import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { add, isComplete, moveDown, moveUp, pointsIfAdded, remove, sameRanking } from "../lib/ranking.ts";
 import { memberOf, names } from "../lib/view.ts";
@@ -11,24 +12,47 @@ export function VotacionPage() {
   const site = useSite();
   const toast = useToast();
   const { planId } = useParams();
-  const { plan, destinations, members, me, ballots, myRanking, myBallot, result, closed, now } = site;
+  const { plan, destinations, members, me, voted, closedBallots, myRanking, myBallot, result, closed, now } = site;
+  const { group } = useAuth();
+  const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<string[]>(myRanking);
   const base = `/p/${planId}`;
 
   const inVote = destinations.filter((d) => d.inVote);
   const byId = (id: string) => inVote.find((d) => d.id === id)!;
   const cityOf = (id: string) => destinations.find((d) => d.id === id)?.place.city ?? id;
-  const deadline = plan.voteDeadline!;
+  const deadline = plan.voteDeadline ?? "";
   const outside = inVote.filter((d) => !draft.includes(d.id));
   const complete = isComplete(draft, inVote.length);
   const dirty = !sameRanking(draft, myRanking);
   const days = daysUntil(deadline, now);
   const winner = result?.winnerId ? cityOf(result.winnerId) : null;
 
-  const save = () => {
-    site.saveRanking(draft);
-    toast("Reparto guardado");
+  const save = async () => {
+    setSaving(true);
+    try {
+      await site.saveRanking(draft);
+      toast("Reparto guardado");
+    } catch (e) {
+      toast(`No se pudo guardar: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  // "Dar un toque": a ready message in WhatsApp for whoever hasn't voted.
+  const nudgeHref = (pending: { name: string }[]) =>
+    `https://wa.me/?text=${encodeURIComponent(
+      `${names(pending.map((m) => m.name))}: falta vuestro voto para ${plan.name}. Se cierra el ${deadlineLabel(deadline)}. ${window.location.origin}/p/${plan.id}/votacion`,
+    )}`;
+
+  if (plan.status === "draft" || !deadline) {
+    return (
+      <Main>
+        <EmptyState title="La votación aún no está abierta">{group.organiserName} os avisará cuando se abra.</EmptyState>
+      </Main>
+    );
+  }
 
   if (inVote.length < 2) {
     return (
@@ -55,13 +79,13 @@ export function VotacionPage() {
             <>
               <span className="text-[13px] font-bold">Nos vamos a</span>
               <span className="text-[28px] font-extrabold tracking-[-0.03em]">{winner ?? "Empate"}</span>
-              <span className="text-[13px]">{winner ? `${result!.rows[0]!.points} puntos de 36.` : "Decide Eyman entre los empatados."}</span>
+              <span className="text-[13px]">{winner ? `${result!.rows[0]!.points} puntos de ${plan.partySize * 6}.` : `Decide ${group.organiserName} entre los empatados.`}</span>
             </>
           ) : (
             <>
               <span className="text-[13px] font-bold">{days === 0 ? "Cierra hoy" : `Abierta ${days} ${days === 1 ? "día" : "días"} más`}</span>
               <span className="text-[28px] font-extrabold tracking-[-0.03em] tabular-nums">
-                {ballots.length} de {plan.partySize} votos
+                {voted.size} de {plan.partySize} votos
               </span>
               <span className="text-[13px]">Cierra el {deadlineLabel(deadline)}.</span>
             </>
@@ -126,14 +150,14 @@ export function VotacionPage() {
         <aside className="flex shrink-0 flex-col gap-[18px] lg:w-[396px]">
           {result ? <Scoreboard result={result} cityOf={cityOf} /> : <LockedScoreboard cities={inVote.map((d) => d.place.city)} deadline={longDate(deadline)} />}
           {closed ? (
-            <BallotsList ballots={ballots} cityOf={cityOf} members={(id) => memberOf(members, id)} />
+            <BallotsList ballots={closedBallots ?? []} cityOf={cityOf} members={(id) => memberOf(members, id)} />
           ) : (
             <Participation
               members={members}
-              voted={new Set(ballots.map((b) => b.memberId))}
+              voted={voted}
               meId={me.id}
               closed={closed}
-              onNudge={(pending) => toast(`Toque enviado a ${names(pending.map((m) => m.name))}`)}
+              nudgeHref={nudgeHref}
             />
           )}
         </aside>
@@ -146,7 +170,7 @@ export function VotacionPage() {
             : `Puedes cambiar tu reparto tantas veces como quieras hasta el ${longDate(deadline)}. Si hay empate, gana el que tenga más primeros puestos; si sigue empatado, el más barato.`}
         </span>
         {!closed && (
-          <Button variant="primary" size="lg" disabled={!complete || !dirty} onClick={save} title={!complete ? "Elige tres destinos" : undefined}>
+          <Button variant="primary" size="lg" disabled={!complete || !dirty || saving} onClick={save} title={!complete ? "Elige tres destinos" : undefined}>
             {myBallot ? "Guardar mi reparto" : "Votar"}
           </Button>
         )}

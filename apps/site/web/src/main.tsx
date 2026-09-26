@@ -4,14 +4,14 @@ import { BrowserRouter } from "react-router";
 import { ToastProvider } from "@wanderlot/ui";
 import { App } from "./App.tsx";
 import { AuthProvider, httpAuthClient, mockAuthClient } from "./data/auth.tsx";
-import { SiteProvider } from "./data/store.tsx";
+import { httpSource, mockSource } from "./data/source.ts";
+import { SourceProvider } from "./data/store.tsx";
 import { Preview } from "./Preview.tsx";
 import "./index.css";
 
-// ?estado=cerrada previews the site after the vote closes.
-// VITE_AUTH=http signs in against the real site API; otherwise auth is mocked
-// like the rest of the data.
-const auth = import.meta.env.VITE_AUTH === "http" ? httpAuthClient : mockAuthClient();
+// The real site talks to its API. VITE_DATA=mock runs on the mock data instead
+// (UI work without a server); there, ?estado=cerrada shows the closed vote.
+const mock = import.meta.env.VITE_DATA === "mock";
 const closed = new URLSearchParams(window.location.search).get("estado") === "cerrada";
 
 createRoot(document.getElementById("root")!).render(
@@ -21,10 +21,10 @@ createRoot(document.getElementById("root")!).render(
     ) : (
       <BrowserRouter>
         <ToastProvider>
-          <AuthProvider client={auth}>
-            <SiteProvider closed={closed}>
+          <AuthProvider client={mock ? mockAuthClient() : httpAuthClient}>
+            <SourceProvider source={mock ? mockSource({ closed }) : httpSource}>
               <App />
-            </SiteProvider>
+            </SourceProvider>
           </AuthProvider>
         </ToastProvider>
       </BrowserRouter>

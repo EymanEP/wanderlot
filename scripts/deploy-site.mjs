@@ -51,7 +51,7 @@ export async function deploySite() {
   }
 
   step("Compilando la web");
-  const build = spawnSync("npx", ["vite", "build"], { cwd: SITE, stdio: "inherit", env: { ...process.env, VITE_AUTH: "http" } });
+  const build = spawnSync("npx", ["vite", "build"], { cwd: SITE, stdio: "inherit", env: process.env });
   if (build.status !== 0) fail("La compilación falló.");
 
   step("Aplicando migraciones");
