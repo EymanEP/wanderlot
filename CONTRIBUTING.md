@@ -24,7 +24,7 @@ VITE_DATA=mock npm run dev:web -w @wanderlot/panel   # the organiser's panel
 npm run dev -w @wanderlot/ui                         # every component, in every state
 ```
 
-To run everything for real (API servers and passkeys), see
+To run everything for real (API servers, PINs and passkeys), see
 [Running](README.md#running) in the README.
 
 ## Before you open a pull request
@@ -55,9 +55,11 @@ it describes, update it in the same pull request.
 
 ## Conventions
 
-- **Language.** The product speaks Spanish (Spain), so UI text and the
-  messages it writes are in Spanish. Code, comments, docs and commits are in
-  English. Translating the UI is welcome, but open an issue first.
+- **Language.** The site and the panel speak Spanish (Spain): their UI text
+  and the group-chat messages they write. Everything a hoster or developer
+  reads is in English: the setup and deploy scripts, server errors and logs,
+  code, comments, docs and commits. Translating the UI is welcome, but open
+  an issue first.
 - **TypeScript, ESM, strict.** Validate anything that crosses a boundary (API
   bodies, AI output, third-party responses) with zod.
 - **Tests with the change.** Server and rule changes come with unit tests.
@@ -76,10 +78,12 @@ it describes, update it in the same pull request.
 - **Photos.** They come only from Unsplash, Pexels and Wikimedia Commons,
   with credits. Claude suggests what to search for; it never supplies image
   URLs (SPEC §6).
-- **The vote.** Nobody sees the count, the organiser included, until it
-  closes (SPEC §4).
-- **Security.** Sign-in is passkeys plus one-time invites (SPEC §5), the site
-  sends a strict CSP, and the panel only answers its own pages. Report
+- **The vote.** Friends don't see the count or anyone's ballot until it
+  closes; only the organiser follows it live, in the panel (SPEC §4).
+- **Who sees what.** A friend sees only the trips they're on (SPEC §5).
+- **Security.** Sign-in is one-time invites plus a PIN (or a passkey), with
+  lockout (SPEC §5); the site sends a strict CSP, and the panel only answers
+  its own pages. Report
   vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 
 ## Licence

@@ -60,6 +60,15 @@ try {
   await org.getByText("Todavía no hay ningún plan").waitFor();
   await org.getByRole("link", { name: "Crear el primero" }).click();
   await org.getByLabel("Nombre").fill("Noviembre 2026");
+  // Two clicks on next month's calendar: leave on the 10th, back on the 15th.
+  const next = new Date();
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  const day = (d: number) => `${next.toISOString().slice(0, 8)}${String(d).padStart(2, "0")}`;
+  await org.getByRole("button", { name: "Mes siguiente" }).click();
+  await org.getByRole("button", { name: day(10), exact: true }).click();
+  await org.getByRole("button", { name: day(15), exact: true }).click();
+  await org.getByText("5 noches").first().waitFor();
   await org.getByRole("button", { name: "Crear el plan" }).click();
   await org.getByText("Todavía no hay propuestas para Noviembre 2026").waitFor();
   await org.getByText("claude conectado").waitFor();
@@ -69,12 +78,20 @@ try {
   await org.getByRole("link", { name: "Personas" }).first().click();
   await org.getByLabel("Nombre del grupo").fill("Grupo 51");
   await org.getByLabel("Tu nombre").fill("Eyman");
-  await org.getByRole("button", { name: "Guardar" }).click();
+  await org.getByRole("form", { name: "El grupo" }).getByRole("button", { name: "Guardar" }).click();
   await org.getByText("Guardado en el sitio").waitFor();
-  await org.getByLabel("Añadir a alguien").fill("Ana");
-  await org.getByRole("button", { name: "Añadir" }).click();
-  await org.getByRole("listitem", { name: "Ana" }).getByText("Sin invitar").waitFor();
-  console.log("✓ panel: group named, Ana added");
+  for (const name of ["Ana", "Bea", "Carla"]) {
+    await org.getByLabel("Añadir a alguien").fill(name);
+    await org.getByRole("button", { name: "Añadir" }).click();
+    await org.getByRole("listitem", { name }).getByText("Sin invitar").waitFor();
+  }
+  // Ana and Bea go on this trip; Carla doesn't.
+  const trip = org.getByRole("form", { name: "Quién va a Noviembre 2026" });
+  await trip.getByRole("checkbox", { name: "Ana" }).check();
+  await trip.getByRole("checkbox", { name: "Bea" }).check();
+  await trip.getByRole("button", { name: "Guardar" }).click();
+  await org.getByText("Guardado: 2 personas van a Noviembre 2026").waitFor();
+  console.log("✓ panel: group named; Ana and Bea on the trip, Carla not");
 
   // 3. Research with Claude (the stand-in), then approve and publish.
   await org.getByRole("link", { name: "Generar" }).first().click();
@@ -100,23 +117,22 @@ try {
   const message = await org.getByLabel("Mensaje para el grupo").inputValue();
   const invite = /• Ana: (\S+)/.exec(message)?.[1];
   assert.ok(invite?.startsWith(`${SITE}/i/`), message);
-  console.log("✓ panel: vote opened, message has Ana's invite");
+  assert.match(message, /• Bea: /);
+  assert.doesNotMatch(message, /Carla/);
+  console.log("✓ panel: vote opened, message has invites for Ana and Bea only");
 
-  // 5. Ana, on her phone: invite → passkey → the plan.
+  // 5. Ana, on her phone: invite → PIN → the plan.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const ana = await phone.newPage();
-  const cdp = await phone.newCDPSession(ana);
-  await cdp.send("WebAuthn.enable");
-  await cdp.send("WebAuthn.addVirtualAuthenticator", {
-    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
-  });
   await ana.goto(invite!);
   await ana.getByText("Eyman te ha invitado a Grupo 51").waitFor();
-  await ana.getByRole("button", { name: "Crear mi passkey" }).click();
+  await ana.getByLabel("Tu PIN").fill("480193");
+  await ana.getByLabel("Repítelo").fill("480193");
+  await ana.getByRole("button", { name: "Guardar PIN y entrar" }).click();
   await ana.getByRole("heading", { level: 1, name: "Noviembre 2026" }).waitFor();
   for (const city of ["Lisboa", "Nápoles", "Marrakech"]) await ana.getByRole("link", { name: city }).first().waitFor();
   assert.equal(await ana.getByText("Lo escribió Claude").count(), 3);
-  await ana.getByText("0 de 6 habéis votado").waitFor();
+  await ana.getByText("0 de 2 habéis votado").waitFor();
   console.log("✓ site: Ana joined and sees the published plan, labelled");
 
   // 6. Back in the panel, Ana shows as inside.
@@ -131,7 +147,10 @@ try {
   await ana.getByRole("button", { name: "Votar" }).click();
   await ana.getByText("Reparto guardado").waitFor();
   await org.getByRole("link", { name: "Votación" }).first().click();
-  await org.getByText("1 de 6").waitFor();
+  await org.getByText("1 de 2").waitFor();
+  // The organiser sees her ballot and the running count before anyone else.
+  await org.getByRole("table", { name: "Recuento provisional" }).waitFor();
+  assert.match((await org.getByRole("listitem", { name: "Ana" }).textContent())!, /1\. \S+ · 2\. \S+ · 3\. /);
   await org.getByRole("button", { name: "Cerrar ya" }).click();
   await org.getByRole("button", { name: "Cerrar con 1 voto" }).click();
   await org.getByText("Ganó").waitFor();

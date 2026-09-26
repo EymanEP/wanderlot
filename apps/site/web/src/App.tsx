@@ -30,12 +30,13 @@ function RequireSession({ children }: { children: ReactNode }) {
 // "/" opens the plan being voted on, or the newest.
 function Home() {
   const plans = usePlans();
+  const { group } = useAuth();
   if (!plans) return null;
   const plan = currentPlan(plans);
   if (!plan) {
     return (
       <Main>
-        <EmptyState title="Todavía no hay ningún plan">Cuando se publique uno, aparecerá aquí.</EmptyState>
+        <EmptyState title="Todavía no estás en ningún viaje">Cuando {group.organiserName} te añada a uno, aparecerá aquí.</EmptyState>
       </Main>
     );
   }

@@ -26,7 +26,7 @@ import {
   type VoteState,
   type PlanSummary,
 } from "@wanderlot/core";
-import { base64url, fromBase64url, randomToken, safeEqual, sha256 } from "./crypto.ts";
+import { base64url, fromBase64url, pinHasher, randomToken, safeEqual, sha256 } from "./crypto.ts";
 import type { Invite, SiteStore } from "./store.ts";
 import { SECURITY_HEADERS } from "./headers.ts";
 
@@ -50,9 +50,12 @@ export interface SiteOptions {
   // The built web UI's index.html. Every page route serves it; the UI asks
   // the API what to show.
   indexHtml?: string;
-  // Throttles the unauthenticated routes that write (passkey options): true
-  // to let a request through. Keyed by client address.
+  // Throttles the unauthenticated routes that write (passkey options) or test
+  // a PIN: true to let a request through. Keyed by client address.
   limit?: (key: string) => Promise<boolean>;
+  // Keys the PIN hashes (crypto.ts). Defaults to the admin token; changing it
+  // makes everyone set a new PIN from a new invite.
+  pinSecret?: string;
 }
 
 type Env = { Variables: { member: Member } };
@@ -75,10 +78,30 @@ export function deviceLabel(ua: string | undefined): string | null {
   return browser ?? device;
 }
 
+// "Ana María " and "ana maria" are the same person signing in.
+export function nameKey(name: string): string {
+  return name.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+// Six digits, and not one anyone would try first.
+export function pinProblem(pin: string): string | null {
+  if (!/^\d{6}$/.test(pin)) return "El PIN son 6 números";
+  const d = [...pin].map(Number);
+  const steps = d.slice(1).map((x, i) => x - d[i]!);
+  if (steps.every((x) => x === 0)) return "Ese PIN es demasiado fácil: evita repetir el mismo número";
+  if (steps.every((x) => x === 1) || steps.every((x) => x === -1)) return "Ese PIN es demasiado fácil: evita 123456 y parecidos";
+  if (/^(\d\d)\1\1$|^(\d\d\d)\2$/.test(pin)) return "Ese PIN es demasiado fácil: evita repetir grupos";
+  return null;
+}
+
+export const PIN_MAX_TRIES = 5;
+export const PIN_LOCK_MS = 15 * 60_000;
+
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
-export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, limit }: SiteOptions) {
+export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, limit, pinSecret }: SiteOptions) {
   const app = new Hono<Env>();
+  const hashPin = pinHasher(pinSecret || adminToken);
 
   app.use("*", async (c, next) => {
     // Changes must come from the site's own pages. Browsers always send
@@ -140,23 +163,25 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   async function settle(planId: string) {
     const plan = await store.getPlan(planId);
     if (!plan) return undefined;
-    const ballots = await store.ballots(planId);
-    const status = effectiveStatus(
-      { status: plan.status, voteDeadline: plan.voteDeadline, partySize: plan.snapshot.plan.partySize, ballotsCast: ballots.length },
-      now(),
-    );
+    const participants = await store.planMembers(planId);
+    // Only the trip's people vote; a ballot from someone taken off the trip
+    // no longer counts.
+    const ballots = (await store.ballots(planId)).filter((b) => participants.includes(b.memberId));
+    // The vote closes when everyone on the trip has voted (SPEC §4).
+    const partySize = participants.length || plan.snapshot.plan.partySize;
+    const status = effectiveStatus({ status: plan.status, voteDeadline: plan.voteDeadline, partySize, ballotsCast: ballots.length }, now());
     if (status === "closed" && plan.status === "voting") {
       const result = tallyPlan(plan.snapshot.destinations, ballots.map((b) => b.ranking));
       await store.setStatus(planId, "closed", { winnerDestinationId: result.winnerId });
-      return { ...(await store.getPlan(planId))!, ballots };
+      return { ...(await store.getPlan(planId))!, ballots, participants, partySize };
     }
-    return { ...plan, ballots };
+    return { ...plan, ballots, participants, partySize };
   }
 
   // --- pages -----------------------------------------------------------------
 
   const page = (c: Context<Env>) =>
-    indexHtml ? c.html(indexHtml) : c.text("La web no está compilada: npm run build -w @wanderlot/site", 503);
+    indexHtml ? c.html(indexHtml) : c.text("The web UI isn't built yet: npm run build -w @wanderlot/site", 503);
   app.get("/", page);
   app.get("/entrar", page);
   app.get("/i/:token", page); // never consumes the invite: link previews are harmless
@@ -182,6 +207,25 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const found = await findInvite(c.req.param("token"));
     if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
     return c.json({ member: { name: found.member.name }, status: inviteStatus(found.invite, now()) });
+  });
+
+  // Accept the invite by choosing a PIN: works on any device, no passkey
+  // needed. Uses up the invite like a passkey would.
+  app.post("/api/invites/:token/pin", async (c) => {
+    if (await throttled(c)) return tooMany(c);
+    const body = z.object({ pin: z.string() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {pin}" }, 400);
+    const problem = pinProblem(body.data.pin);
+    if (problem) return c.json({ error: problem }, 400);
+    const found = await findInvite(c.req.param("token"));
+    if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
+    const status = inviteStatus(found.invite, now());
+    if (status !== "valid") return c.json({ error: `invite ${status}`, status }, 410);
+    if (!(await store.useInvite(found.invite.id, iso()))) return c.json({ error: "Esta invitación ya se usó", status: "used" }, 410);
+    const salt = randomToken(16);
+    await store.setPin(found.member.id, await (await hashPin)(found.member.id, salt, body.data.pin), salt, iso());
+    await startSession(c, found.member.id, null);
+    return c.json({ member: found.member });
   });
 
   app.post("/api/invites/:token/passkey/options", async (c) => {
@@ -251,6 +295,36 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   });
 
   // --- sign in / out -------------------------------------------------------
+
+  // Sign in with your name and PIN, from any device. Wrong answers count
+  // against the person: PIN_MAX_TRIES in a row lock them out for a while.
+  const WRONG = "Nombre o PIN incorrectos";
+  app.post("/api/session/pin", async (c) => {
+    if (await throttled(c)) return tooMany(c);
+    const body = z.object({ name: z.string().max(80), pin: z.string().max(12) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {name, pin}" }, 400);
+    const key = nameKey(body.data.name);
+    const member = (await store.members()).find((m) => nameKey(m.name) === key || m.id === key);
+    const stored = member && (await store.pin(member.id));
+    const hash = await (await hashPin)(member?.id ?? "-", stored?.salt ?? "-", body.data.pin);
+    if (!member || !stored) return c.json({ error: WRONG }, 401);
+    if (stored.lockedUntil && Date.parse(stored.lockedUntil) > now().getTime()) {
+      const minutes = Math.ceil((Date.parse(stored.lockedUntil) - now().getTime()) / 60_000);
+      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${minutes} min o pide una invitación nueva.` }, 429);
+    }
+    if (!safeEqual(hash, stored.hash)) {
+      const failed = stored.failed + 1;
+      if (failed >= PIN_MAX_TRIES) {
+        await store.recordPinFailure(member.id, 0, iso(PIN_LOCK_MS));
+        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${PIN_LOCK_MS / 60_000} min o pide una invitación nueva.` }, 429);
+      }
+      await store.recordPinFailure(member.id, failed, null);
+      return c.json({ error: WRONG }, 401);
+    }
+    if (stored.failed > 0 || stored.lockedUntil) await store.recordPinFailure(member.id, 0, null);
+    await startSession(c, member.id, null);
+    return c.json({ member });
+  });
 
   app.post("/api/session/options", async (c) => {
     if (await throttled(c)) return tooMany(c);
@@ -339,18 +413,23 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ ok: true });
   });
 
-  // The vote as the organiser follows it: who has voted, and the count once
-  // closed. Winner is the organiser's pick when first place was tied.
+  // The vote as the organiser follows it: who has voted, what each ballot
+  // says and the running count, live (friends see the count only once it
+  // closes). Winner is the organiser's pick when first place was tied.
   async function voteState(planId: string): Promise<VoteState | undefined> {
     const plan = await settle(planId);
     if (!plan) return undefined;
-    const counted = plan.status === "closed" ? tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking)) : null;
+    const tally = tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking));
     return {
       status: plan.status,
       voteDeadline: plan.voteDeadline ?? null,
-      partySize: plan.snapshot.plan.partySize,
+      partySize: plan.partySize,
       voted: plan.ballots.map((b) => b.memberId),
-      result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
+      tally,
+      ballots: [...plan.ballots]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((b) => ({ memberId: b.memberId, ranking: b.ranking, updatedAt: b.updatedAt })),
+      result: plan.status === "closed" ? { ...tally, winnerId: plan.winnerDestinationId ?? tally.winnerId } : null,
     };
   }
 
@@ -384,6 +463,19 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json(await voteState(planId));
   });
 
+  // Who is on this trip (SPEC §5): only they see it, vote and comment.
+  admin.put("/plans/:planId/members", async (c) => {
+    const body = z.array(z.string().min(1)).max(100).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected [memberId]" }, 400);
+    const known = new Set((await store.members()).map((m) => m.id));
+    const unknown = body.data.find((id) => !known.has(id));
+    if (unknown) return c.json({ error: `unknown member ${unknown}` }, 400);
+    await store.setPlanMembers(c.req.param("planId"), [...new Set(body.data)]);
+    return c.json({ ok: true });
+  });
+
+  admin.get("/plans/:planId/members", async (c) => c.json(await store.planMembers(c.req.param("planId"))));
+
   admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));
 
   admin.put("/settings", async (c) => {
@@ -398,6 +490,13 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       .array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/), name: z.string().trim().min(1).max(60) }))
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected [{id, name}]" }, 400);
+    // People sign in with their name, so no two may look the same.
+    const names = new Map((await store.members()).map((m) => [nameKey(m.name), m.id]));
+    for (const m of body.data) {
+      const taken = names.get(nameKey(m.name));
+      if (taken && taken !== m.id) return c.json({ error: `ya hay alguien que se llama ${m.name}` }, 409);
+      names.set(nameKey(m.name), m.id);
+    }
     await store.upsertMembers(body.data);
     return c.json({ ok: true });
   });
@@ -411,6 +510,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         members.map(async (m) => {
           const invite = await store.latestInvite(m.id);
           const passkeys = await store.passkeysFor(m.id);
+          const pin = await store.pin(m.id);
           const sessions = (await store.sessionsFor(m.id)).filter((s) => Date.parse(s.expiresAt) > at.getTime());
           return {
             ...m,
@@ -418,6 +518,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
               ? { status: inviteStatus(invite, at), createdAt: invite.createdAt, expiresAt: invite.expiresAt, usedAt: invite.usedAt }
               : null,
             passkeys: passkeys.map((p) => ({ device: p.device, createdAt: p.createdAt, lastUsedAt: p.lastUsedAt })),
+            pin: pin ? { setAt: pin.setAt, locked: !!pin.lockedUntil && Date.parse(pin.lockedUntil) > at.getTime() } : null,
             sessions: sessions.map((s) => ({ device: deviceLabel(s.userAgent ?? undefined), createdAt: s.createdAt, lastSeenAt: s.lastSeenAt })),
           };
         }),
@@ -448,6 +549,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     if (!member) return c.json({ error: "not found" }, 404);
     await store.deleteSessionsFor(member.id);
     await store.deletePasskeysFor(member.id);
+    await store.deletePin(member.id);
     await store.cancelPendingInvites(member.id, iso());
     return c.json({ ok: true });
   });
@@ -468,14 +570,24 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   // Every published plan, newest first, for the plan switcher and footer.
   api.get("/", async (c) => {
     const list: PlanSummary[] = [];
-    for (const p of await store.plans()) {
+    const mine = new Set(await store.planIdsFor(c.get("member").id));
+    for (const p of (await store.plans()).filter((x) => mine.has(x.id))) {
       const settled = (await settle(p.id))!;
       const winner = settled.snapshot.destinations.find((d) => d.id === settled.winnerDestinationId);
       const { plan } = settled.snapshot;
-      list.push({ id: p.id, name: plan.name, status: settled.status, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: plan.partySize, winnerCity: winner?.place.city ?? null });
+      list.push({ id: p.id, name: plan.name, status: settled.status, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: settled.partySize, winnerCity: winner?.place.city ?? null });
     }
     return c.json(list);
   });
+
+  // A trip you're not on doesn't exist, as far as you can tell.
+  const onTrip = async (c: Context<Env>, next: () => Promise<void>) => {
+    const members = await store.planMembers(c.req.param("planId")!);
+    if (!members.includes(c.get("member").id)) return c.json({ error: "not found" }, 404);
+    await next();
+  };
+  api.use("/:planId", onTrip);
+  api.use("/:planId/*", onTrip);
 
   api.get("/:planId", async (c) => {
     const plan = await settle(c.req.param("planId"));
@@ -484,14 +596,15 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const mine = plan.ballots.find((b) => b.memberId === me.id);
     const voted = new Set(plan.ballots.map((b) => b.memberId));
     return c.json({
-      plan: { ...plan.snapshot.plan, status: plan.status, voteDeadline: plan.voteDeadline, winnerDestinationId: plan.winnerDestinationId },
+      // partySize: the people on the trip, who the vote waits for.
+      plan: { ...plan.snapshot.plan, partySize: plan.partySize, status: plan.status, voteDeadline: plan.voteDeadline, winnerDestinationId: plan.winnerDestinationId },
       destinations: plan.snapshot.destinations,
       publishedAt: plan.snapshot.publishedAt,
       me,
       myRanking: mine?.ranking ?? null,
       myBallot: mine ? { ranking: mine.ranking, updatedAt: mine.updatedAt } : null,
       // Who has voted is always visible; what they voted is not (SPEC §4).
-      participation: (await store.members()).map((m) => ({ ...m, voted: voted.has(m.id) })),
+      participation: (await store.members()).filter((m) => plan.participants.includes(m.id)).map((m) => ({ ...m, voted: voted.has(m.id) })),
     });
   });
 

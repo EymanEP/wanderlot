@@ -126,7 +126,7 @@ export const Plan = z.object({
   origin: iata,
   dateFrom: isoDate,
   dateTo: isoDate,
-  nights: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
+  nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1),
   maxPriceCents: cents,

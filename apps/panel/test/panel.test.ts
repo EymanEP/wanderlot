@@ -138,6 +138,10 @@ describe("panel → site", () => {
     // People first, then the vote.
     expect((await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" })).status).toBe(409);
     await json("/api/members", "PUT", FRIENDS);
+    // Then who goes: only they get the trip, and invites.
+    expect((await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" })).data.error).toMatch(/quién va/);
+    const going = await json(`/api/plans/${PLAN}/participants`, "PUT", FRIENDS.filter((f) => f.id !== "fer").map((f) => f.id));
+    expect(going.data.plan.partySize).toBe(5);
     const opened = await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
     expect(opened.status).toBe(200);
     const message = opened.data.message as string;
@@ -145,6 +149,8 @@ describe("panel → site", () => {
     expect(message).toContain(`Entrad en ${SITE}/p/${PLAN}`);
     const anaInvite = message.split("\n").find((l) => l.startsWith("• ana:"))!.slice(7);
     expect(anaInvite).toMatch(new RegExp(`^${SITE}/i/`));
+    // Fer isn't on this trip: no invite for him in this message.
+    expect(message).not.toContain("• fer:");
 
     // Ana accepts her invite with a passkey and sees exactly the approved pair.
     const token = anaInvite.split("/i/")[1]!;
@@ -160,7 +166,8 @@ describe("panel → site", () => {
     const view = (await (await site.request(`/api/plans/${PLAN}`, { headers: { cookie } })).json()) as any;
     expect(view.plan.status).toBe("voting");
     expect(view.destinations.map((d: any) => d.id)).toEqual(["lis", "nap"]);
-    expect(view.destinations[0].totalPerPersonCents).toBe(10000 + 23800);
+    // Five on the trip, so the stay (priced for six) is split five ways.
+    expect(view.destinations[0].totalPerPersonCents).toBe(10000 + Math.ceil((23800 * 6) / 5));
 
     // The panel now sees her inside, and her invite link is gone.
     const people = (await json("/api/members")).data as any[];
@@ -180,7 +187,7 @@ describe("panel → site", () => {
     expect(following.status).toBe("voting");
     expect(following.result).toBeNull();
     expect(following.people.filter((p: any) => p.voted).map((p: any) => p.id)).toEqual(["ana"]);
-    expect(following.reminder).toContain("Faltan bea, carlos, dani, eva y fer por votar Noviembre 2026");
+    expect(following.reminder).toContain("Faltan bea, carlos, dani y eva por votar Noviembre 2026");
     expect(following.reminder).toContain(`${SITE}/p/${PLAN}/votacion`);
     expect(following.announcement).toBeNull();
 
@@ -220,6 +227,7 @@ describe("panel → site", () => {
       await json(`/api/plans/${PLAN}/proposals/${id}/verify`, "POST");
     }
     await json("/api/members", "PUT", FRIENDS);
+    await json(`/api/plans/${PLAN}/participants`, "PUT", FRIENDS.map((f) => f.id));
     clock = new Date(clock.getTime() + 73 * 3_600_000);
     const r = await json(`/api/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
     expect(r.status).toBe(409);
@@ -237,7 +245,10 @@ describe("plans and settings", () => {
     expect(b.data.id).toBe("semana-santa-2027-2");
     const list = (await json("/api/plans")).data as any[];
     expect(list.map((p) => p.id).slice(0, 2)).toEqual(["semana-santa-2027-2", "semana-santa-2027"]);
-    expect((await json("/api/plans", "POST", { ...input, nights: 4 })).status).toBe(400);
+    // Any stay from 1 to 30 nights, as picked on the calendar.
+    expect((await json("/api/plans", "POST", { ...input, nights: 0 })).status).toBe(400);
+    expect((await json("/api/plans", "POST", { ...input, nights: 31 })).status).toBe(400);
+    expect((await json("/api/plans", "POST", { ...input, name: "Puente", nights: 4 })).status).toBe(201);
   });
 
   it("passes group settings through to the site and reports status", async () => {

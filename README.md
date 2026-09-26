@@ -10,8 +10,9 @@ their top three). Nothing reaches the site until the organiser approves it.
 
 Anyone can host their own copy for their group: one deployment serves one group
 of friends. The site runs free on Cloudflare (Workers + D1); the panel runs on
-the organiser's own computer. Friends sign in with passkeys from a one-time
-invite, with no accounts or passwords, and can add the site to their home
+the organiser's own computer. Friends join from a one-time invite, choose a
+6-digit PIN and sign in with their name and PIN on any device (a passkey is
+optional), and can add the site to their home
 screen like an app. Hosting and setup:
 [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
 
@@ -86,10 +87,10 @@ Screens:
 | panel | `/generar` | search form + proposals arriving |
 | panel | `/revisar` | approve, discard, verify, publish |
 | panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
-| panel | `/votacion` | who has voted, reminder, close early, tie-break, result message |
-| panel | `/personas` | group name, who can get in: invites, passkeys, closing sessions, removing access |
-| site | `/entrar` | sign in with a passkey |
-| site | `/i/:token` | accept a one-time invite by creating a passkey |
+| panel | `/votacion` | live count and each person's ballot, reminder, close early, tie-break, result message |
+| panel | `/personas` | group name, who goes on the selected trip, who can get in: invites, PINs, closing sessions, removing access |
+| site | `/entrar` | sign in with name and PIN (or a passkey) |
+| site | `/i/:token` | accept a one-time invite by choosing a PIN (or creating a passkey) |
 | site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans |
 | site | `/p/noviembre-2026/destinos/nap` | destination detail and comments |
 | site | `/p/noviembre-2026/votacion` | rank three; scoreboard hidden until close |
@@ -156,9 +157,10 @@ virtual authenticator:
 - the round trip (`e2e/roundtrip.e2e.ts`): in the panel, create a plan, name
   the group, add a friend, research with a stand-in `claude`, approve, publish
   and open the vote; then the friend takes the invite from the WhatsApp
-  message, creates a passkey and sees the plan;
-- the site on its own (`apps/site/e2e/passkeys.e2e.ts`): invite, passkey
-  sign-up, vote, comment, like, sign-out, sign-in, removed access.
+  message, chooses a PIN and sees the plan;
+- the site on its own (`apps/site/e2e/access.e2e.ts`): invite and PIN,
+  signing in from a second device, trips only their people see, vote,
+  comment, like, the optional passkey, removed access.
 
 `npm run test:e2e:worker -w @wanderlot/site` runs the site checks against the
 Worker in `wrangler dev` with a local D1 (no Cloudflare account needed). CI
@@ -172,6 +174,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site; on Cloudflare it's the `ADMIN_TOKEN` secret) |
 | `WANDERLOT_DB` | site | `data/site.sqlite` |
 | `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
+| `WANDERLOT_PIN_SECRET` | site | the admin token; keys the PIN hashes (on Cloudflare, the `PIN_SECRET` secret) |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
 | `ANTHROPIC_API_KEY` | panel | — (research through the API when the `claude` command isn't installed) |
@@ -183,7 +186,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 
 - Every designed screen is built, responsive down to phone width.
 - Both UIs run on their servers: plans are created and researched in the
-  panel, published to the site, and voted on by friends with passkeys. The
+  panel, published to the site, and voted on by the friends on each trip, who sign in with a PIN. The
   whole path is covered end to end.
 - Research runs through `claude -p --json-schema` or, without the command, the
   Anthropic API with web search; both return proposals plus pros, cons,

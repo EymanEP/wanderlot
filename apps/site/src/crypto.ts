@@ -30,3 +30,16 @@ export function safeEqual(a: string, b: string): boolean {
   for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
   return diff === 0;
 }
+
+// PINs are six digits: too few to survive a leaked database on their own,
+// however slow the hash. So each is an HMAC keyed by a server-side secret
+// (PIN_SECRET), with a per-member salt; the database alone can't test guesses,
+// and online guesses are capped by the lockout in app.ts.
+export async function pinHasher(secret: string) {
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`wanderlot-pin:${secret}`));
+  const key = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return async (memberId: string, salt: string, pin: string): Promise<string> => {
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${salt}:${memberId}:${pin}`));
+    return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+}

@@ -41,12 +41,18 @@ export function freezeViolation(
   return "la votación ya tiene papeletas: no se pueden añadir, quitar ni cambiar destinos de la votación";
 }
 
-// What the organiser sees of a vote in the panel (SPEC §4, §7). Who has voted
-// is always visible; the count only once closed, as for everyone else.
+// What the organiser sees of a vote in the panel (SPEC §4, §7). Friends see
+// only who has voted until it closes; the organiser follows the count and
+// every ballot live.
 export interface VoteState {
   status: PlanStatus;
   voteDeadline: string | null;
   partySize: number;
   voted: string[];
+  // The running count, from the ballots so far.
+  tally: TallyResult;
+  // Each ballot, most recently changed first.
+  ballots: { memberId: string; ranking: string[]; updatedAt: string }[];
+  // The final result, once closed; winnerId is the organiser's pick after a tie.
   result: (TallyResult & { winnerId: string | null }) | null;
 }

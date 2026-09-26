@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import { avatarTint, deadlineLabel, initials } from "@wanderlot/core";
+import { avatarTint, deadlineLabel, initials, relativeTime, type TallyRow } from "@wanderlot/core";
 import { Avatar, Badge, Button, Card, CheckIcon, Dialog, EmptyState, Heading, Notice, PageHeader, Skeleton, buttonClasses, cn, useToast } from "@wanderlot/ui";
 import { MessageDialog } from "../components/MessageDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import type { VoteView } from "../data/backend.ts";
 import { usePanel, usePlan } from "../data/store.tsx";
 
-// Following the vote from the panel (SPEC §4, §7): who's in, a nudge for who
-// isn't, closing early, a tie to break, and the message with the result.
+// Following the vote from the panel (SPEC §4, §7): the running count and each
+// ballot (the organiser sees them live; friends only once it closes), a nudge
+// for who hasn't voted, closing early, a tie to break, and the result message.
 export function VotacionPage() {
-  const { vote, closeVote, pickWinner } = usePanel();
+  const { vote, closeVote, pickWinner, now } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const [view, setView] = useState<VoteView | null>(null);
@@ -70,6 +71,7 @@ export function VotacionPage() {
   }
 
   const votedCount = view?.voted.length ?? 0;
+  const ballotOf = new Map((view?.ballots ?? []).map((b) => [b.memberId, b]));
   const result = view?.result ?? null;
   const tied = result && !result.winnerId && result.tiedForFirst.length > 1;
 
@@ -86,6 +88,9 @@ export function VotacionPage() {
           actions={
             view?.status === "voting" ? (
               <div className="flex flex-wrap gap-2">
+                <Button variant="ghost" onClick={() => void load()}>
+                  Actualizar
+                </Button>
                 <Button disabled={!view.reminder} onClick={() => setMessage("reminder")}>
                   Recordar a quien falta
                 </Button>
@@ -135,28 +140,22 @@ export function VotacionPage() {
                 <Heading size="headline">{result.winnerId ? city(result.winnerId) : "Nadie votó"}</Heading>
               </div>
             )}
-            {result.rows.length > 0 && (
-              <table className="w-full border-collapse text-sm">
-                <caption className="sr-only">Recuento</caption>
-                <thead>
-                  <tr className="text-left text-xs text-muted uppercase">
-                    <th className="py-2 font-bold">#</th>
-                    <th className="py-2 font-bold">Destino</th>
-                    <th className="py-2 text-right font-bold">Puntos</th>
-                    <th className="py-2 text-right font-bold">Primeros</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.rows.map((r) => (
-                    <tr key={r.id} className={cn("border-t border-line-faint", r.id === result.winnerId && "font-bold")}>
-                      <td className="py-2 tabular-nums">{r.rank}</td>
-                      <td className="py-2">{city(r.id)}</td>
-                      <td className="py-2 text-right tabular-nums">{r.points}</td>
-                      <td className="py-2 text-right tabular-nums">{r.firsts}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {result.rows.length > 0 && <CountTable rows={result.rows} winnerId={result.winnerId} city={city} caption="Recuento final" />}
+          </Card>
+        )}
+
+        {view && view.status === "voting" && (
+          <Card variant="raised" className="flex flex-col gap-3" aria-labelledby="provisional">
+            <div className="flex flex-col gap-1">
+              <Heading id="provisional" size="subheading">
+                Recuento provisional
+              </Heading>
+              <span className="text-sm text-muted">Con los votos que hay ahora. Solo lo ves tú: los demás lo verán al cerrarse.</span>
+            </div>
+            {view.ballots.length ? (
+              <CountTable rows={view.tally.rows} winnerId={null} city={city} caption="Recuento provisional" />
+            ) : (
+              <p className="m-0 text-sm text-muted">Todavía no ha votado nadie.</p>
             )}
           </Card>
         )}
@@ -183,10 +182,17 @@ export function VotacionPage() {
             </div>
             <ul className="m-0 grid list-none gap-2 p-0 sm:grid-cols-2">
               {view.people.map((p) => (
-                <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3.5 py-2.5">
-                  <span className="flex items-center gap-2.5">
+                <li key={p.id} aria-label={p.name} className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3.5 py-2.5">
+                  <span className="flex min-w-0 items-center gap-2.5">
                     <Avatar initials={initials(p.name)} name={p.name} tint={avatarTint(p.id)} size="sm" />
-                    {p.name}
+                    <span className="flex min-w-0 flex-col">
+                      {p.name}
+                      {ballotOf.get(p.id) && (
+                        <span className="text-[13px] text-muted">
+                          {ballotOf.get(p.id)!.ranking.map((id, i) => `${i + 1}. ${city(id)}`).join(" · ")} · {relativeTime(ballotOf.get(p.id)!.updatedAt, now)}
+                        </span>
+                      )}
+                    </span>
                   </span>
                   {p.voted ? (
                     <Badge tone="accent" size="md" icon={<CheckIcon size={14} />}>
@@ -200,7 +206,9 @@ export function VotacionPage() {
                 </li>
               ))}
             </ul>
-            <p className="m-0 text-[13px] text-muted">Nadie ve lo que ha votado cada uno hasta que se cierra, tampoco tú.</p>
+            <p className="m-0 text-[13px] text-muted">
+              Tú ves el recuento y lo que ha votado cada uno en directo. Los demás solo ven quién ha votado hasta que se cierra; entonces ven el reparto de todos.
+            </p>
           </section>
         )}
       </main>
@@ -229,5 +237,32 @@ export function VotacionPage() {
         />
       )}
     </PanelShell>
+  );
+}
+
+// Points and first places per destination; the winner in bold once there is one.
+function CountTable({ rows, winnerId, city, caption }: { rows: TallyRow[]; winnerId: string | null; city: (id: string) => string; caption: string }) {
+  return (
+    <table className="w-full border-collapse text-sm">
+      <caption className="sr-only">{caption}</caption>
+      <thead>
+        <tr className="text-left text-xs text-muted uppercase">
+          <th className="py-2 font-bold">#</th>
+          <th className="py-2 font-bold">Destino</th>
+          <th className="py-2 text-right font-bold">Puntos</th>
+          <th className="py-2 text-right font-bold">Primeros</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.id} className={cn("border-t border-line-faint", r.id === winnerId && "font-bold")}>
+            <td className="py-2 tabular-nums">{r.rank}</td>
+            <td className="py-2">{city(r.id)}</td>
+            <td className="py-2 text-right tabular-nums">{r.points}</td>
+            <td className="py-2 text-right tabular-nums">{r.firsts}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

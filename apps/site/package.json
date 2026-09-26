@@ -10,8 +10,8 @@
     "build": "vite build",
     "start": "tsx src/server.ts",
     "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-sitio.html",
-    "test:e2e": "vite build && tsx e2e/passkeys.e2e.ts",
-    "test:e2e:worker": "vite build && tsx e2e/passkeys.e2e.ts --worker",
+    "test:e2e": "vite build && tsx e2e/access.e2e.ts",
+    "test:e2e:worker": "vite build && tsx e2e/access.e2e.ts --worker",
     "dev:worker": "vite build && wrangler d1 migrations apply wanderlot --local && wrangler dev"
   },
   "dependencies": {

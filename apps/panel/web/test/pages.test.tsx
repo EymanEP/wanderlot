@@ -45,15 +45,17 @@ describe("Generar", () => {
     expect(screen.getAllByRole("article")).toHaveLength(12);
   });
 
-  it("stretches the highlighted stay with the nights pills", async () => {
+  it("picks the stay with two clicks on the calendar", async () => {
     const user = userEvent.setup();
     renderAt("/generar");
     await screen.findByRole("heading", { name: "Nueva búsqueda" });
     expect(screen.getAllByText(/7 – 14 nov · 7 noches/).length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: "10 noches" }));
-    expect(screen.getAllByText(/7 – 17 nov · 10 noches/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "2026-11-20" }));
+    expect(screen.getByText("Ahora elige el día de vuelta")).toBeTruthy();
+    expect((screen.getByRole("button", { name: /^Generar/ }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "2026-11-30" }));
     expect(screen.getAllByText(/20 – 30 nov · 10 noches/).length).toBeGreaterThan(0);
+    expect((screen.getByRole("button", { name: /^Generar/ }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -156,6 +158,13 @@ describe("Votación", () => {
     await user.click(screen.getByRole("link", { name: /Votación abierta/ }));
 
     expect(await screen.findByText("4 de 6")).toBeTruthy();
+    // The organiser sees the running count and each ballot while it's open.
+    const provisional = screen.getByRole("table", { name: "Recuento provisional" });
+    const first = within(provisional).getAllByRole("row")[1]!;
+    expect(within(first).getByText("Marrakech")).toBeTruthy();
+    expect(within(first).getByText("8")).toBeTruthy();
+    expect(within(screen.getByRole("listitem", { name: "Marta" })).getByText(/1\. Nápoles · 2\. Lisboa · 3\. Marrakech/)).toBeTruthy();
+    expect(within(screen.getByRole("listitem", { name: "Laura" })).getByText("Pendiente")).toBeTruthy();
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("4");
     await user.click(screen.getByRole("button", { name: "Recordar a quien falta" }));
     const reminder = (await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement;
@@ -209,13 +218,36 @@ describe("Personas", () => {
 });
 
 describe("Nuevo plan", () => {
-  it("creates a plan and starts on it", async () => {
+  it("opens on this month, takes start and end days, and creates the plan", async () => {
     const user = userEvent.setup();
     renderAt("/planes/nuevo");
     await user.type(await screen.findByLabelText("Nombre"), "Puente de diciembre");
-    await user.click(screen.getByRole("button", { name: "5 noches" }));
+    // The mocks' today is 25 Sept 2026: the calendar starts there, past days off.
+    expect(screen.getByText("Septiembre 2026")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "2026-09-20" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Mes anterior" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Crear el plan" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Mes siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Mes siguiente" }));
+    await user.click(screen.getByRole("button", { name: "Mes siguiente" }));
+    await user.click(screen.getByRole("button", { name: "2026-12-05" }));
+    await user.click(screen.getByRole("button", { name: "2026-12-09" }));
+    expect(screen.getByText(/5 – 9 dic · 4 noches/)).toBeTruthy();
+    // Everyone's ticked; Diego isn't coming to this one.
+    expect(screen.getByText("6 personas")).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Diego" }));
+    expect(screen.getByText("5 personas")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Crear el plan" }));
     expect(await screen.findByText(/Todavía no hay propuestas para Puente de diciembre/)).toBeTruthy();
-    expect(screen.getAllByText(/5 noches/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/4 noches · 5 personas/).length).toBeGreaterThan(0);
+
+    // Personas shows who goes on it, and changes it.
+    await user.click(screen.getAllByRole("link", { name: "Personas" })[0]!);
+    const trip = await screen.findByRole("form", { name: "Quién va a Puente de diciembre" });
+    expect((within(trip).getByRole("checkbox", { name: "Diego" }) as HTMLInputElement).checked).toBe(false);
+    await user.click(within(trip).getByRole("checkbox", { name: "Diego" }));
+    await user.click(within(trip).getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByText("Guardado: 6 personas van a Puente de diciembre")).toBeTruthy();
   });
 });

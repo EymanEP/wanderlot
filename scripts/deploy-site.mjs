@@ -27,12 +27,12 @@ function fail(msg) {
 }
 
 export async function deploySite() {
-  step("Comprobando la sesión de Cloudflare");
+  step("Checking your Cloudflare login");
   // whoami succeeds even when logged out, so read what it says.
   const who = wrangler(["whoami"], { quiet: true });
-  if (!who.ok || /not authenticated/i.test(who.out)) fail("No has iniciado sesión en Cloudflare. Ejecuta `npx wrangler login` y vuelve a probar.");
+  if (!who.ok || /not authenticated/i.test(who.out)) fail("You're not logged in to Cloudflare. Run `npx wrangler login` and try again.");
 
-  step("Base de datos D1");
+  step("D1 database");
   let config = readFileSync(CONFIG, "utf8");
   if (config.includes(PLACEHOLDER)) {
     const list = wrangler(["d1", "list", "--json"], { quiet: true });
@@ -41,56 +41,66 @@ export async function deploySite() {
     if (!id) {
       const created = wrangler(["d1", "create", "wanderlot"], { quiet: true });
       id = /"?database_id"?\s*[:=]\s*"([0-9a-f-]{36})"/.exec(created.out)?.[1];
-      if (!id) fail(`No se pudo crear la base de datos:\n${created.out}`);
+      if (!id) fail(`Couldn't create the database:\n${created.out}`);
     }
     config = config.replace(PLACEHOLDER, id);
     writeFileSync(CONFIG, config);
-    console.log(`  wanderlot · ${id} (guardado en apps/site/wrangler.jsonc)`);
+    console.log(`  wanderlot · ${id} (saved in apps/site/wrangler.jsonc)`);
   } else {
-    console.log("  ya configurada");
+    console.log("  already set up");
   }
 
-  step("Compilando la web");
+  step("Building the web UI");
   const build = spawnSync("npx", ["vite", "build"], { cwd: SITE, stdio: "inherit", env: process.env });
-  if (build.status !== 0) fail("La compilación falló.");
+  if (build.status !== 0) fail("The build failed.");
 
-  step("Aplicando migraciones");
-  if (!wrangler(["d1", "migrations", "apply", "wanderlot", "--remote"], { input: "y\n" }).ok) fail("Las migraciones fallaron.");
+  step("Applying migrations");
+  if (!wrangler(["d1", "migrations", "apply", "wanderlot", "--remote"], { input: "y\n" }).ok) fail("The migrations failed.");
 
-  step("Desplegando el Worker");
+  step("Deploying the Worker");
   const deployed = wrangler(["deploy"]);
-  if (!deployed.ok) fail("El despliegue falló.");
+  if (!deployed.ok) fail("The deploy failed.");
   const url = /https:\/\/[\w.-]+\.workers\.dev/.exec(deployed.out)?.[0];
 
-  step("Secreto ADMIN_TOKEN");
+  step("ADMIN_TOKEN secret");
   const secrets = wrangler(["secret", "list", "--format", "json"], { quiet: true });
   const has = secrets.ok && secrets.out.includes('"ADMIN_TOKEN"');
   if (has) {
-    console.log("  ya configurado");
+    console.log("  already set");
   } else {
     const token = readEnv().WANDERLOT_ADMIN_TOKEN ?? randomToken();
-    if (!wrangler(["secret", "put", "ADMIN_TOKEN"], { input: token, quiet: true }).ok) fail("No se pudo guardar el secreto.");
+    if (!wrangler(["secret", "put", "ADMIN_TOKEN"], { input: token, quiet: true }).ok) fail("Couldn't save the secret.");
     writeEnv({ WANDERLOT_ADMIN_TOKEN: token });
-    console.log("  guardado en Cloudflare y en .env");
+    console.log("  saved to Cloudflare and .env");
   }
 
-  step("Dirección pública (ORIGIN)");
+  step("PIN_SECRET secret");
+  // Keys the PIN hashes, so a copy of the database alone can't be used to
+  // test PINs. Set once: changing it means everyone needs a new invite.
+  if (secrets.ok && secrets.out.includes('"PIN_SECRET"')) {
+    console.log("  already set");
+  } else {
+    if (!wrangler(["secret", "put", "PIN_SECRET"], { input: randomToken(), quiet: true }).ok) fail("Couldn't save the secret.");
+    console.log("  saved to Cloudflare");
+  }
+
+  step("Public address (ORIGIN)");
   // Passkeys are tied to one address, so the Worker needs it fixed rather
   // than trusting each request's hostname. WANDERLOT_ORIGIN in .env wins
   // (for a custom domain); otherwise the workers.dev address.
   const hasOrigin = secrets.ok && secrets.out.includes('"ORIGIN"');
   const origin = readEnv().WANDERLOT_ORIGIN ?? url;
   if (hasOrigin && !readEnv().WANDERLOT_ORIGIN) {
-    console.log("  ya configurada");
+    console.log("  already set up");
   } else if (!origin) {
-    fail("No sé la dirección del sitio. Añade WANDERLOT_ORIGIN=https://… a .env y vuelve a ejecutar.");
+    fail("Don't know the site's address. Add WANDERLOT_ORIGIN=https://… to .env and run this again.");
   } else {
-    if (!wrangler(["secret", "put", "ORIGIN"], { input: origin, quiet: true }).ok) fail("No se pudo guardar ORIGIN.");
+    if (!wrangler(["secret", "put", "ORIGIN"], { input: origin, quiet: true }).ok) fail("Couldn't save ORIGIN.");
     console.log(`  ${origin}`);
   }
 
-  console.log(`\n✓ Sitio desplegado${url ? `: ${url}` : ""}`);
-  console.log("  Las passkeys quedan ligadas a esta dirección: si vas a usar un dominio propio, ponlo antes de invitar a nadie.");
+  console.log(`\n✓ Site deployed${url ? `: ${url}` : ""}`);
+  console.log("  Passkeys are tied to this address: if you'll use your own domain, set it up before inviting anyone.");
   return url;
 }
 

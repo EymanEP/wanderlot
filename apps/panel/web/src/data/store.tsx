@@ -30,6 +30,8 @@ export interface PanelState {
   settings: GroupSettings | null;
   plans: Plan[];
   plan: Plan | null;
+  // Member ids on the selected trip.
+  participants: string[];
   proposals: Proposal[];
   editorial: Record<string, Editorial>;
   generation: GenerationState | null;
@@ -44,6 +46,7 @@ export interface PanelApi {
   selectPlan: (id: string) => Promise<void>;
   createPlan: (p: NewPlan) => Promise<Plan>;
   savePlan: (p: Plan) => Promise<void>;
+  setParticipants: (memberIds: string[]) => Promise<void>;
   startGeneration: (opts: SearchOptions) => void;
   stopGeneration: () => void;
   setReview: (id: string, review: Review) => void;
@@ -76,7 +79,7 @@ function person(m: { id: string; name: string }): Person {
 function splitMembers(list: MemberAccess[]) {
   return {
     members: list.map(person),
-    access: list.map(({ id, invite, inviteUrl, passkeys, sessions }): Access => ({ memberId: id, invite, inviteUrl, passkeys, sessions })),
+    access: list.map(({ id, invite, inviteUrl, passkeys, pin, sessions }): Access => ({ memberId: id, invite, inviteUrl, passkeys, pin, sessions })),
   };
 }
 
@@ -102,6 +105,7 @@ const INITIAL: PanelState = {
   settings: null,
   plans: [],
   plan: null,
+  participants: [],
   proposals: [],
   editorial: {},
   generation: null,
@@ -123,7 +127,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       const entry = await backend.plan(id);
       if (!entry) return;
       remember(id);
-      patch(() => ({ plan: entry.plan, proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null }));
+      patch(() => ({ plan: entry.plan, participants: entry.participants ?? [], proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null }));
     },
     [backend, patch],
   );
@@ -187,6 +191,14 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       async savePlan(p) {
         const plan = await backend.savePlan(p);
         patch((s) => ({ plan, plans: s.plans.map((x) => (x.id === plan.id ? plan : x)) }));
+      },
+      async setParticipants(ids) {
+        const entry = await backend.setParticipants(need(), ids);
+        patch((s) => ({
+          participants: entry.participants ?? ids,
+          plan: entry.plan,
+          plans: s.plans.map((p) => (p.id === entry.plan.id ? entry.plan : p)),
+        }));
       },
       startGeneration(opts) {
         const id = need();

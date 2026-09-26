@@ -47,6 +47,7 @@ export type InviteStatus = "valid" | "used" | "expired" | "cancelled";
 export interface MemberStatus {
   id: string;
   name: string;
+  pin: { setAt: string; locked: boolean } | null;
   invite: { status: InviteStatus; createdAt: string; expiresAt: string; usedAt: string | null } | null;
   passkeys: { device: string | null; createdAt: string; lastUsedAt: string | null }[];
   sessions: { device: string | null; createdAt: string; lastSeenAt: string }[];
@@ -57,6 +58,7 @@ export interface SiteClient {
   putSettings(s: GroupSettings): Promise<GroupSettings>;
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
+  setPlanMembers(planId: string, memberIds: string[]): Promise<void>;
   vote(planId: string): Promise<VoteState>;
   closeVote(planId: string): Promise<VoteState>;
   pickWinner(planId: string, destinationId: string): Promise<VoteState>;
@@ -94,6 +96,7 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     putSettings: (s) => call<GroupSettings>("/settings", "PUT", s),
     publish: async (s) => void (await call(`/plans/${s.plan.id}`, "PUT", s)),
     openVote: async (planId, deadline) => void (await call(`/plans/${planId}/open-vote`, "POST", { deadline })),
+    setPlanMembers: async (planId, ids) => void (await call(`/plans/${planId}/members`, "PUT", ids)),
     vote: (planId) => call<VoteState>(`/plans/${planId}/vote`, "GET"),
     closeVote: (planId) => call<VoteState>(`/plans/${planId}/close`, "POST"),
     pickWinner: (planId, destinationId) => call<VoteState>(`/plans/${planId}/winner`, "PUT", { destinationId }),

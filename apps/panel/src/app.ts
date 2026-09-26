@@ -58,10 +58,11 @@ const NewPlan = z.object({
   name: z.string().trim().min(1).max(60),
   origin: z.string().regex(/^[A-Z]{3}$/),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  nights: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
+  nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1).max(30),
   maxPriceCents: z.number().int().positive(),
+  participants: z.array(z.string().min(1)).max(100).default([]),
 });
 
 async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
@@ -121,8 +122,11 @@ export function createPanel({
     const base = slugify(body.data.name) || "plan";
     let id = base;
     for (let n = 2; store.get(id); n++) id = `${base}-${n}`;
-    const plan: Plan = { ...body.data, id, dateTo: addDaysIso(body.data.dateFrom, body.data.nights), status: "draft" };
-    store.update(id, () => ({ entry: { plan, proposals: [], editorial: {} }, result: null }));
+    const { participants, ...fields } = body.data;
+    const plan: Plan = { ...fields, id, dateTo: addDaysIso(fields.dateFrom, fields.nights), status: "draft" };
+    store.update(id, () => ({ entry: { plan, proposals: [], editorial: {}, participants }, result: null }));
+    // Best effort: publishing and opening the vote send it again anyway.
+    if (participants.length) await site.setPlanMembers(id, participants).catch(() => {});
     return c.json(plan, 201);
   });
 
@@ -137,6 +141,21 @@ export function createPanel({
     const plan = parsed.data;
     store.update(plan.id, (e) => ({ entry: { proposals: [], editorial: {}, ...e, plan }, result: null }));
     return c.json(plan);
+  });
+
+  // Who goes: saved here and on the site, which shows the trip only to them.
+  app.put("/api/plans/:planId/participants", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const body = z.array(z.string().min(1)).max(100).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected [memberId]" }, 400);
+    const participants = [...new Set(body.data)];
+    await site.setPlanMembers(planId, participants);
+    store.update(planId, (e) => ({
+      entry: { ...e!, participants, plan: { ...e!.plan, partySize: Math.max(1, participants.length) } },
+      result: null,
+    }));
+    return c.json(store.get(planId));
   });
 
   // Generar: streams proposals as NDJSON as they resolve; each is stored as pending.
@@ -279,6 +298,7 @@ export function createPanel({
     const snapshot = buildSnapshot(entry, now());
     if (snapshot.destinations.length === 0) return c.json({ error: "no hay propuestas aprobadas" }, 409);
     await site.publish(snapshot);
+    await site.setPlanMembers(entry.plan.id, entry.participants ?? []);
     return c.json({ ok: true, published: snapshot.destinations.length, warnings });
   });
 
@@ -337,7 +357,8 @@ export function createPanel({
         result: null,
       }));
     }
-    const members = await site.members();
+    const going = new Set(entry.participants ?? []);
+    const members = (await site.members()).filter((m) => going.has(m.id));
     const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
     const cities = Object.fromEntries(entry.proposals.map((p) => [p.id, p.place.city]));
     const missing = people.filter((p) => !p.voted).map((p) => p.name);
@@ -378,23 +399,26 @@ export function createPanel({
       .object({ deadline: z.iso.datetime({ offset: true }) })
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "expected {deadline}" }, 400);
-    const members = await site.members();
-    if (members.length === 0) return c.json({ error: "añade a la gente en Personas antes de abrir la votación" }, 409);
+    const going = new Set(entry.participants ?? []);
+    const members = (await site.members()).filter((m) => going.has(m.id));
+    if (members.length === 0) return c.json({ error: "elige quién va al viaje (en Personas) antes de abrir la votación" }, 409);
     const stale = publishWarnings(entry, now()).filter(
       (w) => w.reason === "stale" && entry.editorial[w.destinationId]?.inVote !== false,
     );
     if (stale.length) return c.json({ error: "hay precios verificados caducados: vuelve a verificarlos", stale }, 409);
 
     await site.publish(buildSnapshot(entry, now()));
+    await site.setPlanMembers(entry.plan.id, [...going]);
     await site.openVote(entry.plan.id, body.data.deadline);
     store.update(entry.plan.id, (e) => ({
       entry: { ...e!, plan: { ...e!.plan, status: "voting", voteDeadline: body.data.deadline } },
       result: null,
     }));
 
-    // Whoever hasn't joined gets a working invite: their unused one, or a fresh one.
+    // Whoever on the trip hasn't joined gets a working invite: their unused
+    // one, or a fresh one.
     const pending = [];
-    for (const m of members.filter((x) => x.passkeys.length === 0)) {
+    for (const m of members.filter((x) => x.passkeys.length === 0 && !x.pin)) {
       let local = m.invite?.status === "valid" ? store.invite(m.id) : undefined;
       if (!local) {
         local = await site.invite(m.id);

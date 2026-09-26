@@ -12,6 +12,8 @@ export interface PlanEntry {
   plan: Plan;
   proposals: Proposal[];
   editorial: Record<string, Partial<Editorial>>;
+  // Member ids on this trip: only they see it on the site (SPEC §5).
+  participants?: string[];
 }
 
 // The latest invite link per member, kept here so the organiser can copy it

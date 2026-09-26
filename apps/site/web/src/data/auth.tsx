@@ -1,5 +1,5 @@
 // Who is signed in (SPEC §5). Screens use useAuth(); the client behind it is
-// either the real site API with passkeys or a mock for previews and tests.
+// either the real site API (PIN or passkey) or a mock for previews and tests.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { startAuthentication, startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { ME } from "@wanderlot/mocks";
@@ -22,6 +22,10 @@ export interface AuthClient {
   session(): Promise<Member | null>;
   // Looking at an invite never uses it up.
   invite(token: string): Promise<{ name: string; status: InviteStatus } | null>;
+  // With a PIN: works on any device.
+  acceptInviteWithPin(token: string, pin: string): Promise<Member>;
+  signInWithPin(name: string, pin: string): Promise<Member>;
+  // With a passkey on this device, for those who want Face ID or a fingerprint.
   acceptInvite(token: string): Promise<Member>;
   signIn(): Promise<Member>;
   signOut(): Promise<void>;
@@ -67,6 +71,12 @@ export const httpAuthClient: AuthClient = {
     const data = (await res.json()) as { member: { name: string }; status: InviteStatus };
     return { name: data.member.name, status: data.status };
   },
+  async acceptInviteWithPin(token, pin) {
+    return (await post<{ member: Member }>(`/api/invites/${encodeURIComponent(token)}/pin`, { pin })).member;
+  },
+  async signInWithPin(name, pin) {
+    return (await post<{ member: Member }>("/api/session/pin", { name, pin })).member;
+  },
   async acceptInvite(token) {
     try {
       const { flowId, options } = await post<{ flowId: string; options: never }>(`/api/invites/${encodeURIComponent(token)}/passkey/options`);
@@ -101,6 +111,17 @@ export function mockAuthClient(startSignedIn = true): AuthClient {
     site: async () => ({ groupName: "Grupo 51", organiserName: ME.name }),
     session: async () => member,
     invite: async (token) => ({ name: ME.name, status: states[token] ?? "valid" }),
+    acceptInviteWithPin: async (_token, pin) => {
+      await wait();
+      if (!/^\d{6}$/.test(pin)) throw new AuthError("El PIN son 6 números");
+      return (member = { id: ME.id, name: ME.name });
+    },
+    // The design's PIN for everyone is 480193.
+    signInWithPin: async (name, pin) => {
+      await wait();
+      if (pin !== "480193" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
+      return (member = { id: ME.id, name: ME.name });
+    },
     acceptInvite: async () => {
       await wait();
       return (member = { id: ME.id, name: ME.name });
@@ -123,7 +144,9 @@ export interface AuthApi {
   group: GroupInfo;
   client: AuthClient;
   signIn: () => Promise<Member>;
+  signInWithPin: (name: string, pin: string) => Promise<Member>;
   acceptInvite: (token: string) => Promise<Member>;
+  acceptInviteWithPin: (token: string, pin: string) => Promise<Member>;
   signOut: () => Promise<void>;
 }
 
@@ -159,7 +182,9 @@ export function AuthProvider({ client, children }: { client: AuthClient; childre
       group,
       client,
       signIn: () => client.signIn().then(enter),
+      signInWithPin: (name, pin) => client.signInWithPin(name, pin).then(enter),
       acceptInvite: (token) => client.acceptInvite(token).then(enter),
+      acceptInviteWithPin: (token, pin) => client.acceptInviteWithPin(token, pin).then(enter),
       signOut: async () => {
         await client.signOut();
         setState({ status: "out" });

@@ -1,11 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { airportCity, rangeLabel, type Plan } from "@wanderlot/core";
+import { airportCity, type Plan } from "@wanderlot/core";
+import { TripDates, datesSummary, type FlexDays } from "./TripDates.tsx";
 import {
   Button,
-  Calendar,
-  Card,
   ChoiceChip,
-  Chip,
   Field,
   Fieldset,
   Heading,
@@ -16,7 +14,6 @@ import {
   Stepper,
   Text,
   TextInput,
-  addDays,
 } from "@wanderlot/ui";
 
 export type Scope = "any" | "europe" | "place";
@@ -28,9 +25,10 @@ export interface SearchValues {
   origin: string;
   scope: Scope;
   place: string;
-  start: string;
-  nights: 3 | 5 | 7 | 10;
-  flexDays: 0 | 1 | 2;
+  start: string | null;
+  // null while the organiser is between the two clicks.
+  end: string | null;
+  flexDays: FlexDays;
   people: number;
   maxPrice: number;
   stops: Stops;
@@ -47,7 +45,7 @@ export function searchFromPlan(plan: Plan): SearchValues {
     scope: "any",
     place: "",
     start: plan.dateFrom,
-    nights: plan.nights,
+    end: plan.dateTo,
     flexDays: plan.flexDays,
     people: plan.partySize,
     maxPrice: Math.round(plan.maxPriceCents / 100),
@@ -64,15 +62,8 @@ export function originCode(text: string, fallback: string): string {
   return /([A-Za-z]{3})\s*$/.exec(text.trim())?.[1]?.toUpperCase() ?? fallback;
 }
 
-const NIGHTS = [3, 5, 7, 10] as const;
-const FLEX = [
-  { value: 0, label: "Fechas exactas" },
-  { value: 1, label: "± 1 día" },
-  { value: 2, label: "± 2 días" },
-] as const;
-
 export function rangeSummary(v: SearchValues): string {
-  return `${rangeLabel(v.start, addDays(v.start, v.nights))} · ${v.nights} noches`;
+  return datesSummary(v);
 }
 
 export interface SearchFormProps {
@@ -81,11 +72,12 @@ export interface SearchFormProps {
   count?: number;
   running?: boolean;
   flightsConnected: boolean;
+  // First day that can be picked.
+  min: string;
 }
 
-export function SearchForm({ initial, onSubmit, count = 12, running, flightsConnected }: SearchFormProps) {
+export function SearchForm({ initial, onSubmit, count = 12, running, flightsConnected, min }: SearchFormProps) {
   const [v, setV] = useState(initial);
-  const [month, setMonth] = useState({ year: Number(initial.start.slice(0, 4)), month0: Number(initial.start.slice(5, 7)) - 1 });
   const set = <K extends keyof SearchValues>(k: K, value: SearchValues[K]) => setV((s) => ({ ...s, [k]: value }));
 
   const submit = (e: FormEvent) => {
@@ -128,27 +120,13 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
         </Field>
       )}
 
-      <Fieldset legend={<span className="flex items-center justify-between">Fechas y duración<span className="font-semibold text-accent-strong tabular-nums">{rangeSummary(v)}</span></span>}>
-        <Card variant="outline" radius="tile" padding="sm" className="flex flex-col gap-2.5">
-          <Calendar {...month} onMonthChange={setMonth} start={v.start} end={addDays(v.start, v.nights)} onPick={(d) => set("start", d)} />
-          <div className="flex flex-col gap-2 border-t border-line-faint pt-3">
-            <div role="group" aria-label="Noches" className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-              {NIGHTS.map((n) => (
-                <Chip key={n} on={v.nights === n} onClick={() => set("nights", n)} className="px-2">
-                  {n} noches
-                </Chip>
-              ))}
-            </div>
-            <div role="group" aria-label="Flexibilidad" className="flex gap-1.5">
-              {FLEX.map((f) => (
-                <Chip key={f.value} variant="subtle" size="sm" on={v.flexDays === f.value} onClick={() => set("flexDays", f.value)} className="flex-1">
-                  {f.label}
-                </Chip>
-              ))}
-            </div>
-          </div>
-        </Card>
-      </Fieldset>
+      <TripDates
+        value={v}
+        onChange={(r) => setV((s) => ({ ...s, ...r }))}
+        flexDays={v.flexDays}
+        onFlexChange={(f) => set("flexDays", f)}
+        min={v.start && v.start < min ? v.start : min}
+      />
 
       <Field label="Personas">
         {() => <Stepper value={v.people} onChange={(n) => set("people", n)} min={1} max={12} unit="viajamos" decrementLabel="Quitar una persona" incrementLabel="Añadir una persona" />}
@@ -199,7 +177,7 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
         </div>
       </Fieldset>
 
-      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running}>
+      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running || !v.end}>
         {running ? "Buscando…" : `Generar ${count} propuestas`}
       </Button>
     </form>

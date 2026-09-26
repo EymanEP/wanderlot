@@ -1,7 +1,7 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
 import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
-import type { Flow, Invite, Passkey, Session, SiteStore, StoredPlan } from "./store.ts";
+import type { Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan } from "./store.ts";
 
 export type Row = Record<string, unknown>;
 export type Value = string | number | null;
@@ -86,6 +86,49 @@ export class SqlStore implements SiteStore {
   async member(id: string): Promise<Member | undefined> {
     const r = await this.get("select id, name from members where id = ?", id);
     return r ? { id: r.id as string, name: r.name as string } : undefined;
+  }
+
+  // --- trips ---------------------------------------------------------------
+
+  async planMembers(planId: string): Promise<string[]> {
+    return (await this.all("select member_id from plan_members where plan_id = ? order by member_id", planId)).map((r) => r.member_id as string);
+  }
+
+  async setPlanMembers(planId: string, memberIds: string[]) {
+    await this.run("delete from plan_members where plan_id = ?", planId);
+    for (const id of memberIds) await this.run("insert or ignore into plan_members (plan_id, member_id) values (?, ?)", planId, id);
+  }
+
+  async planIdsFor(memberId: string): Promise<string[]> {
+    return (await this.all("select plan_id from plan_members where member_id = ?", memberId)).map((r) => r.plan_id as string);
+  }
+
+  // --- PINs ----------------------------------------------------------------
+
+  async pin(memberId: string): Promise<MemberPin | undefined> {
+    const r = await this.get("select * from member_pins where member_id = ?", memberId);
+    return r
+      ? { hash: r.hash as string, salt: r.salt as string, setAt: r.set_at as string, failed: r.failed as number, lockedUntil: (r.locked_until as string | null) ?? null }
+      : undefined;
+  }
+
+  async setPin(memberId: string, hash: string, salt: string, at: string) {
+    await this.run(
+      `insert into member_pins (member_id, hash, salt, set_at, failed, locked_until) values (?, ?, ?, ?, 0, null)
+       on conflict(member_id) do update set hash = excluded.hash, salt = excluded.salt, set_at = excluded.set_at, failed = 0, locked_until = null`,
+      memberId,
+      hash,
+      salt,
+      at,
+    );
+  }
+
+  async recordPinFailure(memberId: string, failed: number, lockedUntil: string | null) {
+    await this.run("update member_pins set failed = ?, locked_until = ? where member_id = ?", failed, lockedUntil, memberId);
+  }
+
+  async deletePin(memberId: string) {
+    await this.run("delete from member_pins where member_id = ?", memberId);
   }
 
   // --- invites -------------------------------------------------------------
