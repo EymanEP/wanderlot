@@ -96,13 +96,13 @@ export function InvitePage() {
         <Heading as="h1" size="headline">
           ¿Eres {invite.name}?
         </Heading>
-        <Text>Elige un PIN de 6 números. Con tu nombre y ese PIN entras desde el móvil, el portátil o donde quieras.</Text>
+        <Text>Elige un PIN de 4 números. Con tu nombre y ese PIN entras desde el móvil, el portátil o donde quieras.</Text>
       </div>
       {error && <Notice role="alert">{error}</Notice>}
       <form onSubmit={withPin} className="flex flex-col gap-4" aria-label="Elegir PIN">
         <PinField label="Tu PIN" value={pin} onChange={setPin} autoComplete="new-password" autoFocus />
         <PinField label="Repítelo" value={again} onChange={setAgain} autoComplete="new-password" />
-        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 6 || again.length !== 6}>
+        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 4 || again.length !== 4}>
           {busy === "pin" ? "Entrando…" : "Guardar PIN y entrar"}
         </Button>
       </form>

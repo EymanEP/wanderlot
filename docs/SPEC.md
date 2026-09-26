@@ -220,7 +220,7 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 A small, known group, no passwords to remember beyond a short PIN. The
 organiser brings each person in with a **one-time invite**; they choose a
-**6-digit PIN** and from then on sign in with **their name and PIN** on any
+**4-digit PIN** and from then on sign in with **their name and PIN** on any
 device. A **passkey** (Face ID, a fingerprint) is an optional extra for
 whoever wants it on a given device.
 
@@ -250,15 +250,18 @@ whoever wants it on a given device.
   forgotten PIN.
 
 ### PINs
-- Six digits; obvious ones (all the same digit, 123456, 654321, repeated
-  pairs or triples) are refused.
+- Four digits; obvious ones (all the same digit, 1234, 9876, repeated
+  pairs like 1212, and the most common PINs such as 2580) are refused.
 - Stored as an HMAC-SHA256 of the PIN with a per-member salt, keyed by a
   server secret (`PIN_SECRET`, set by `npm run deploy:site`; the admin token
-  if unset). Six digits are too few to survive a copied database on their
+  if unset). Four digits are too few to survive a copied database on their
   own; the secret means the database alone can't test guesses.
 - Signing in takes a name (accents, case and spacing ignored; the member id
   works too) and the PIN. A wrong name and a wrong PIN get the same answer.
-- **Five wrong PINs in a row lock that person out for 15 minutes.** Each
+- **Five wrong PINs in a row lock that person out**, longer each time: 15
+  minutes, then 1 hour, 4 hours, then a day per lockout, until they sign in
+  with the right PIN or get a new invite. With 10,000 possible PINs, that
+  keeps guessing one person's PIN out of reach. Each
   address is also rate-limited on the sign-in routes. Changing the PIN means
   a new invite.
 - Names must be unique within the group, since people sign in with them.

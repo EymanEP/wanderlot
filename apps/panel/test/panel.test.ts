@@ -291,7 +291,7 @@ describe("plans and settings", () => {
     const joined = await site.request(`/api/invites/${url.split("/i/")[1]}/pin`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pin: "480193" }),
+      body: JSON.stringify({ pin: "4801" }),
     });
     const cookie = joined.headers.get("set-cookie")!.split(";")[0]!;
     await site.request(`/api/plans/${PLAN}/suggestions`, {

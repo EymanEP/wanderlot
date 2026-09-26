@@ -126,8 +126,8 @@ try {
   const ana = await phone.newPage();
   await ana.goto(invite!);
   await ana.getByText("Eyman te ha invitado a Grupo 51").waitFor();
-  await ana.getByLabel("Tu PIN").fill("480193");
-  await ana.getByLabel("Repítelo").fill("480193");
+  await ana.getByLabel("Tu PIN").fill("4801");
+  await ana.getByLabel("Repítelo").fill("4801");
   await ana.getByRole("button", { name: "Guardar PIN y entrar" }).click();
   await ana.getByRole("heading", { level: 1, name: "Noviembre 2026" }).waitFor();
   for (const city of ["Lisboa", "Nápoles", "Marrakech"]) await ana.getByRole("link", { name: city }).first().waitFor();

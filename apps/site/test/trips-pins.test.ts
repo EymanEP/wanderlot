@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { PIN_LOCK_MS, createApp, nameKey, pinProblem } from "../src/app.ts";
+import { PIN_LOCKS_MS, createApp, nameKey, pinProblem } from "../src/app.ts";
 import { SqliteStore } from "../src/sqlite.ts";
 import { destination, snapshot } from "../../../packages/core/test/fixtures.ts";
 
@@ -38,18 +38,18 @@ beforeEach(async () => {
 });
 
 describe("PINs", () => {
-  it("rejects easy ones", () => {
-    for (const pin of ["12345", "1234567", "abcdef", "111111", "123456", "987654", "121212", "123123"]) expect(pinProblem(pin)).not.toBeNull();
-    for (const pin of ["480193", "205817"]) expect(pinProblem(pin)).toBeNull();
+  it("takes four digits, and rejects easy ones", () => {
+    for (const pin of ["123", "12345", "abcd", "1111", "1234", "9876", "1212", "2580", "1004"]) expect(pinProblem(pin)).not.toBeNull();
+    for (const pin of ["4801", "2058", "7304"]) expect(pinProblem(pin)).toBeNull();
   });
 
   it("accepts an invite with a PIN, then signs in by name on another device", async () => {
-    const cookie = await joinWithPin("ana", "480193");
+    const cookie = await joinWithPin("ana", "4801");
     expect(((await (await req("/api/session", "GET", undefined, { cookie })).json()) as any).member.id).toBe("ana");
 
     // The laptop: accents, case and spaces don't matter; the id works too.
     for (const name of ["ana maria", "  ANA  MARÍA ", "ana"]) {
-      const res = await signIn(name, "480193");
+      const res = await signIn(name, "4801");
       expect(res.status).toBe(200);
       expect(cookieOf(res)).toMatch(/^wl_session=/);
     }
@@ -57,42 +57,56 @@ describe("PINs", () => {
     expect(members.find((m) => m.id === "ana").pin).toEqual({ setAt: clock.toISOString(), locked: false });
     // Stored as a keyed hash, never the PIN.
     const stored = (await store.pin("ana"))!;
-    expect(stored.hash).not.toContain("480193");
+    expect(stored.hash).not.toContain("4801");
     expect(stored.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("won't reuse the invite, and refuses a weak PIN without spending it", async () => {
     const token = await inviteToken("bea");
     expect((await req(`/api/invites/${token}/pin`, "POST", { pin: "123456" })).status).toBe(400);
-    expect((await req(`/api/invites/${token}/pin`, "POST", { pin: "205817" })).status).toBe(200);
-    expect((await req(`/api/invites/${token}/pin`, "POST", { pin: "205817" })).status).toBe(410);
+    expect((await req(`/api/invites/${token}/pin`, "POST", { pin: "2058" })).status).toBe(200);
+    expect((await req(`/api/invites/${token}/pin`, "POST", { pin: "2058" })).status).toBe(410);
   });
 
   it("says the same for an unknown name and a wrong PIN", async () => {
-    await joinWithPin("ana", "480193");
-    const a = await signIn("nadie", "480193");
-    const b = await signIn("ana", "480194");
+    await joinWithPin("ana", "4801");
+    const a = await signIn("nadie", "4801");
+    const b = await signIn("ana", "4802");
     expect([a.status, b.status]).toEqual([401, 401]);
     expect(await a.json()).toEqual(await b.json());
   });
 
-  it("locks someone out after five wrong PINs, then lets them back in", async () => {
-    await joinWithPin("ana", "480193");
-    for (let i = 0; i < 4; i++) expect((await signIn("ana", "000001")).status).toBe(401);
-    expect((await signIn("ana", "000001")).status).toBe(429);
+  it("locks someone out after five wrong PINs, longer each time, until they get it right", async () => {
+    await joinWithPin("ana", "4801");
+    const fiveWrong = async () => {
+      for (let i = 0; i < 4; i++) expect((await signIn("ana", "0391")).status).toBe(401);
+      return signIn("ana", "0391");
+    };
+    const first = await fiveWrong();
+    expect(first.status).toBe(429);
+    expect(((await first.json()) as any).error).toMatch(/15 min/);
     // Even the right PIN waits.
-    expect((await signIn("ana", "480193")).status).toBe(429);
+    expect((await signIn("ana", "4801")).status).toBe(429);
     expect(((await (await admin("/members")).json()) as any[]).find((m) => m.id === "ana").pin.locked).toBe(true);
-    clock = new Date(clock.getTime() + PIN_LOCK_MS + 1000);
-    expect((await signIn("ana", "480193")).status).toBe(200);
+
+    // The next lockout is longer: an hour, then four.
+    clock = new Date(clock.getTime() + PIN_LOCKS_MS[0]! + 1000);
+    expect(((await (await fiveWrong()).json()) as any).error).toMatch(/1 h/);
+    clock = new Date(clock.getTime() + PIN_LOCKS_MS[1]! + 1000);
+    expect(((await (await fiveWrong()).json()) as any).error).toMatch(/4 h/);
+
+    // The right PIN after the wait resets it all.
+    clock = new Date(clock.getTime() + PIN_LOCKS_MS[2]! + 1000);
+    expect((await signIn("ana", "4801")).status).toBe(200);
+    expect(((await (await fiveWrong()).json()) as any).error).toMatch(/15 min/);
   });
 
   it("goes away with removed access; a new invite sets a new one", async () => {
-    await joinWithPin("ana", "480193");
+    await joinWithPin("ana", "4801");
     await admin("/members/ana/revoke", "POST");
-    expect((await signIn("ana", "480193")).status).toBe(401);
-    await joinWithPin("ana", "730461");
-    expect((await signIn("ana", "730461")).status).toBe(200);
+    expect((await signIn("ana", "4801")).status).toBe(401);
+    await joinWithPin("ana", "7304");
+    expect((await signIn("ana", "7304")).status).toBe(200);
   });
 
   it("keeps names unique, since they sign in with them", async () => {
@@ -105,7 +119,7 @@ describe("PINs", () => {
 describe("trips", () => {
   let cookies: Record<string, string>;
   beforeEach(async () => {
-    cookies = { ana: await joinWithPin("ana", "480193"), bea: await joinWithPin("bea", "205817"), carlos: await joinWithPin("carlos", "730461") };
+    cookies = { ana: await joinWithPin("ana", "4801"), bea: await joinWithPin("bea", "2058"), carlos: await joinWithPin("carlos", "7304") };
     const trip = (id: string, name: string, ids: string[]) => {
       const s = snapshot(ids.map((d) => destination(d)));
       return { ...s, plan: { ...s.plan, id, name } };

@@ -31,7 +31,7 @@ export function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-// PINs are six digits: too few to survive a leaked database on their own,
+// PINs are four digits: too few to survive a leaked database on their own,
 // however slow the hash. So each is an HMAC keyed by a server-side secret
 // (PIN_SECRET), with a per-member salt; the database alone can't test guesses,
 // and online guesses are capped by the lockout in app.ts.

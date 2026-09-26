@@ -69,7 +69,7 @@ export function SignInPage() {
           )}
         </Field>
         <PinField label="PIN" value={pin} onChange={setPin} autoComplete="current-password" autoFocus={!!name} />
-        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 6 || !name.trim()}>
+        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 4 || !name.trim()}>
           {busy === "pin" ? "Entrando…" : "Entrar"}
         </Button>
       </form>

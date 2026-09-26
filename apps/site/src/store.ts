@@ -44,6 +44,8 @@ export interface MemberPin {
   setAt: string;
   failed: number;
   lockedUntil: string | null;
+  // Lockouts in a row; each lasts longer than the last.
+  lockouts: number;
 }
 
 export interface Suggestion {
@@ -93,7 +95,7 @@ export interface SiteStore {
   // PINs: stored as a keyed hash, never the PIN itself
   pin(memberId: string): Promise<MemberPin | undefined>;
   setPin(memberId: string, hash: string, salt: string, at: string): Promise<void>;
-  recordPinFailure(memberId: string, failed: number, lockedUntil: string | null): Promise<void>;
+  recordPinFailure(memberId: string, failed: number, lockedUntil: string | null, lockouts: number): Promise<void>;
   deletePin(memberId: string): Promise<void>;
 
   // invites: the token is only ever stored hashed
