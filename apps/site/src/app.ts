@@ -15,6 +15,7 @@ import {
 } from "@simplewebauthn/server";
 import {
   DEFAULT_SETTINGS,
+  SITE_API_VERSION,
   GroupSettings,
   Snapshot,
   effectiveStatus,
@@ -84,21 +85,36 @@ export function nameKey(name: string): string {
   return name.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-// Six digits, and not one anyone would try first.
+// Four digits, and not one anyone would try first.
+export const PIN_LENGTH = 4;
+// The most common 4-digit PINs not caught by the rules below.
+const COMMON_PINS = new Set(["1004", "2000", "2001", "6969", "1010", "1313", "1122", "2580", "0852", "1990", "2020", "1984", "0007"]);
+
 export function pinProblem(pin: string): string | null {
-  if (!/^\d{6}$/.test(pin)) return "El PIN son 6 números";
+  if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) return `El PIN son ${PIN_LENGTH} números`;
   const d = [...pin].map(Number);
   const steps = d.slice(1).map((x, i) => x - d[i]!);
   if (steps.every((x) => x === 0)) return "Ese PIN es demasiado fácil: evita repetir el mismo número";
-  if (steps.every((x) => x === 1) || steps.every((x) => x === -1)) return "Ese PIN es demasiado fácil: evita 123456 y parecidos";
-  if (/^(\d\d)\1\1$|^(\d\d\d)\2$/.test(pin)) return "Ese PIN es demasiado fácil: evita repetir grupos";
+  if (steps.every((x) => x === 1) || steps.every((x) => x === -1)) return "Ese PIN es demasiado fácil: evita 1234 y parecidos";
+  if (/^(\d\d)\1$/.test(pin) || COMMON_PINS.has(pin)) return "Ese PIN es demasiado fácil: elige otro";
   return null;
 }
 
 export const PIN_MAX_TRIES = 5;
+// Four digits are only 10,000 PINs, so lockouts grow: 15 min, 1 h, 4 h, then
+// a day each time, until the right PIN (or a new invite) resets them.
+export const PIN_LOCKS_MS = [15 * 60_000, 60 * 60_000, 4 * 60 * 60_000, 24 * 60 * 60_000];
+export const pinLockMs = (lockouts: number) => PIN_LOCKS_MS[Math.min(lockouts, PIN_LOCKS_MS.length - 1)]!;
+
+// "15 min", "4 h", "1 día"
+function waitLabel(ms: number): string {
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.ceil(minutes / 60);
+  return hours < 24 ? `${hours} h` : "1 día";
+}
 // Unresearched ideas one person can have waiting on a trip.
 export const MAX_OPEN_SUGGESTIONS = 5;
-export const PIN_LOCK_MS = 15 * 60_000;
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
@@ -325,19 +341,20 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const hash = await (await hashPin)(member?.id ?? "-", stored?.salt ?? "-", body.data.pin);
     if (!member || !stored) return c.json({ error: WRONG }, 401);
     if (stored.lockedUntil && Date.parse(stored.lockedUntil) > now().getTime()) {
-      const minutes = Math.ceil((Date.parse(stored.lockedUntil) - now().getTime()) / 60_000);
-      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${minutes} min o pide una invitación nueva.` }, 429);
+      const left = Date.parse(stored.lockedUntil) - now().getTime();
+      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(left)} o pide una invitación nueva.` }, 429);
     }
     if (!safeEqual(hash, stored.hash)) {
       const failed = stored.failed + 1;
       if (failed >= PIN_MAX_TRIES) {
-        await store.recordPinFailure(member.id, 0, iso(PIN_LOCK_MS));
-        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${PIN_LOCK_MS / 60_000} min o pide una invitación nueva.` }, 429);
+        const lock = pinLockMs(stored.lockouts);
+        await store.recordPinFailure(member.id, 0, iso(lock), stored.lockouts + 1);
+        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock)} o pide una invitación nueva.` }, 429);
       }
-      await store.recordPinFailure(member.id, failed, null);
+      await store.recordPinFailure(member.id, failed, null, stored.lockouts);
       return c.json({ error: WRONG }, 401);
     }
-    if (stored.failed > 0 || stored.lockedUntil) await store.recordPinFailure(member.id, 0, null);
+    if (stored.failed > 0 || stored.lockedUntil || stored.lockouts > 0) await store.recordPinFailure(member.id, 0, null, 0);
     await startSession(c, member.id, null);
     return c.json({ member });
   });
@@ -505,6 +522,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   });
 
   admin.get("/plans/:planId/members", async (c) => c.json(await store.planMembers(c.req.param("planId"))));
+
+  admin.get("/version", (c) => c.json({ api: SITE_API_VERSION }));
 
   admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));
 

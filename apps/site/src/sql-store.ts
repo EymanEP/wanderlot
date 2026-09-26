@@ -43,7 +43,7 @@ export class SqlStore implements SiteStore {
   // --- plans ---------------------------------------------------------------
 
   async plans() {
-    return (await this.all("select * from plans order by published_at desc")).map((row) => ({ id: row.id as string, ...toPlan(row) }));
+    return (await this.all("select * from plans order by published_at desc, rowid desc")).map((row) => ({ id: row.id as string, ...toPlan(row) }));
   }
 
   async getPlan(id: string): Promise<StoredPlan | undefined> {
@@ -120,7 +120,7 @@ export class SqlStore implements SiteStore {
   }
 
   async suggestions(planId: string): Promise<Suggestion[]> {
-    return (await this.all("select * from suggestions where plan_id = ? order by created_at, id", planId)).map((r) => ({
+    return (await this.all("select * from suggestions where plan_id = ? order by created_at, rowid", planId)).map((r) => ({
       id: r.id as string,
       planId: r.plan_id as string,
       memberId: r.member_id as string,
@@ -141,14 +141,14 @@ export class SqlStore implements SiteStore {
   async pin(memberId: string): Promise<MemberPin | undefined> {
     const r = await this.get("select * from member_pins where member_id = ?", memberId);
     return r
-      ? { hash: r.hash as string, salt: r.salt as string, setAt: r.set_at as string, failed: r.failed as number, lockedUntil: (r.locked_until as string | null) ?? null }
+      ? { hash: r.hash as string, salt: r.salt as string, setAt: r.set_at as string, failed: r.failed as number, lockedUntil: (r.locked_until as string | null) ?? null, lockouts: (r.lockouts as number | null) ?? 0 }
       : undefined;
   }
 
   async setPin(memberId: string, hash: string, salt: string, at: string) {
     await this.run(
       `insert into member_pins (member_id, hash, salt, set_at, failed, locked_until) values (?, ?, ?, ?, 0, null)
-       on conflict(member_id) do update set hash = excluded.hash, salt = excluded.salt, set_at = excluded.set_at, failed = 0, locked_until = null`,
+       on conflict(member_id) do update set hash = excluded.hash, salt = excluded.salt, set_at = excluded.set_at, failed = 0, locked_until = null, lockouts = 0`,
       memberId,
       hash,
       salt,
@@ -156,8 +156,8 @@ export class SqlStore implements SiteStore {
     );
   }
 
-  async recordPinFailure(memberId: string, failed: number, lockedUntil: string | null) {
-    await this.run("update member_pins set failed = ?, locked_until = ? where member_id = ?", failed, lockedUntil, memberId);
+  async recordPinFailure(memberId: string, failed: number, lockedUntil: string | null, lockouts: number) {
+    await this.run("update member_pins set failed = ?, locked_until = ?, lockouts = ? where member_id = ?", failed, lockedUntil, lockouts, memberId);
   }
 
   async deletePin(memberId: string) {
@@ -218,7 +218,7 @@ export class SqlStore implements SiteStore {
   }
 
   async passkeysFor(memberId: string) {
-    return (await this.all("select * from passkeys where member_id = ? order by created_at", memberId)).map(toPasskey);
+    return (await this.all("select * from passkeys where member_id = ? order by created_at, rowid", memberId)).map(toPasskey);
   }
 
   async recordPasskeyUse(id: string, counter: number, at: string) {
@@ -263,7 +263,7 @@ export class SqlStore implements SiteStore {
   }
 
   async sessionsFor(memberId: string) {
-    return (await this.all("select * from sessions where member_id = ? order by last_seen_at desc", memberId)).map(toSession);
+    return (await this.all("select * from sessions where member_id = ? order by last_seen_at desc, rowid desc", memberId)).map(toSession);
   }
 
   // --- flows ---------------------------------------------------------------

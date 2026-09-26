@@ -74,8 +74,8 @@ try {
   await page.reload();
   await page.getByText("Eyman te ha invitado a Grupo E2E").waitFor();
   await page.getByRole("heading", { name: "¿Eres Ana María?" }).waitFor();
-  await page.getByLabel("Tu PIN").fill("480193");
-  await page.getByLabel("Repítelo").fill("480193");
+  await page.getByLabel("Tu PIN").fill("4801");
+  await page.getByLabel("Repítelo").fill("4801");
   await page.getByRole("button", { name: "Guardar PIN y entrar" }).click();
   await page.waitForURL(`${ORIGIN}/p/noviembre-2026`);
   assert.deepEqual(await (await page.request.get(`${ORIGIN}/api/session`)).json(), { member: { id: "ana", name: "Ana María" } });
@@ -113,10 +113,10 @@ try {
   await laptop.goto(`${ORIGIN}/p/noviembre-2026/votacion`);
   await laptop.getByRole("heading", { name: "Entra en Grupo E2E" }).waitFor();
   await laptop.getByLabel("Tu nombre").fill("ana maria");
-  await laptop.getByLabel("PIN", { exact: true }).fill("111333");
+  await laptop.getByLabel("PIN", { exact: true }).fill("1352");
   await laptop.getByRole("button", { name: "Entrar", exact: true }).click();
   await laptop.getByText("Nombre o PIN incorrectos").waitFor();
-  await laptop.getByLabel("PIN", { exact: true }).fill("480193");
+  await laptop.getByLabel("PIN", { exact: true }).fill("4801");
   await laptop.getByRole("button", { name: "Entrar", exact: true }).click();
   await laptop.waitForURL(`${ORIGIN}/p/noviembre-2026/votacion`);
   await laptop.getByRole("heading", { level: 1, name: "Votación" }).waitFor();
@@ -156,7 +156,7 @@ try {
   await laptop.reload();
   await laptop.getByRole("heading", { name: "Entra en Grupo E2E" }).waitFor();
   await laptop.getByLabel("Tu nombre").fill("Ana María");
-  await laptop.getByLabel("PIN", { exact: true }).fill("480193");
+  await laptop.getByLabel("PIN", { exact: true }).fill("4801");
   await laptop.getByRole("button", { name: "Entrar", exact: true }).click();
   await laptop.getByText("Nombre o PIN incorrectos").waitFor();
   console.log("✓ removed access: PIN refused");

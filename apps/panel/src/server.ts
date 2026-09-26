@@ -33,7 +33,9 @@ const photos: PhotoSource[] = [
 const status: PanelStatus = {
   // The command first: it runs on the organiser's Claude plan, with no API bill.
   research: hasClaude ? "claude-cli" : process.env.ANTHROPIC_API_KEY ? "anthropic-api" : "none",
-  flights: process.env.DUFFEL_API_KEY ? "duffel" : "none",
+  // The Duffel provider is still a stub (providers/duffel.ts): until it's
+  // wired up, a key doesn't make flight search work, so don't offer it.
+  flights: "none",
   photos: photos.map((s) => s.name),
 };
 

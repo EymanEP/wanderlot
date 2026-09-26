@@ -55,6 +55,8 @@ export interface MemberStatus {
 
 export interface SiteClient {
   settings(): Promise<GroupSettings>;
+  // The site's API version; 0 for a site too old to say.
+  version(): Promise<number>;
   putSettings(s: GroupSettings): Promise<GroupSettings>;
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
@@ -95,6 +97,14 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
   }
   return {
     settings: () => call<GroupSettings>("/settings", "GET"),
+    async version() {
+      try {
+        return (await call<{ api: number }>("/version", "GET")).api;
+      } catch (e) {
+        if (e instanceof SiteError && e.status === 404) return 0;
+        throw e;
+      }
+    },
     putSettings: (s) => call<GroupSettings>("/settings", "PUT", s),
     publish: async (s) => void (await call(`/plans/${s.plan.id}`, "PUT", s)),
     openVote: async (planId, deadline) => void (await call(`/plans/${planId}/open-vote`, "POST", { deadline })),

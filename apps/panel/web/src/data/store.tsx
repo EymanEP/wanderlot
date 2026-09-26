@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, Review, SearchOptions, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, Review, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -21,6 +21,12 @@ export interface GenerationState {
   // Stopped by the organiser, rather than finished.
   stopped: boolean;
   error: string | null;
+  // When it started (ms), and what research has done so far, oldest first.
+  source: SearchOptions["source"];
+  startedAt: number;
+  steps: SearchStep[];
+  // Researching one friend's idea rather than a full search.
+  idea: string | null;
 }
 
 export interface PanelState {
@@ -209,7 +215,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         const ctl = new AbortController();
         abort.current = ctl;
         patch((s) => ({
-          generation: { running: true, received: 0, requested: opts.count, stopped: false, error: null },
+          generation: { running: true, received: 0, requested: opts.count, stopped: false, error: null, source: opts.source, startedAt: Date.now(), steps: [], idea: opts.idea ?? null },
         }));
         backend
           .generate(
@@ -221,6 +227,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
                 generation: s.generation ? { ...s.generation, received: s.generation.received + 1 } : s.generation,
               })),
             ctl.signal,
+            (step) => patch((s) => ({ generation: s.generation && { ...s.generation, steps: [...s.generation.steps.slice(-199), step] } })),
           )
           .then(
             () => patch((s) => ({ generation: s.generation && { ...s.generation, running: false } })),

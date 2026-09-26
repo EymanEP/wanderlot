@@ -9,7 +9,7 @@ export interface PinFieldProps {
   autoFocus?: boolean;
 }
 
-// Six digits, with the phone's number pad.
+// Four digits, with the phone's number pad.
 export function PinField({ label, value, onChange, autoComplete, autoFocus }: PinFieldProps) {
   return (
     <Field label={label}>
@@ -18,13 +18,13 @@ export function PinField({ label, value, onChange, autoComplete, autoFocus }: Pi
           id={inputId}
           type="password"
           inputMode="numeric"
-          pattern="[0-9]{6}"
-          maxLength={6}
+          pattern="[0-9]{4}"
+          maxLength={4}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
           required
           value={value}
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
           className="text-center text-[22px] tracking-[0.5em] tabular-nums"
         />
       )}

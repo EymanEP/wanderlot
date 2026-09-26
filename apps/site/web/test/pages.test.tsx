@@ -145,10 +145,10 @@ describe("Signing in", () => {
     expect(screen.queryByText("Noviembre 2026")).toBeNull();
     // From a laptop: name and PIN, no passkey needed. A wrong PIN says so.
     await user.type(screen.getByLabelText("Tu nombre"), "Eyman");
-    await user.type(screen.getByLabelText("PIN"), "111222");
+    await user.type(screen.getByLabelText("PIN"), "1352");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByText("Nombre o PIN incorrectos")).toBeTruthy();
-    await user.type(screen.getByLabelText("PIN"), "480193");
+    await user.type(screen.getByLabelText("PIN"), "4801");
     await user.click(screen.getByRole("button", { name: "Entrar" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
   });
@@ -157,12 +157,12 @@ describe("Signing in", () => {
     const user = userEvent.setup();
     renderAt("/i/demo", false, false);
     expect(await screen.findByRole("heading", { name: "¿Eres Eyman?" })).toBeTruthy();
-    await user.type(screen.getByLabelText("Tu PIN"), "480193");
-    await user.type(screen.getByLabelText("Repítelo"), "480194");
+    await user.type(screen.getByLabelText("Tu PIN"), "4801");
+    await user.type(screen.getByLabelText("Repítelo"), "4802");
     await user.click(screen.getByRole("button", { name: "Guardar PIN y entrar" }));
     expect(await screen.findByText("Los dos PIN no coinciden")).toBeTruthy();
     await user.clear(screen.getByLabelText("Repítelo"));
-    await user.type(screen.getByLabelText("Repítelo"), "480193");
+    await user.type(screen.getByLabelText("Repítelo"), "4801");
     await user.click(screen.getByRole("button", { name: "Guardar PIN y entrar" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" })).toBeTruthy();
   });
