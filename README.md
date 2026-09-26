@@ -21,7 +21,8 @@ apps/panel      local-only app: Generar, Revisar, Comparativa
   src/            API (Hono)
   web/            UI (React + Tailwind, Vite)
 apps/site       published app: Destinos, Destino, Votación, Comentarios
-  src/            API (Hono + node:sqlite)
+  src/            API (Hono): Cloudflare Worker + D1, or Node + node:sqlite
+  migrations/     the database schema, for both
   web/            UI (React + Tailwind, Vite)
 ```
 
@@ -85,9 +86,26 @@ page with in-memory routing, for sharing a clickable preview:
 The panel and the site share one contract, the `Snapshot` schema in
 `packages/core`. Publishing is the only way data moves from panel to site.
 
+## Hosting your own
+
+One deployment serves one group. The site runs free on Cloudflare Workers + D1;
+the panel runs on the organiser's computer.
+
+```sh
+git clone https://github.com/EymanEP/wanderlot && cd wanderlot
+npm install
+npx wrangler login     # once, with a free Cloudflare account
+npm run setup          # deploys the site, connects the panel, writes .env
+npm run panel          # http://127.0.0.1:5151 → Personas → invite your friends
+```
+
+Passkeys belong to the site's address, so settle on it (the `workers.dev` one
+or a custom domain) before inviting anyone. After pulling new code, run
+`npm run deploy:site` again. Details: [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
+
 ## Running
 
-Requires Node ≥ 22.13 (the site uses the built-in `node:sqlite`).
+Requires Node ≥ 22.13 (the Node site uses the built-in `node:sqlite`).
 
 ```sh
 npm install
@@ -109,18 +127,27 @@ sign in with passkeys through Vite, start the API with
 `WANDERLOT_ORIGIN=http://localhost:5173` and build or run the UI with
 `VITE_AUTH=http`.
 
-`npm run test:e2e -w @wanderlot/site` runs the passkey flow (invite, sign-up,
-sign-out, sign-in, removed access) against the real server and UI in Chromium,
-using the browser's virtual authenticator.
+`npm run dev:worker -w @wanderlot/site` runs the site as a Cloudflare Worker
+locally (`wrangler dev`, local D1; copy `apps/site/.dev.vars.example` to
+`.dev.vars` first).
+
+`npm run test:e2e -w @wanderlot/site` runs the whole flow (invite, passkey
+sign-up, publish, vote, comment, sign-out, sign-in, removed access) in Chromium
+with the browser's virtual authenticator, against the Node server;
+`npm run test:e2e:worker` runs it against the Worker in `wrangler dev`.
+
+The panel reads these from `.env` (written by `npm run setup`) or the environment.
 
 | variable | used by | default |
 |---|---|---|
-| `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site) |
+| `WANDERLOT_ADMIN_TOKEN` | both | — (required by the site; on Cloudflare it's the `ADMIN_TOKEN` secret) |
 | `WANDERLOT_DB` | site | `data/site.sqlite` |
 | `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
+| `ANTHROPIC_API_KEY` | panel | — (optional; otherwise the `claude` command) |
 | `DUFFEL_API_KEY` | panel | — |
+| `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
 
 ## State

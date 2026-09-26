@@ -8,6 +8,11 @@ import { duffelProvider } from "./providers/duffel.ts";
 import { siteClient } from "./publish.ts";
 import { PanelStore } from "./store.ts";
 
+// Settings from `npm run setup`, unless already set in the environment.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("../../../.env", import.meta.url)));
+} catch {}
+
 const siteUrl = process.env.WANDERLOT_SITE_URL ?? "http://localhost:8787";
 const adminToken = process.env.WANDERLOT_ADMIN_TOKEN ?? "";
 const port = Number(process.env.PORT ?? 5151);

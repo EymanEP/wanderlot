@@ -1,5 +1,5 @@
 // What the site keeps, behind one async interface: node:sqlite implements it
-// today (sqlite.ts); Cloudflare D1 will too. Both share schema.sql.
+// (sqlite.ts) and Cloudflare D1 (d1.ts) implement it, from the same migrations/.
 import type { Ballot, Comment, Member, PlanStatus, Snapshot } from "@wanderlot/core";
 
 export interface StoredPlan {
@@ -80,7 +80,8 @@ export interface SiteStore {
   sessionsFor(memberId: string): Promise<Session[]>;
 
   // passkey ceremonies in flight
-  putFlow(id: string, flow: Flow): Promise<void>;
+  // Also clears flows that expired before `now`.
+  putFlow(id: string, flow: Flow, now: string): Promise<void>;
   // Returns and deletes it: a flow works once.
   takeFlow(id: string): Promise<Flow | undefined>;
 

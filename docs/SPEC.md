@@ -389,10 +389,11 @@ rows read and 100 K written per day and 5 GB of storage, and queries past the
 daily cap fail until midnight UTC rather than billing. Workers and D1 don't
 sleep, so the site answers instantly after weeks of silence between trips.
 
-Storage sits behind one interface with two implementations: **D1** for
-Cloudflare and **`node:sqlite`** for tests, local development, and anyone who
-prefers running the Node server themselves (Docker on any small server). Both
-use the same SQL schema and migrations.
+Storage sits behind one interface, written once in SQL over two drivers:
+**D1** on Cloudflare and **`node:sqlite`** for tests, local development, and
+anyone running the Node server themselves. Both apply the same migrations
+(`apps/site/migrations/`). The Worker handles only `/api/*`; Cloudflare serves
+the built UI and falls back to it for page addresses.
 
 Considered and not the default:
 - **Vercel Hobby + Neon Postgres.** Free, but Hobby is for non-commercial
@@ -403,22 +404,33 @@ Considered and not the default:
   and a group site sits idle for weeks between trips.
 
 ### What a hoster does
-1. **Deploy the site**: the README's "Deploy to Cloudflare" button (or
-   `npm run deploy:site` with Wrangler) creates the Worker and the D1 database.
-2. **Set one secret**: `ADMIN_TOKEN`, 32+ random characters
-   (`openssl rand -base64 32`).
-3. **Clone the repo and run `npm run setup`**: it asks for the site URL, the
-   admin token, and any optional keys (Anthropic, Duffel, Unsplash, Pexels),
-   checks each one, and writes `.env`.
+1. **Get the code and a Cloudflare account**: clone the repo, `npm install`, and
+   `npx wrangler login` once.
+2. **Run `npm run setup`**. It offers to deploy the site to Cloudflare
+   (`npm run deploy:site`: creates the D1 database the first time, applies
+   migrations, deploys the Worker, and generates and stores `ADMIN_TOKEN`),
+   checks the panel can reach it, looks for the `claude` command, asks for any
+   optional keys (Anthropic, Duffel, Unsplash, Pexels), and writes `.env`.
+3. **Decide the final address before inviting anyone** (§5): the free
+   `*.workers.dev` one, or a custom domain added in Cloudflare's dashboard.
+   With a custom domain, set the Worker variable `ORIGIN` to it.
 4. **Run the panel**: `npm run panel`, then open `http://127.0.0.1:5151`.
    "Personas" adds everyone and sends each a one-time invite (§5).
 5. **Research, approve, publish, open the vote**, and paste the panel's message
    into the group chat (§7).
 
+`npm run deploy:site` is safe to re-run after pulling new code: it applies new
+migrations and redeploys. A "Deploy to Cloudflare" button can come later; with
+this repo's workspaces the script is the reliable path.
+
+Self-hosting without Cloudflare: `apps/site/src/server.ts` runs the same site on
+Node with `node:sqlite` (`WANDERLOT_ORIGIN`, `WANDERLOT_ADMIN_TOKEN`,
+`WANDERLOT_DB`).
+
 ### Secrets
 | secret | lives in | used for |
 |---|---|---|
-| `ADMIN_TOKEN` | Worker secret + panel `.env` | panel → site publishing and invites |
+| `ADMIN_TOKEN` | Worker secret + panel `.env` (as `WANDERLOT_ADMIN_TOKEN`) | panel → site publishing and invites |
 | `ANTHROPIC_API_KEY` | panel `.env`, optional | `anthropic-api` research |
 | `DUFFEL_API_KEY` | panel `.env`, optional | flight search and verification |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel `.env`, optional | photo search |

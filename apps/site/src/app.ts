@@ -157,7 +157,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
     });
     const flowId = randomToken(16);
-    await store.putFlow(flowId, { challenge: options.challenge, purpose: "register", inviteId: found.invite.id, expiresAt: iso(FLOW_TTL_MS) });
+    await store.putFlow(flowId, { challenge: options.challenge, purpose: "register", inviteId: found.invite.id, expiresAt: iso(FLOW_TTL_MS) }, iso());
     return c.json({ flowId, options });
   });
 
@@ -208,7 +208,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   app.post("/api/session/options", async (c) => {
     const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
     const flowId = randomToken(16);
-    await store.putFlow(flowId, { challenge: options.challenge, purpose: "login", inviteId: null, expiresAt: iso(FLOW_TTL_MS) });
+    await store.putFlow(flowId, { challenge: options.challenge, purpose: "login", inviteId: null, expiresAt: iso(FLOW_TTL_MS) }, iso());
     return c.json({ flowId, options });
   });
 

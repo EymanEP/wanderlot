@@ -11,7 +11,10 @@
     "typecheck": "tsc -p packages/core && tsc -p packages/mocks && tsc -p packages/ui && tsc -p apps/site && tsc -p apps/panel && tsc -p apps/site/web && tsc -p apps/panel/web",
     "build": "npm run build -w @wanderlot/site -w @wanderlot/panel",
     "dev:panel": "npm run dev -w @wanderlot/panel",
-    "dev:site": "npm run dev -w @wanderlot/site"
+    "dev:site": "npm run dev -w @wanderlot/site",
+    "setup": "node scripts/setup.mjs",
+    "deploy:site": "node scripts/deploy-site.mjs",
+    "panel": "npm run build -w @wanderlot/panel && npm run start -w @wanderlot/panel"
   },
   "engines": {
     "node": ">=22.13"

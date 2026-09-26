@@ -1,0 +1,24 @@
+// Cloudflare deployment of the site (SPEC §11). `npm run deploy:site` builds the
+// UI, creates the D1 database on first run, applies migrations and deploys.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "wanderlot",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist/web",
+    // Page addresses (/p/…, /i/…, /entrar) get the app; it asks the API what to show.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wanderlot",
+      // Filled in by `npm run deploy:site` the first time.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": { "enabled": true }
+}

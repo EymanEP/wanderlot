@@ -1,0 +1,2 @@
+# Copy to .dev.vars for `npm run dev:worker`. Never commit .dev.vars.
+ADMIN_TOKEN=local-development-token-at-least-32-characters

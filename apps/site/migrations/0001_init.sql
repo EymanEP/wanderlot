@@ -1,4 +1,4 @@
--- The site's schema, shared by node:sqlite and Cloudflare D1.
+-- Initial schema. Applied by Wrangler on D1 and by SqliteStore on node:sqlite.
 create table if not exists plans (
   id text primary key,
   snapshot text not null,
