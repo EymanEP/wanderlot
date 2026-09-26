@@ -3,6 +3,10 @@
 // See docs/SPEC.md §1.
 import { z } from "zod";
 
+// Links end up in hrefs and <img src>: web addresses only, never javascript:
+// or data: (some come from Claude's web research).
+const webUrl = z.url({ protocol: /^https?$/ });
+
 const iata = z.string().regex(/^[A-Z]{3}$/, "IATA code");
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 const isoDateTime = z.iso.datetime({ offset: true });
@@ -29,12 +33,12 @@ export const Stay = z.object({
   kind: z.string().min(1), // "Apartamento", "Hotel", …
   description: z.string().optional(), // "A 15 min andando del centro"
   nightlyCents: cents, // whole group, per night
-  url: z.url().optional(),
+  url: webUrl.optional(),
   recommended: z.boolean().default(false),
 });
 export type Stay = z.infer<typeof Stay>;
 
-export const Source = z.object({ label: z.string().min(1), url: z.url() });
+export const Source = z.object({ label: z.string().min(1), url: webUrl });
 export type Source = z.infer<typeof Source>;
 
 export const FlightProviderName = z.enum(["duffel", "amadeus", "kiwi"]);
@@ -74,17 +78,17 @@ export type Place = z.infer<typeof Place>;
 
 // Linked, never hosted, and only from services that allow it (SPEC §6).
 export const Photo = z.object({
-  url: z.url(),
+  url: webUrl,
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   source: z.enum(["unsplash", "pexels", "wikimedia"]),
   author: z.string().min(1),
-  authorUrl: z.url().optional(),
+  authorUrl: webUrl.optional(),
   license: z.string().min(1),
-  sourceUrl: z.url(),
+  sourceUrl: webUrl,
   alt: z.string(),
   // Unsplash only: the event URL to call when the organiser picks the photo.
-  downloadLocation: z.url().optional(),
+  downloadLocation: webUrl.optional(),
 });
 export type Photo = z.infer<typeof Photo>;
 

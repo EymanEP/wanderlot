@@ -4,6 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPanel, type PanelStatus } from "./app.ts";
+import { panelHosts } from "./guard.ts";
 import { anthropicProvider } from "./providers/anthropic.ts";
 import { claudeProvider } from "./providers/claude.ts";
 import { pexels, unsplash, wikimedia, type PhotoSource } from "./providers/photos.ts";
@@ -42,6 +43,8 @@ const app = createPanel({
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
   research: status.research === "anthropic-api" ? anthropicProvider() : claudeProvider(),
   photos,
+  // This server, and Vite's dev server in front of it.
+  hosts: panelHosts([port, 5174]),
   site: siteClient(siteUrl, adminToken),
   siteUrl,
 });

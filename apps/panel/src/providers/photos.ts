@@ -106,7 +106,11 @@ export function unsplash(accessKey: string, fetcher: Fetch = fetch): PhotoSource
       );
     },
     async picked(photo) {
-      if (photo.downloadLocation) await getJson(fetcher, photo.downloadLocation, auth);
+      // The URL arrives with the organiser's edit; the key goes to Unsplash only.
+      if (!photo.downloadLocation) return;
+      const url = new URL(photo.downloadLocation);
+      if (url.protocol !== "https:" || url.hostname !== "api.unsplash.com" || url.port !== "") throw new Error("not an Unsplash download URL");
+      await getJson(fetcher, url.href, auth);
     },
   };
 }

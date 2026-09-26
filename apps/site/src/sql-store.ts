@@ -199,9 +199,9 @@ export class SqlStore implements SiteStore {
   }
 
   async takeFlow(id: string) {
-    const r = await this.get("select * from flows where id = ?", id);
+    // One statement, so two concurrent requests can't both take it.
+    const r = await this.get("delete from flows where id = ? returning *", id);
     if (!r) return undefined;
-    await this.run("delete from flows where id = ?", id);
     return {
       challenge: r.challenge as string,
       purpose: r.purpose as Flow["purpose"],

@@ -27,6 +27,7 @@ import {
 } from "@wanderlot/core";
 import { base64url, fromBase64url, randomToken, safeEqual, sha256 } from "./crypto.ts";
 import type { Invite, SiteStore } from "./store.ts";
+import { SECURITY_HEADERS } from "./headers.ts";
 
 const SESSION_COOKIE = "wl_session";
 const RECENT_COMMENTS = 3;
@@ -48,6 +49,9 @@ export interface SiteOptions {
   // The built web UI's index.html. Every page route serves it; the UI asks
   // the API what to show.
   indexHtml?: string;
+  // Throttles the unauthenticated routes that write (passkey options): true
+  // to let a request through. Keyed by client address.
+  limit?: (key: string) => Promise<boolean>;
 }
 
 type Env = { Variables: { member: Member } };
@@ -72,8 +76,30 @@ export function deviceLabel(ua: string | undefined): string | null {
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
-export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml }: SiteOptions) {
+export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, limit }: SiteOptions) {
   const app = new Hono<Env>();
+
+  app.use("*", async (c, next) => {
+    // Changes must come from the site's own pages. Browsers always send
+    // Origin on cross-site writes; SameSite=Lax alone would trust sibling
+    // subdomains of a custom domain.
+    if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.path.startsWith("/api/") && !c.req.path.startsWith("/api/admin/")) {
+      const origin = c.req.header("origin");
+      if (origin !== undefined && origin !== rp.origin) return c.json({ error: "forbidden origin" }, 403);
+    }
+    await next();
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
+  });
+
+  // Too many passkey attempts from one address: each one writes a row.
+  // Cloudflare sets cf-connecting-ip; elsewhere every client shares a bucket
+  // (x-forwarded-for could be forged to dodge the limit).
+  const throttled = async (c: Context<Env>) => {
+    if (!limit) return false;
+    const key = c.req.header("cf-connecting-ip") ?? "all";
+    return !(await limit(key));
+  };
+  const tooMany = (c: Context<Env>) => c.json({ error: "Demasiados intentos; espera un minuto" }, 429);
   const rpID = new URL(rp.origin).hostname;
   const secure = new URL(rp.origin).protocol === "https:";
   const iso = (ms = 0) => new Date(now().getTime() + ms).toISOString();
@@ -158,6 +184,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   });
 
   app.post("/api/invites/:token/passkey/options", async (c) => {
+    if (await throttled(c)) return tooMany(c);
     const found = await findInvite(c.req.param("token"));
     if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
     const status = inviteStatus(found.invite, now());
@@ -198,7 +225,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         requireUserVerification: false,
       });
     } catch (e) {
-      return c.json({ error: `No se pudo verificar la passkey: ${(e as Error).message}` }, 400);
+      console.warn("passkey registration failed:", (e as Error).message);
+      return c.json({ error: "No se pudo verificar la passkey" }, 400);
     }
     if (!verification.verified) return c.json({ error: "No se pudo verificar la passkey" }, 400);
 
@@ -224,6 +252,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   // --- sign in / out -------------------------------------------------------
 
   app.post("/api/session/options", async (c) => {
+    if (await throttled(c)) return tooMany(c);
     const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
     const flowId = randomToken(16);
     await store.putFlow(flowId, { challenge: options.challenge, purpose: "login", inviteId: null, expiresAt: iso(FLOW_TTL_MS) }, iso());
@@ -250,7 +279,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         requireUserVerification: false,
       });
     } catch (e) {
-      return c.json({ error: `No se pudo comprobar la passkey: ${(e as Error).message}` }, 401);
+      console.warn("passkey sign-in failed:", (e as Error).message);
+      return c.json({ error: "No se pudo comprobar la passkey" }, 401);
     }
     if (!verification.verified) return c.json({ error: "No se pudo comprobar la passkey" }, 401);
     await store.recordPasskeyUse(passkey.id, verification.authenticationInfo.newCounter, iso());
@@ -452,10 +482,11 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   api.get("/:planId/comments", async (c) => {
     const planId = c.req.param("planId");
     if (!(await store.getPlan(planId))) return c.json({ error: "not found" }, 404);
-    const limit = Number(c.req.query("limit")) || undefined;
+    const n = Math.trunc(Number(c.req.query("limit")));
+    const max = n >= 1 ? Math.min(n, 100) : undefined;
     const destinationId = c.req.query("destinationId") || undefined;
     const likes = await store.likes(planId, c.get("member").id);
-    const list = await store.comments(planId, { ...(destinationId ? { destinationId } : {}), ...(limit ? { limit: Math.min(limit, 100) } : {}) });
+    const list = await store.comments(planId, { ...(destinationId ? { destinationId } : {}), ...(max ? { limit: max } : {}) });
     return c.json(list.map((cm): CommentView => ({ ...cm, likes: likes.get(cm.id)?.count ?? 0, likedByMe: likes.get(cm.id)?.mine ?? false })));
   });
 

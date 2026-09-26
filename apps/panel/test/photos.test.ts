@@ -78,6 +78,16 @@ describe("unsplash", () => {
     expect(calls[1]!.headers.authorization).toBe("Client-ID key-1");
   });
 
+  it("sends its key to Unsplash's download endpoint only", async () => {
+    const { fetcher, calls } = fakeFetch({});
+    const source = unsplash("key-1", fetcher);
+    const photo = { url: "https://images.unsplash.com/a", source: "unsplash" as const, author: "x", license: "x", sourceUrl: "https://unsplash.com/a", alt: "" };
+    for (const downloadLocation of ["https://evil.test/x", "http://api.unsplash.com/x", "https://api.unsplash.com.evil.test/x", "https://api.unsplash.com:8443/x"]) {
+      await expect(source.picked!({ ...photo, downloadLocation })).rejects.toThrow(/not an Unsplash/);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
   it("reports an error status", async () => {
     const { fetcher } = fakeFetch({ errors: ["OAuth error"] }, 401);
     await expect(unsplash("bad", fetcher).search("x", 1)).rejects.toThrow(/401/);

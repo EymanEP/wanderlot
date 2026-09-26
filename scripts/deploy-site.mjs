@@ -1,6 +1,6 @@
 // Deploys the site to Cloudflare Workers + D1 (SPEC §11). Safe to re-run:
 // creates the D1 database the first time, applies new migrations, deploys,
-// and sets the ADMIN_TOKEN secret if the Worker doesn't have one yet.
+// and sets the ADMIN_TOKEN and ORIGIN secrets if the Worker lacks them.
 // Needs a Cloudflare account: run `npx wrangler login` once first.
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -72,6 +72,21 @@ export async function deploySite() {
     if (!wrangler(["secret", "put", "ADMIN_TOKEN"], { input: token, quiet: true }).ok) fail("No se pudo guardar el secreto.");
     writeEnv({ WANDERLOT_ADMIN_TOKEN: token });
     console.log("  guardado en Cloudflare y en .env");
+  }
+
+  step("Dirección pública (ORIGIN)");
+  // Passkeys are tied to one address, so the Worker needs it fixed rather
+  // than trusting each request's hostname. WANDERLOT_ORIGIN in .env wins
+  // (for a custom domain); otherwise the workers.dev address.
+  const hasOrigin = secrets.ok && secrets.out.includes('"ORIGIN"');
+  const origin = readEnv().WANDERLOT_ORIGIN ?? url;
+  if (hasOrigin && !readEnv().WANDERLOT_ORIGIN) {
+    console.log("  ya configurada");
+  } else if (!origin) {
+    fail("No sé la dirección del sitio. Añade WANDERLOT_ORIGIN=https://… a .env y vuelve a ejecutar.");
+  } else {
+    if (!wrangler(["secret", "put", "ORIGIN"], { input: origin, quiet: true }).ok) fail("No se pudo guardar ORIGIN.");
+    console.log(`  ${origin}`);
   }
 
   console.log(`\n✓ Sitio desplegado${url ? `: ${url}` : ""}`);

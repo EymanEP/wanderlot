@@ -6,6 +6,7 @@ import { z } from "zod";
 import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal } from "@wanderlot/core";
 import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
+import { localOnly } from "./guard.ts";
 import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
 import { inviteUrl, voteOpenedMessage } from "./announce.ts";
@@ -24,6 +25,8 @@ export interface PanelOptions {
   research: ResearchProvider;
   photos?: PhotoSource[];
   site: SiteClient;
+  // Host:port values the panel answers to (see guard.ts); unset in tests.
+  hosts?: string[];
   siteUrl: string;
   now?: () => Date;
 }
@@ -70,12 +73,14 @@ export function createPanel({
   flights,
   research,
   photos = [],
+  hosts,
   site,
   siteUrl,
   now = () => new Date(),
   status = { research: "none", flights: "none", photos: ["wikimedia"] },
 }: PanelOptions) {
   const app = new Hono();
+  if (hosts) app.use("*", localOnly(hosts));
 
   const entryOr404 = (planId: string) => store.get(planId);
 

@@ -18,7 +18,7 @@ const ADMIN = "e2e-".padEnd(40, "x");
 const server = worker
   ? spawn(
       "npx",
-      ["wrangler", "dev", "--port", String(PORT), "--var", `ADMIN_TOKEN:${ADMIN}`, "--persist-to", mkdtempSync(join(tmpdir(), "wanderlot-d1-"))],
+      ["wrangler", "dev", "--port", String(PORT), "--var", `ADMIN_TOKEN:${ADMIN}`, "--var", `ORIGIN:${ORIGIN}`, "--persist-to", mkdtempSync(join(tmpdir(), "wanderlot-d1-"))],
       { stdio: ["ignore", "pipe", "inherit"], detached: true },
     )
   : spawn(process.execPath, ["--import", "tsx", "src/server.ts"], {

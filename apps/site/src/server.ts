@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.ts";
+import { memoryLimiter } from "./headers.ts";
 import { SqliteStore } from "./sqlite.ts";
 
 // The site on a plain Node server (self-hosting, local development).
@@ -27,6 +28,8 @@ const app = createApp({
   store: new SqliteStore(dbPath),
   adminToken,
   rp: { name: "Wanderlot", origin },
+  // Generous for a group of friends, tight enough to stop a flood of writes.
+  limit: memoryLimiter(60, 60_000),
   ...(indexHtml ? { indexHtml } : {}),
 });
 app.use("/assets/*", serveStatic({ root: relative(process.cwd(), webDir) }));
