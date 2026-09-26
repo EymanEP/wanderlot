@@ -98,7 +98,9 @@ export function StayOption({ stay, nights, partySize }: { stay: Stay; nights: nu
       </div>
       <div className="flex shrink-0 flex-col items-end">
         <span className="text-base font-bold tabular-nums">{eurosGrouped(stayTotalCents(stay, nights))}</span>
-        <span className="text-xs text-muted">{euros(Math.round(stay.nightlyCents / partySize))} por persona y noche</span>
+        <span className="text-xs text-muted">
+          {nights} {nights === 1 ? "noche" : "noches"} · {euros(Math.ceil(stayTotalCents(stay, nights) / partySize))} por persona
+        </span>
       </div>
     </div>
   );

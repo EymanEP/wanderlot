@@ -4,7 +4,10 @@ import {
   euros,
   flightPriceCents,
   mediumDate,
-  stayPerPersonNightCents,
+  eurosGrouped,
+  groupFlightsCents,
+  stayGroupCents,
+  stayShareCents,
   thingsCount,
   totalPerPersonCents,
   tripLabel,
@@ -38,9 +41,20 @@ export function total(p: Proposal, plan: Plan): number {
   return totalPerPersonCents(p, plan.nights, plan.partySize);
 }
 
-export function perNight(p: Proposal, plan: Plan): string | null {
-  const c = stayPerPersonNightCents(p.stays, plan.partySize);
-  return c === null ? null : `${euros(c)}/noche`;
+const people = (n: number) => `${n} ${n === 1 ? "persona" : "personas"}`;
+
+// "1 428 € las 7 noches (238 €/persona)": the whole stay, as Airbnb shows it,
+// and each person's share.
+export function stayPrice(p: Proposal, plan: Plan): string | null {
+  const group = stayGroupCents(p.stays, plan.nights);
+  const share = stayShareCents(p.stays, plan.nights, plan.partySize);
+  if (group === null || share === null) return null;
+  return `${eurosGrouped(group)} ${plan.nights === 1 ? "la noche" : `las ${plan.nights} noches`} (${euros(share)}/persona)`;
+}
+
+// "1 044 € ida y vuelta, 6 personas (174 €/persona)"
+export function flightsPrice(p: Proposal, plan: Plan): string {
+  return `${eurosGrouped(groupFlightsCents(p, plan.partySize))} ida y vuelta, ${people(plan.partySize)} (${euros(flightPriceCents(p))}/persona)`;
 }
 
 // "Directo · 1 h 20 m · TAP Air Portugal"
@@ -48,23 +62,28 @@ export function flightSummary(p: Proposal): string {
   return `${tripLabel(p.outbound)} · ${p.outbound.carrier}`;
 }
 
-// "Directo · 1 h 20 m · TAP Air Portugal · alojamiento ≈ 34 €/noche"
+// "Directo · 1 h 20 m · TAP Air Portugal · alojamiento ≈ 1 428 € en total"
 export function generatedLine(p: Proposal, plan: Plan): string {
-  const night = perNight(p, plan);
-  return night ? `${flightSummary(p)} · alojamiento ≈ ${night}` : flightSummary(p);
+  const stay = stayGroupCents(p.stays, plan.nights);
+  return stay === null ? flightSummary(p) : `${flightSummary(p)} · alojamiento ≈ ${eurosGrouped(stay)} en total`;
 }
 
-// "… · 174 € ida y vuelta", or a warning when Claude wrote the price.
-export function flightLine(p: Proposal): string {
-  const price = p.provenance.kind !== "claude" ? `${euros(flightPriceCents(p))} ida y vuelta` : "precio sin confirmar";
-  return `${flightSummary(p)} · ${price}`;
+// "Vuelos: 1 044 € ida y vuelta, 6 personas (174 €/persona) · Directo · …";
+// "≈" while the price is Claude's.
+export function flightLine(p: Proposal, plan: Plan): string {
+  return `Vuelos: ${p.provenance.kind === "claude" ? "≈ " : ""}${flightsPrice(p, plan)} · ${flightSummary(p)}`;
 }
 
-// "Piso entero para 6 · Alfama · 34 €/noche · 9 cosas que hacer y ver"
-export function stayLine(p: Proposal, plan: Plan): string {
+// "Alojamiento: 1 428 € las 7 noches (238 €/persona) · Piso entero · Alfama"
+export function stayLine(p: Proposal, plan: Plan): string | null {
   const stay = baseStay(p.stays);
-  const parts = [stay?.name, perNight(p, plan), `${thingsCount(p)} cosas que hacer y ver`].filter(Boolean);
-  return parts.join(" · ");
+  const price = stayPrice(p, plan);
+  return stay && price ? `Alojamiento: ${p.provenance.kind === "claude" ? "≈ " : ""}${price} · ${stay.name}` : null;
+}
+
+// "9 cosas que hacer y ver"
+export function thingsLine(p: Proposal): string {
+  return `${thingsCount(p)} cosas que hacer y ver`;
 }
 
 // "Duffel · 24 sep 2026" or "Claude · 3 fuentes"

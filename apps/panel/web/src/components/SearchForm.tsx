@@ -124,7 +124,7 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
       </div>
       {v.scope === "place" && (
         <Field label="¿Adónde?">
-          {({ inputId }) => <TextInput id={inputId} placeholder="Ciudad o aeropuerto" value={v.place} onChange={(e) => set("place", e.target.value)} />}
+          {({ inputId }) => <TextInput id={inputId} maxLength={80} placeholder="Oporto, las Azores, Islandia…" value={v.place} onChange={(e) => set("place", e.target.value)} />}
         </Field>
       )}
 
@@ -203,8 +203,8 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
         </div>
       </Fieldset>
 
-      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running || !v.end}>
-        {running ? "Buscando…" : existing ? `Buscar ${count} más` : `Generar ${count} propuestas`}
+      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running || !v.end || (v.scope === "place" && !v.place.trim())}>
+        {running ? "Buscando…" : v.scope === "place" ? `Investigar ${v.place.trim() || "ese destino"}` : existing ? `Buscar ${count} más` : `Generar ${count} propuestas`}
       </Button>
     </form>
   );

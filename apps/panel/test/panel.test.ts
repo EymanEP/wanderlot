@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Proposal } from "@wanderlot/core";
+import { baseStay, type Proposal } from "@wanderlot/core";
 import { createPanel } from "../src/app.ts";
 import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
@@ -150,10 +150,12 @@ describe("panel → site", () => {
     expect(first.data.warnings.map((w: any) => w.destinationId)).toEqual(["lis", "nap"]);
 
     // Prices checked by hand: bad input refused; saved ones count as checked.
-    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: -1, inboundCents: 0 })).status).toBe(400);
-    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: 6100, inboundCents: 5200, stayNightlyCents: 21000 });
-    expect(checked.data.outbound.priceCents).toBe(6100);
-    expect(checked.data.inbound.priceCents).toBe(5200);
+    // They come as group totals, as booking sites show them: 6 people, 7 nights.
+    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightsCents: -1 })).status).toBe(400);
+    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightsCents: 67800, stayCents: 147000 });
+    expect(checked.data.outbound.priceCents + checked.data.inbound.priceCents).toBe(11300);
+    const stay = baseStay(checked.data.stays);
+    expect(stay?.nightlyCents).toBe(21000);
     expect(checked.data.provenance).toEqual({ kind: "organiser", checkedAt: clock.toISOString(), sources: claudeSources.sources });
     expect((await json(`/api/plans/${PLAN}/publish`, "POST", {})).data.warnings.map((w: any) => w.destinationId)).toEqual(["lis"]);
 

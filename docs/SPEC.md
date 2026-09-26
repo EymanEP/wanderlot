@@ -146,8 +146,12 @@ derived, not a third provenance kind:
 on the configured flight provider. If it finds a matching itinerary, provenance
 becomes `api`. If not, the proposal keeps its `claude` badge and the panel says
 why. Without a flight API, "poner precios reales" on any proposal lets the
-organiser type the checked prices (each flight per person, the recommended stay
-per night); provenance becomes `organiser`.
+organiser type the checked prices the way booking sites show them: the flights
+there and back for the whole group, and the recommended stay for all the nights
+(as Airbnb does). The panel divides each by the people going and stores them the
+way proposals keep prices (each flight leg per person, the stay per night);
+provenance becomes `organiser`. Revisar shows prices the same way: group totals,
+with each person's share beside them.
 
 A new search in Generar adds to a trip's proposals and never replaces them:
 research is told which destinations are already there, and each new proposal
@@ -461,9 +465,9 @@ it). Calls that touch the site go through the admin API above.
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
 | `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
-| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{progress}` and `{proposal}` lines, then `{done}` or `{error}`; `409` when asked to search with a flight API and none is connected; with `suggestionId`, researches that friend's idea by name and credits them |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{progress}` and `{proposal}` lines, then `{done}` or `{error}`; `409` when asked to search with a flight API and none is connected; with scope `named`, researches that one place by name (one proposal); with `suggestionId`, researches that friend's idea by name and credits them |
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
-| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ outboundCents, inboundCents, stayNightlyCents? }` |
+| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand, as group totals: `{ flightsCents, stayCents? }` (flights there and back for everyone; the stay for all the nights) |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
 | `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |

@@ -49,6 +49,21 @@ describe("Generar", () => {
     expect(screen.getAllByRole("article")).toHaveLength(12);
   });
 
+  it("researches one specific destination once", async () => {
+    const user = userEvent.setup();
+    renderAt("/generar");
+    await screen.findByRole("heading", { name: "Nueva búsqueda" });
+    await user.click(screen.getByRole("button", { name: "Destino" }));
+    await user.click(screen.getByRole("option", { name: "Destino concreto…" }));
+    expect((screen.getByRole("button", { name: "Investigar ese destino" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByLabelText("¿Adónde?"), "Tallin");
+    await user.click(screen.getByRole("button", { name: "Investigar Tallin" }));
+    expect(await screen.findByText("Búsqueda terminada", undefined, { timeout: 5000 })).toBeTruthy();
+    expect(screen.getByText("1 propuesta nueva")).toBeTruthy();
+    expect(screen.getAllByRole("article")).toHaveLength(13);
+    expect(screen.getByRole("article", { name: "Tallin" })).toBeTruthy();
+  });
+
   it("researches a friend's idea and credits them", async () => {
     const user = userEvent.setup();
     renderAt("/generar");
@@ -126,14 +141,25 @@ describe("Revisar · precios", () => {
     expect(within(card).getByText("Lo escribió Claude")).toBeTruthy();
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
 
+    // Group totals, as the airline and Airbnb show them: 6 people, 7 nights.
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
-    const outbound = dialog.getByLabelText(/^Ida/);
-    await user.clear(outbound);
-    await user.type(outbound, "abc");
+    const flights = dialog.getByLabelText("Vuelos, ida y vuelta · € en total") as HTMLInputElement;
+    const stay = dialog.getByLabelText("Alojamiento · € en total") as HTMLInputElement;
+    expect(flights.value).toBe("864");
+    expect(stay.value).toBe("924");
+    await user.clear(flights);
+    await user.type(flights, "abc");
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await dialog.findByText(/Escribe cada precio en euros/)).toBeTruthy();
-    await user.clear(outbound);
-    await user.type(outbound, "61,50");
+    await user.clear(flights);
+    await user.type(flights, "1.200");
+    await user.clear(stay);
+    await user.type(stay, "840,60");
+    // Each person's share, worked out as it's typed.
+    const share = within(dialog.getByLabelText("Por persona"));
+    expect(share.getByText("200 €")).toBeTruthy();
+    expect(share.getByText("140 €")).toBeTruthy();
+    expect(share.getByText("340 €")).toBeTruthy();
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
 
     expect(await screen.findByText("Cracovia: precios comprobados a mano")).toBeTruthy();
@@ -141,6 +167,8 @@ describe("Revisar · precios", () => {
     expect(within(after).getByText("Comprobado a mano")).toBeTruthy();
     expect(within(after).getByText(/Comprobado a mano · /)).toBeTruthy();
     expect(within(after).getByRole("button", { name: "cambiar precios" })).toBeTruthy();
+    expect(within(after).getByText(/^Vuelos: 1\s?200 € ida y vuelta, 6 personas \(200 €\/persona\)/)).toBeTruthy();
+    expect(within(after).getByText(/^Alojamiento: 841 € las 7 noches \(140 €\/persona\)/)).toBeTruthy();
   });
 });
 

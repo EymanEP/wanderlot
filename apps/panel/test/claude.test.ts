@@ -98,6 +98,14 @@ describe("claude research provider", () => {
     expect(prompt).toContain("Sal siempre de MAD");
   });
 
+  it("researches one place the organiser typed, without calling it anyone's idea", () => {
+    const typed = buildPrompt({ ...req, scope: { kind: "named", name: "Oporto" }, count: 1 });
+    expect(typed).toContain("Busca una propuesta de viaje de grupo saliendo de MAD hacia «Oporto».");
+    expect(typed).not.toContain("Es una idea de");
+    const idea = buildPrompt({ ...req, scope: { kind: "named", name: "Azores", by: "Iván", note: "ballenas" }, count: 1 });
+    expect(idea).toContain("Es una idea de Iván, que dice: «ballenas».");
+  });
+
   it("asks for no price cap, or nearby airports, when chosen", () => {
     const prompt = buildPrompt({ ...req, maxPriceCents: null, nearbyAirports: true });
     expect(prompt).toContain("Sin tope de precio");

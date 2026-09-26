@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
+import type { GroupSettings, GroupTotals, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -41,7 +41,8 @@ export type SearchStep = { kind: "note"; text: string } | { kind: "search"; quer
 
 export interface SearchOptions {
   source: "api" | "claude";
-  scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "place"; iata: string };
+  // "named": one place the organiser typed, researched once, by name.
+  scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "named"; name: string };
   // Research one friend's idea (the server searches that place by name).
   suggestionId?: string;
   // Its name, for the progress view.
@@ -68,13 +69,10 @@ export interface VoteView extends VoteState {
   announcement: string | null;
 }
 
-// Prices the organiser checked by hand, in cents: flights per person each way,
-// the recommended stay per night for the whole group.
-export interface CheckedPrices {
-  outboundCents: number;
-  inboundCents: number;
-  stayNightlyCents?: number;
-}
+// Prices the organiser checked by hand, in cents, as booking sites show them:
+// the flights there and back for the whole group, and the recommended stay for
+// all the nights.
+export type CheckedPrices = GroupTotals;
 
 export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
 

@@ -17,7 +17,7 @@ export interface ProposalRowProps {
 export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVerify }: ProposalRowProps) {
   const trust = trustOf(p, now);
   return (
-    <Card as="article" variant="flat" padding="none" className="flex flex-wrap items-center gap-x-[18px] gap-y-3 px-[18px] py-4 sm:flex-nowrap">
+    <Card as="article" aria-label={p.place.city} variant="flat" padding="none" className="flex flex-wrap items-center gap-x-[18px] gap-y-3 px-[18px] py-4 sm:flex-nowrap">
       <IataTile code={p.place.iata} size="lg" />
       {/* On phones the details take the first row; price and action wrap below. */}
       <div className="flex min-w-[calc(100%-84px)] flex-1 flex-col gap-1.5 sm:min-w-0">

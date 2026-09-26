@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, baseStay, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyGroupTotals, slugify, type Proposal, type VoteState } from "@wanderlot/core";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -181,8 +181,10 @@ export function createPanel({
       ...options,
       ...(idea
         ? { scope: { kind: "named" as const, name: idea.place, by: idea.member.name, ...(idea.note ? { note: idea.note } : {}) } }
-        : // What's already on the list, so a new search looks elsewhere.
-          { exclude: [...new Set(entry.proposals.map((p) => `${p.place.city} (${p.place.iata})`))] }),
+        : options.scope.kind === "named"
+          ? {}
+          : // What's already on the list, so a new search looks elsewhere.
+            { exclude: [...new Set(entry.proposals.map((p) => `${p.place.city} (${p.place.iata})`))] }),
       planId: plan.id,
       origin: plan.origin,
       dateFrom: plan.dateFrom,
@@ -328,27 +330,23 @@ export function createPanel({
   });
 
   // The organiser checked the real prices (the airline, the booking site) and
-  // types them in. Counts as checked from now, like an API check, and goes
-  // stale the same way (SPEC §3).
+  // types them in as those sites show them: group totals for the flights there
+  // and back and for the whole stay. Counts as checked from now, like an API
+  // check, and goes stale the same way (SPEC §3).
   app.post("/api/plans/:planId/proposals/:id/prices", async (c) => {
     const { planId, id } = c.req.param();
     const body = z
       .object({
-        outboundCents: z.number().int().min(0).max(10_000_000),
-        inboundCents: z.number().int().min(0).max(10_000_000),
-        stayNightlyCents: z.number().int().min(0).max(10_000_000).optional(),
+        flightsCents: z.number().int().min(0).max(100_000_000),
+        stayCents: z.number().int().min(0).max(100_000_000).optional(),
       })
       .safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {outboundCents, inboundCents, stayNightlyCents?}" }, 400);
-    const proposal = store.get(planId)?.proposals.find((p) => p.id === id);
-    if (!proposal) return c.json({ error: "not found" }, 404);
-    const { outboundCents, inboundCents, stayNightlyCents } = body.data;
-    const stay = baseStay(proposal.stays);
+    if (!body.success) return c.json({ error: "expected {flightsCents, stayCents?}: group totals in cents" }, 400);
+    const entry = store.get(planId);
+    const proposal = entry?.proposals.find((p) => p.id === id);
+    if (!entry || !proposal) return c.json({ error: "not found" }, 404);
     const updated: Proposal = {
-      ...proposal,
-      outbound: { ...proposal.outbound, priceCents: outboundCents },
-      inbound: { ...proposal.inbound, priceCents: inboundCents },
-      stays: proposal.stays.map((s) => (s === stay && stayNightlyCents !== undefined ? { ...s, nightlyCents: stayNightlyCents } : s)),
+      ...applyGroupTotals(proposal, body.data, entry.plan.nights, entry.plan.partySize),
       provenance: {
         kind: "organiser",
         checkedAt: now().toISOString(),
