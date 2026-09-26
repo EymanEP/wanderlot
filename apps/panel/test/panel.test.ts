@@ -237,7 +237,10 @@ describe("plans and settings", () => {
     expect(b.data.id).toBe("semana-santa-2027-2");
     const list = (await json("/api/plans")).data as any[];
     expect(list.map((p) => p.id).slice(0, 2)).toEqual(["semana-santa-2027-2", "semana-santa-2027"]);
-    expect((await json("/api/plans", "POST", { ...input, nights: 4 })).status).toBe(400);
+    // Any stay from 1 to 30 nights, as picked on the calendar.
+    expect((await json("/api/plans", "POST", { ...input, nights: 0 })).status).toBe(400);
+    expect((await json("/api/plans", "POST", { ...input, nights: 31 })).status).toBe(400);
+    expect((await json("/api/plans", "POST", { ...input, name: "Puente", nights: 4 })).status).toBe(201);
   });
 
   it("passes group settings through to the site and reports status", async () => {

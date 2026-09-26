@@ -58,7 +58,7 @@ const NewPlan = z.object({
   name: z.string().trim().min(1).max(60),
   origin: z.string().regex(/^[A-Z]{3}$/),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  nights: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
+  nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1).max(30),
   maxPriceCents: z.number().int().positive(),

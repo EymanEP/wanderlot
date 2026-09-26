@@ -52,3 +52,24 @@ export function shiftMonth(year: number, month0: number, by: number): { year: nu
   const t = new Date(Date.UTC(year, month0 + by, 1));
   return { year: t.getUTCFullYear(), month0: t.getUTCMonth() };
 }
+
+export interface DateRange {
+  start: string | null;
+  end: string | null;
+}
+
+export const MAX_NIGHTS = 30;
+
+export function nightsBetween(start: string, end: string): number {
+  return Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86_400_000);
+}
+
+// Picking a stay like on booking sites: the first click sets the start, the
+// second the end. A click on or before the start, a stay longer than
+// MAX_NIGHTS, or any click once both are set starts over from that day.
+export function pickRange(range: DateRange, date: string): DateRange {
+  if (range.start && !range.end && date > range.start && nightsBetween(range.start, date) <= MAX_NIGHTS) {
+    return { start: range.start, end: date };
+  }
+  return { start: date, end: null };
+}

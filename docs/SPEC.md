@@ -34,7 +34,7 @@ The organising unit: one named trip window.
 | `name` | "Noviembre 2026" |
 | `origin` | IATA code, e.g. `MAD` |
 | `dateFrom`, `dateTo` | the window the search ran against |
-| `nights` | 3, 5, 7 or 10 |
+| `nights` | 1–30: the days between the start and end picked on the calendar |
 | `flexDays` | 0, 1 or 2 |
 | `partySize` | 6 |
 | `maxPriceCents` | ceiling per person |

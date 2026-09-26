@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Badge, Button, Heading, Notice, useToast } from "@wanderlot/ui";
+import { addDaysIso } from "@wanderlot/core";
+import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { ProposalRow, ProposalRowLoading } from "../components/ProposalRow.tsx";
 import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
@@ -18,14 +19,15 @@ export function GenerarPage() {
   const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
 
   const onSubmit = async (v: SearchValues) => {
+    if (!v.start || !v.end) return toast("Elige en el calendario el día de salida y el de vuelta");
     // Dates, people, budget and origin belong to the plan: save them first.
     try {
       await savePlan({
         ...plan,
         origin: originCode(v.origin, plan.origin),
         dateFrom: v.start,
-        dateTo: new Date(Date.parse(`${v.start}T12:00:00Z`) + v.nights * 86_400_000).toISOString().slice(0, 10),
-        nights: v.nights,
+        dateTo: v.end,
+        nights: nightsBetween(v.start, v.end),
         flexDays: v.flexDays,
         partySize: v.people,
         maxPriceCents: v.maxPrice * 100,
@@ -49,7 +51,7 @@ export function GenerarPage() {
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
           {/* Keyed so switching plans resets the form to the new plan. */}
-          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} running={running} flightsConnected={status?.flights !== "none"} />
+          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
         </div>
 
         <section aria-labelledby="resultados" className="flex min-w-0 flex-1 flex-col gap-[18px] bg-canvas p-4 sm:p-7">

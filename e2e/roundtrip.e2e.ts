@@ -60,6 +60,15 @@ try {
   await org.getByText("Todavía no hay ningún plan").waitFor();
   await org.getByRole("link", { name: "Crear el primero" }).click();
   await org.getByLabel("Nombre").fill("Noviembre 2026");
+  // Two clicks on next month's calendar: leave on the 10th, back on the 15th.
+  const next = new Date();
+  next.setUTCDate(1);
+  next.setUTCMonth(next.getUTCMonth() + 1);
+  const day = (d: number) => `${next.toISOString().slice(0, 8)}${String(d).padStart(2, "0")}`;
+  await org.getByRole("button", { name: "Mes siguiente" }).click();
+  await org.getByRole("button", { name: day(10), exact: true }).click();
+  await org.getByRole("button", { name: day(15), exact: true }).click();
+  await org.getByText("5 noches").first().waitFor();
   await org.getByRole("button", { name: "Crear el plan" }).click();
   await org.getByText("Todavía no hay propuestas para Noviembre 2026").waitFor();
   await org.getByText("claude conectado").waitFor();

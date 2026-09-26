@@ -14,16 +14,19 @@ export interface CalendarProps {
   start: string | null;
   end: string | null;
   onPick: (date: string) => void;
+  // Earliest pickable day (YYYY-MM-DD); earlier days and months are off.
+  min?: string;
   className?: string;
 }
 
-export function Calendar({ year, month0, onMonthChange, start, end, onPick, className }: CalendarProps) {
+export function Calendar({ year, month0, onMonthChange, start, end, onPick, min, className }: CalendarProps) {
   const cells = monthGrid(year, month0);
+  const atMin = min !== undefined && year * 12 + month0 <= Number(min.slice(0, 4)) * 12 + Number(min.slice(5, 7)) - 1;
   const label = monthLabel(year, month0);
   return (
     <div className={cn("flex flex-col gap-2.5", className)}>
       <div className="flex items-center justify-between">
-        <IconButton label="Mes anterior" tone="filled" size="md" onClick={() => onMonthChange(shiftMonth(year, month0, -1))}>
+        <IconButton label="Mes anterior" tone="filled" size="md" disabled={atMin} className="disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onMonthChange(shiftMonth(year, month0, -1))}>
           <ChevronLeftIcon size={16} />
         </IconButton>
         <span className="text-[15px] font-bold" aria-live="polite">
@@ -45,14 +48,16 @@ export function Calendar({ year, month0, onMonthChange, start, end, onPick, clas
           <div role="row" key={w} className="grid grid-cols-7 gap-1">
             {cells.slice(w * 7, w * 7 + 7).map((c) => {
               const role = dayRole(c.date, start, end);
+              const off = min !== undefined && c.date < min;
               return (
                 <span role="gridcell" key={c.date} aria-selected={role !== "none"}>
                   <button
                     type="button"
                     onClick={() => onPick(c.date)}
                     aria-label={c.date}
+                    disabled={off}
                     className={cn(
-                      "flex h-9 w-full cursor-pointer items-center justify-center rounded-[10px] text-sm tabular-nums transition-colors",
+                      "flex h-9 w-full cursor-pointer items-center justify-center rounded-[10px] text-sm tabular-nums transition-colors disabled:cursor-not-allowed disabled:text-faint disabled:hover:bg-transparent",
                       role === "start" || role === "end"
                         ? "bg-accent font-bold text-white"
                         : role === "between"
