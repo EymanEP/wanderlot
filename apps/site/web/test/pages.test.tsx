@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -179,5 +179,24 @@ describe("Signing in", () => {
     await user.click(await screen.findByRole("button", { name: "Tu cuenta" }));
     await user.click(screen.getByRole("button", { name: "Cerrar sesión en este dispositivo" }));
     expect(await screen.findByRole("heading", { name: "Entra en Grupo 51" })).toBeTruthy();
+  });
+});
+
+describe("Moving between pages", () => {
+  // Newer Chrome's scrollTo returns a Promise; the site used to hand it to
+  // React as an effect cleanup and went blank on the next page change.
+  it("survives a scrollTo that returns a Promise", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation((() => Promise.resolve()) as never);
+    const user = userEvent.setup();
+    renderAt("/p/noviembre-2026");
+    expect(await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" })).toBeTruthy();
+    await user.click(screen.getAllByRole("link", { name: "Votación" })[0]!);
+    expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
+    await user.click(screen.getAllByRole("link", { name: "Comentarios" })[0]!);
+    await user.click(screen.getAllByRole("link", { name: "Destinos" })[0]!);
+    expect(await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" })).toBeTruthy();
+    expect(screen.queryByText("Algo ha fallado al mostrar esta página")).toBeNull();
+    expect(scrollTo).toHaveBeenCalled();
+    scrollTo.mockRestore();
   });
 });

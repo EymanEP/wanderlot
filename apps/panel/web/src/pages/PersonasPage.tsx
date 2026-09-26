@@ -161,7 +161,9 @@ function TripCard() {
   const toast = useToast();
   const plan = state.plan!;
   const [going, setGoing] = useState(state.participants);
-  useEffect(() => setGoing(state.participants), [state.participants]);
+  useEffect(() => {
+    setGoing(state.participants);
+  }, [state.participants]);
   const dirty = going.length !== state.participants.length || going.some((id) => !state.participants.includes(id));
 
   const save = async (e: FormEvent) => {
