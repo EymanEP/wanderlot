@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, PanelBackend, PhotoResults, Review, SearchOptions, Status } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, PanelBackend, PhotoResults, Review, SearchOptions, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -52,6 +52,9 @@ export interface PanelApi {
   searchPhotos: (query: string) => Promise<PhotoResults>;
   publish: () => Promise<number>;
   openVote: (deadline: string) => Promise<string>;
+  vote: () => Promise<VoteView>;
+  closeVote: () => Promise<VoteView>;
+  pickWinner: (destinationId: string) => Promise<VoteView>;
   saveSettings: (s: GroupSettings) => Promise<void>;
   refreshMembers: () => Promise<void>;
   addMember: (name: string) => Promise<Person | null>;
@@ -121,6 +124,16 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       if (!entry) return;
       remember(id);
       patch(() => ({ plan: entry.plan, proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null }));
+    },
+    [backend, patch],
+  );
+
+  // After a change on the site: the plan and its entry in the switcher.
+  const syncPlan = useCallback(
+    async (id: string) => {
+      const entry = await backend.plan(id);
+      if (!entry) return;
+      patch((s) => ({ plan: entry.plan, plans: s.plans.map((p) => (p.id === id ? entry.plan : p)) }));
     },
     [backend, patch],
   );
@@ -241,6 +254,19 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await loadMembers();
         return message;
       },
+      vote: () => backend.vote(need()),
+      async closeVote() {
+        const pid = need();
+        const v = await backend.closeVote(pid);
+        await syncPlan(pid);
+        return v;
+      },
+      async pickWinner(destinationId) {
+        const pid = need();
+        const v = await backend.pickWinner(pid, destinationId);
+        await syncPlan(pid);
+        return v;
+      },
       refreshMembers: loadMembers,
       async saveSettings(s) {
         const settings = await backend.saveSettings(s);
@@ -267,7 +293,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await loadMembers();
       },
     };
-  }, [state, backend, planId, patch, loadPlan, loadMembers]);
+  }, [state, backend, planId, patch, loadPlan, loadMembers, syncPlan]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }

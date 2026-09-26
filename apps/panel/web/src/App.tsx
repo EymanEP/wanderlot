@@ -6,6 +6,7 @@ import { usePanel } from "./data/store.tsx";
 import { ComparativaPage } from "./pages/ComparativaPage.tsx";
 import { GenerarPage } from "./pages/GenerarPage.tsx";
 import { NewPlanPage } from "./pages/NewPlanPage.tsx";
+import { VotacionPage } from "./pages/VotacionPage.tsx";
 import { PersonasPage } from "./pages/PersonasPage.tsx";
 import { RevisarPage } from "./pages/RevisarPage.tsx";
 
@@ -59,6 +60,7 @@ export function App() {
       <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
       <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
       <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
+      <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
       <Route path="/personas" element={<PersonasPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
       <Route path="*" element={<Navigate to="/generar" replace />} />

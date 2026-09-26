@@ -170,7 +170,8 @@ Order by, in turn:
 3. `totalPerPersonCents`, ascending (cheaper wins)
 
 If two destinations are still level after all three, the result is a **tie**
-and the organiser picks in the panel. There is no hidden fourth rule.
+and the organiser picks one of the tied destinations in the panel's Votación
+screen; the site then shows it as the winner. There is no hidden fourth rule.
 
 ### Lifecycle
 ```
@@ -181,6 +182,8 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
   who has voted and who hasn't (names only, never rankings).
 - The vote closes the moment the sixth ballot arrives or the deadline passes,
   whichever is first. ("Sixth" means the group's `partySize`.) Closing is checked on every read, so no cron is needed.
+- The organiser can also close it early from the panel's Votación screen
+  ("Cerrar ya"), once at least one ballot is in. It counts what's there.
 - Once `closed`, ballots are read-only and the full scoreboard is shown:
   points, first places, and each member's ranking.
 - Each member sees their own ballot at all times ("Tu 1.ª opción" on Plan cards).
@@ -290,10 +293,14 @@ start disappearing; Unsplash photos must stay linked either way.
 
 ## 7. Telling people (v1)
 
-No email or push in v1. When the organiser opens or closes a vote, the panel
-produces a ready-to-paste message for the group chat: what opened/closed, the
-deadline or the winner, and the site's address, plus a fresh invite for anyone
-who hasn't signed up yet. The group chat is already where they are.
+No email or push in v1. The panel writes ready-to-paste messages for the
+group chat, each with an "Abrir WhatsApp" button:
+- **Vote opened:** the deadline and the site's address, plus a working invite
+  for anyone who hasn't signed up yet.
+- **Reminder** (while voting): names who hasn't voted, never what anyone voted.
+- **Result** (once closed and any tie broken): the winner and the site's address.
+
+The group chat is already where they are.
 
 ---
 
@@ -360,6 +367,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
+| `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted: [memberId], result }`; `result` only once closed |
+| `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
+| `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`; only among those tied for first |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members |
 | `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
 | `POST` | `/api/admin/members/:id/invite` | panel | `{ token, expiresAt }`, returned once; cancels the previous unused invite |

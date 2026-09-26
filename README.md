@@ -74,6 +74,7 @@ Screens:
 | panel | `/generar` | search form + proposals arriving |
 | panel | `/revisar` | approve, discard, verify, publish |
 | panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
+| panel | `/votacion` | who has voted, reminder, close early, tie-break, result message |
 | panel | `/personas` | group name, who can get in: invites, passkeys, closing sessions, removing access |
 | site | `/entrar` | sign in with a passkey |
 | site | `/i/:token` | accept a one-time invite by creating a passkey |

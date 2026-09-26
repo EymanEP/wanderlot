@@ -168,6 +168,30 @@ describe("panel → site", () => {
     expect(ana.passkeys).toHaveLength(1);
     expect(ana.inviteUrl).toBeNull();
     expect(people.find((p) => p.id === "bea").inviteUrl).toMatch(/\/i\//);
+
+    // She votes; the panel sees who's in, and a reminder names the rest.
+    const voted = await site.request(`/api/plans/${PLAN}/ballot`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ ranking: ["nap", "lis"] }),
+    });
+    expect(voted.status).toBe(200);
+    const following = (await json(`/api/plans/${PLAN}/vote`)).data;
+    expect(following.status).toBe("voting");
+    expect(following.result).toBeNull();
+    expect(following.people.filter((p: any) => p.voted).map((p: any) => p.id)).toEqual(["ana"]);
+    expect(following.reminder).toContain("Faltan bea, carlos, dani, eva y fer por votar Noviembre 2026");
+    expect(following.reminder).toContain(`${SITE}/p/${PLAN}/votacion`);
+    expect(following.announcement).toBeNull();
+
+    // Closing early counts what's in and writes the announcement.
+    const closed = (await json(`/api/plans/${PLAN}/close`, "POST")).data;
+    expect(closed.result.winnerId).toBe("nap");
+    expect(closed.reminder).toBeNull();
+    expect(closed.announcement).toContain("nos vamos a Nápoles");
+    expect((await json(`/api/plans/${PLAN}`)).data.plan).toMatchObject({ status: "closed", winnerDestinationId: "nap" });
+    // The site's refusal comes through with its reason.
+    expect(await json(`/api/plans/${PLAN}/close`, "POST")).toMatchObject({ status: 409, data: { error: "plan is closed" } });
   });
 
   it("issues, reissues and revokes invites", async () => {

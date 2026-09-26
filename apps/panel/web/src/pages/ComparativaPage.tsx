@@ -32,9 +32,11 @@ export function ComparativaPage() {
           subtitle={`Las ${n} aprobadas de ${plan.name} · los pros y contras los escribió Claude, puedes reescribirlos antes de publicar`}
           actions={
             voting ? (
-              <Badge tone={plan.status === "voting" ? "accent" : "dark"} size="md">
-                {plan.status === "voting" && plan.voteDeadline ? `Votación abierta hasta el ${deadlineLabel(plan.voteDeadline)}` : "Votación cerrada"}
-              </Badge>
+              <Link to="/votacion" className="no-underline">
+                <Badge tone={plan.status === "voting" ? "accent" : "dark"} size="md">
+                  {plan.status === "voting" && plan.voteDeadline ? `Votación abierta hasta el ${deadlineLabel(plan.voteDeadline)}` : "Votación cerrada"} →
+                </Badge>
+              </Link>
             ) : (
               <Button
                 variant="primary"

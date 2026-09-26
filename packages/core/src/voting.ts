@@ -1,5 +1,5 @@
 import type { PlanStatus } from "./model.ts";
-import { ballotLength } from "./tally.ts";
+import { ballotLength, type TallyResult } from "./tally.ts";
 
 // A ballot ranks exactly min(3, n) distinct in-vote destinations (SPEC §4).
 export function validateRanking(ranking: readonly string[], inVoteIds: readonly string[]): string | null {
@@ -39,4 +39,14 @@ export function freezeViolation(
     ds.map((d) => `${d.id}:${d.inVote}`).sort().join(",");
   if (key(published) === key(next)) return null;
   return "la votación ya tiene papeletas: no se pueden añadir, quitar ni cambiar destinos de la votación";
+}
+
+// What the organiser sees of a vote in the panel (SPEC §4, §7). Who has voted
+// is always visible; the count only once closed, as for everyone else.
+export interface VoteState {
+  status: PlanStatus;
+  voteDeadline: string | null;
+  partySize: number;
+  voted: string[];
+  result: (TallyResult & { winnerId: string | null }) | null;
 }

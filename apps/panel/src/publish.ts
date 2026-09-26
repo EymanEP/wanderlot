@@ -1,6 +1,6 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
-import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings } from "@wanderlot/core";
+import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings, type VoteState } from "@wanderlot/core";
 import type { PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
@@ -57,12 +57,25 @@ export interface SiteClient {
   putSettings(s: GroupSettings): Promise<GroupSettings>;
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
+  vote(planId: string): Promise<VoteState>;
+  closeVote(planId: string): Promise<VoteState>;
+  pickWinner(planId: string, destinationId: string): Promise<VoteState>;
   putMembers(members: { id: string; name: string }[]): Promise<void>;
   members(): Promise<MemberStatus[]>;
   // A one-time invite; the token comes back once and the site keeps only its hash.
   invite(memberId: string): Promise<{ token: string; expiresAt: string }>;
   closeSessions(memberId: string): Promise<void>;
   revoke(memberId: string): Promise<void>;
+}
+
+// The site said no; the panel passes its answer on.
+export class SiteError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string,
+  ) {
+    super(`sitio ${status}: ${reason}`);
+  }
 }
 
 export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeof fetch = fetch): SiteClient {
@@ -73,7 +86,7 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) throw new Error(`sitio ${res.status}: ${data.error ?? res.statusText}`);
+    if (!res.ok) throw new SiteError(res.status, data.error ?? res.statusText);
     return data as T;
   }
   return {
@@ -81,6 +94,9 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     putSettings: (s) => call<GroupSettings>("/settings", "PUT", s),
     publish: async (s) => void (await call(`/plans/${s.plan.id}`, "PUT", s)),
     openVote: async (planId, deadline) => void (await call(`/plans/${planId}/open-vote`, "POST", { deadline })),
+    vote: (planId) => call<VoteState>(`/plans/${planId}/vote`, "GET"),
+    closeVote: (planId) => call<VoteState>(`/plans/${planId}/close`, "POST"),
+    pickWinner: (planId, destinationId) => call<VoteState>(`/plans/${planId}/winner`, "PUT", { destinationId }),
     putMembers: async (members) => void (await call("/members", "PUT", members)),
     members: () => call<MemberStatus[]>("/members", "GET"),
     invite: (id) => call<{ token: string; expiresAt: string }>(`/members/${id}/invite`, "POST"),

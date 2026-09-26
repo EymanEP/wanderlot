@@ -11,6 +11,7 @@ const NAV = [
   { to: "/generar", label: "Generar" },
   { to: "/revisar", label: "Revisar" },
   { to: "/comparativa", label: "Comparativa" },
+  { to: "/votacion", label: "Votación" },
   { to: "/personas", label: "Personas" },
 ];
 

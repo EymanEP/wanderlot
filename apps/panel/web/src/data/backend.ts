@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { GroupSettings, Photo, Plan, Proposal } from "@wanderlot/core";
+import type { GroupSettings, Photo, Plan, Proposal, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -47,6 +47,15 @@ export interface PhotoResults {
   errors: { source: Photo["source"]; message: string }[];
 }
 
+// A vote as the panel follows it (apps/panel/src/app.ts voteView).
+export interface VoteView extends VoteState {
+  people: { id: string; name: string; voted: boolean }[];
+  cities: Record<string, string>;
+  // Ready-to-paste messages, when there's something to say.
+  reminder: string | null;
+  announcement: string | null;
+}
+
 export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents">;
 
 export interface PanelBackend {
@@ -66,6 +75,9 @@ export interface PanelBackend {
   searchPhotos(query: string): Promise<PhotoResults>;
   publish(planId: string): Promise<{ published: number }>;
   openVote(planId: string, deadline: string): Promise<{ message: string }>;
+  vote(planId: string): Promise<VoteView>;
+  closeVote(planId: string): Promise<VoteView>;
+  pickWinner(planId: string, destinationId: string): Promise<VoteView>;
   members(): Promise<MemberAccess[]>;
   putMembers(members: { id: string; name: string }[]): Promise<void>;
   invite(memberId: string): Promise<{ url: string; expiresAt: string }>;
@@ -141,6 +153,9 @@ export const httpBackend: PanelBackend = {
   // The screens confirm unverified prices themselves before calling this.
   publish: (planId) => call<{ published: number }>(`/api/plans/${enc(planId)}/publish`, "POST", { confirm: true }),
   openVote: (planId, deadline) => call<{ message: string }>(`/api/plans/${enc(planId)}/open-vote`, "POST", { deadline }),
+  vote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/vote`),
+  closeVote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/close`, "POST"),
+  pickWinner: (planId, destinationId) => call<VoteView>(`/api/plans/${enc(planId)}/winner`, "PUT", { destinationId }),
   members: () => call<MemberAccess[]>("/api/members"),
   putMembers: async (members) => void (await call("/api/members", "PUT", members)),
   invite: (id) => call<{ url: string; expiresAt: string }>(`/api/members/${enc(id)}/invite`, "POST"),

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { addDaysIso, deadlineLabel } from "@wanderlot/core";
-import { Button, Dialog, Field, Notice, TextArea, TextInput, buttonClasses, useToast } from "@wanderlot/ui";
+import { Dialog, Field, Notice, TextInput } from "@wanderlot/ui";
+import { MessageDialog } from "./MessageDialog.tsx";
 
 export interface OpenVoteDialogProps {
   open: boolean;
@@ -14,7 +15,6 @@ export interface OpenVoteDialogProps {
 // Opens the vote on the site, then hands over the message for the group chat
 // (SPEC §7): the site's address plus invites for whoever hasn't joined.
 export function OpenVoteDialog({ open, planName, count, today, onOpen, onClose }: OpenVoteDialogProps) {
-  const toast = useToast();
   const [date, setDate] = useState(addDaysIso(today, 14));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,15 +34,6 @@ export function OpenVoteDialog({ open, planName, count, today, onOpen, onClose }
     }
   };
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(message ?? "");
-      toast("Mensaje copiado");
-    } catch {
-      toast("No se pudo copiar: selecciona el texto a mano");
-    }
-  };
-
   const close = () => {
     setMessage(null);
     setError(null);
@@ -51,29 +42,13 @@ export function OpenVoteDialog({ open, planName, count, today, onOpen, onClose }
 
   if (message) {
     return (
-      <Dialog
+      <MessageDialog
         open={open}
         title="Votación abierta"
+        intro="Pega este mensaje en el grupo. Lleva la dirección del sitio y las invitaciones de quien aún no ha entrado."
+        message={message}
         onClose={close}
-        actions={
-          <>
-            <Button variant="ghost" onClick={close}>
-              Cerrar
-            </Button>
-            <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer" className={buttonClasses({ variant: "secondary" })}>
-              Abrir WhatsApp
-            </a>
-            <Button variant="primary" onClick={copy}>
-              Copiar mensaje
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <span>Pega este mensaje en el grupo. Lleva la dirección del sitio y las invitaciones de quien aún no ha entrado.</span>
-          <TextArea aria-label="Mensaje para el grupo" readOnly rows={9} value={message} className="text-[13px]" />
-        </div>
-      </Dialog>
+      />
     );
   }
 

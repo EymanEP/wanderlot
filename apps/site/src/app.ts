@@ -23,6 +23,7 @@ import {
   validateRanking,
   type CommentView,
   type Member,
+  type VoteState,
   type PlanSummary,
 } from "@wanderlot/core";
 import { base64url, fromBase64url, randomToken, safeEqual, sha256 } from "./crypto.ts";
@@ -336,6 +337,51 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     }
     await store.setStatus(planId, "voting", { voteDeadline: body.data.deadline });
     return c.json({ ok: true });
+  });
+
+  // The vote as the organiser follows it: who has voted, and the count once
+  // closed. Winner is the organiser's pick when first place was tied.
+  async function voteState(planId: string): Promise<VoteState | undefined> {
+    const plan = await settle(planId);
+    if (!plan) return undefined;
+    const counted = plan.status === "closed" ? tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking)) : null;
+    return {
+      status: plan.status,
+      voteDeadline: plan.voteDeadline ?? null,
+      partySize: plan.snapshot.plan.partySize,
+      voted: plan.ballots.map((b) => b.memberId),
+      result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
+    };
+  }
+
+  admin.get("/plans/:planId/vote", async (c) => {
+    const state = await voteState(c.req.param("planId"));
+    return state ? c.json(state) : c.json({ error: "not found" }, 404);
+  });
+
+  // Close before the deadline, e.g. when everyone who's coming has voted.
+  admin.post("/plans/:planId/close", async (c) => {
+    const planId = c.req.param("planId");
+    const plan = await settle(planId);
+    if (!plan) return c.json({ error: "not found" }, 404);
+    if (plan.status !== "voting") return c.json({ error: `plan is ${plan.status}` }, 409);
+    if (plan.ballots.length === 0) return c.json({ error: "nadie ha votado todavía" }, 409);
+    const result = tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking));
+    await store.setStatus(planId, "closed", { winnerDestinationId: result.winnerId });
+    return c.json(await voteState(planId));
+  });
+
+  // A tie for first after every rule: the organiser decides (SPEC §4).
+  admin.put("/plans/:planId/winner", async (c) => {
+    const planId = c.req.param("planId");
+    const body = z.object({ destinationId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {destinationId}" }, 400);
+    const state = await voteState(planId);
+    if (!state) return c.json({ error: "not found" }, 404);
+    if (!state.result) return c.json({ error: "la votación sigue abierta" }, 409);
+    if (!state.result.tiedForFirst.includes(body.data.destinationId)) return c.json({ error: "solo se elige entre los empatados" }, 409);
+    await store.setStatus(planId, "closed", { winnerDestinationId: body.data.destinationId });
+    return c.json(await voteState(planId));
   });
 
   admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));

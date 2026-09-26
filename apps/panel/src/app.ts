@@ -3,13 +3,13 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal } from "@wanderlot/core";
+import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal, type VoteState } from "@wanderlot/core";
 import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
-import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
+import { SiteError, buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
-import { inviteUrl, voteOpenedMessage } from "./announce.ts";
+import { inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage } from "./announce.ts";
 
 // What this computer can do, found at startup (SPEC §8).
 export interface PanelStatus {
@@ -81,6 +81,12 @@ export function createPanel({
 }: PanelOptions) {
   const app = new Hono();
   if (hosts) app.use("*", localOnly(hosts));
+  // The panel is local, so the organiser may see what went wrong. A refusal
+  // from the site keeps its status and its (Spanish) reason.
+  app.onError((err, c) => {
+    if (err instanceof SiteError && err.status >= 400 && err.status < 500) return c.json({ error: err.reason }, err.status as 409);
+    return c.json({ error: err.message }, 500);
+  });
 
   const entryOr404 = (planId: string) => store.get(planId);
 
@@ -319,6 +325,52 @@ export function createPanel({
 
   // Opens the vote on the site and returns the message for the group chat.
   // Verified in-vote prices must be fresh first (SPEC §3).
+  // Following the vote (SPEC §4, §7): who's in, a reminder for who isn't,
+  // and once closed the count and the message announcing where you're going.
+  async function voteView(planId: string, state: VoteState) {
+    const entry = store.get(planId)!;
+    // Keep the local copy of the plan in step with the site.
+    const winner = state.result?.winnerId ?? undefined;
+    if (entry.plan.status !== state.status || entry.plan.winnerDestinationId !== winner) {
+      store.update(planId, (e) => ({
+        entry: { ...e!, plan: { ...e!.plan, status: state.status, ...(winner ? { winnerDestinationId: winner } : {}) } },
+        result: null,
+      }));
+    }
+    const members = await site.members();
+    const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
+    const cities = Object.fromEntries(entry.proposals.map((p) => [p.id, p.place.city]));
+    const missing = people.filter((p) => !p.voted).map((p) => p.name);
+    const reminder = state.status === "voting" && state.voteDeadline && missing.length ? voteReminderMessage(entry.plan, state.voteDeadline, siteUrl, missing) : null;
+    // A tie waits for the organiser's pick before anything is announced.
+    const announcement =
+      state.result && (state.result.winnerId || state.result.tiedForFirst.length === 0)
+        ? voteClosedMessage(entry.plan, state.result.winnerId ? (cities[state.result.winnerId] ?? state.result.winnerId) : null, siteUrl)
+        : null;
+    return { ...state, people, cities, reminder, announcement };
+  }
+
+  app.get("/api/plans/:planId/vote", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    if (store.get(planId)!.plan.status === "draft") return c.json({ error: "la votación no está abierta" }, 409);
+    return c.json(await voteView(planId, await site.vote(planId)));
+  });
+
+  app.post("/api/plans/:planId/close", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    return c.json(await voteView(planId, await site.closeVote(planId)));
+  });
+
+  app.put("/api/plans/:planId/winner", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const body = z.object({ destinationId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {destinationId}" }, 400);
+    return c.json(await voteView(planId, await site.pickWinner(planId, body.data.destinationId)));
+  });
+
   app.post("/api/plans/:planId/open-vote", async (c) => {
     const entry = entryOr404(c.req.param("planId"));
     if (!entry) return c.json({ error: "not found" }, 404);

@@ -1,18 +1,20 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, slugify, type GroupSettings, type Photo, type Plan, type Proposal } from "@wanderlot/core";
+import { addDaysIso, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
   access as mockAccess,
   editorial as mockEditorial,
+  ballots as mockBallots,
   members as mockMembers,
   photoLabels,
+  placeName,
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { MemberAccess, PanelBackend, PlanEntry } from "./backend.ts";
+import type { MemberAccess, PanelBackend, PlanEntry, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -82,6 +84,50 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const e = entry(planId);
     entries.set(planId, { ...e, proposals: e.proposals.map((p) => (p.id === id ? fn(p) : p)) });
   };
+  // Once a vote opens, the design's four ballots are "in" (4 of 6).
+  const ballotsFor = (planId: string) => (planId === "noviembre-2026" ? mockBallots : []);
+  const voteView = (planId: string): VoteView => {
+    const { plan, proposals, editorial } = entry(planId);
+    const ballots = ballotsFor(planId);
+    const inVote = proposals.filter((p) => p.review === "approved" && editorial[p.id]?.inVote !== false);
+    const counted =
+      plan.status === "closed"
+        ? tally(
+            inVote.map((p) => ({ id: p.id, totalPerPersonCents: p.outbound.priceCents + p.inbound.priceCents })),
+            ballots.map((b) => b.ranking).filter((r) => r.every((id) => inVote.some((p) => p.id === id))),
+          )
+        : null;
+    const state: VoteState = {
+      status: plan.status,
+      voteDeadline: plan.voteDeadline ?? null,
+      partySize: plan.partySize,
+      voted: ballots.map((b) => b.memberId),
+      result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
+    };
+    const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
+    const missing = people.filter((p) => !p.voted).map((p) => p.name);
+    const winner = state.result?.winnerId;
+    return {
+      ...state,
+      people,
+      cities: Object.fromEntries([...proposals, ...mockProposals].map((p) => [p.id, p.place.city])),
+      reminder:
+        plan.status === "voting" && missing.length
+          ? `Faltan ${missing.join(", ")} por votar ${plan.name}.\nOrdenad vuestros 3 favoritos: ${SITE_URL}/p/${planId}/votacion`
+          : null,
+      announcement:
+        plan.status === "closed" && (winner || !state.result?.tiedForFirst.length)
+          ? winner
+            ? `Votación de ${plan.name} cerrada: nos vamos a ${placeName(winner)}. Recuento completo en ${SITE_URL}/p/${planId}`
+            : `Votación de ${plan.name} cerrada con empate. Recuento en ${SITE_URL}/p/${planId}`
+          : null,
+    };
+  };
+  const setPlan = (planId: string, patch: Partial<Plan>) => {
+    const e = entry(planId);
+    entries.set(planId, { ...e, plan: { ...e.plan, ...patch } });
+  };
+
   const patchMember = (id: string, patch: Partial<MemberAccess>) => {
     members = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
   };
@@ -146,6 +192,23 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
           ...(pending.length ? ["", "Si aún no habéis entrado nunca, vuestra invitación (sirve una vez, no la reenviéis):", ...pending.map((m) => `• ${m.name}: ${m.inviteUrl ?? `${SITE_URL}/i/${token()}`}`)] : []),
         ].join("\n"),
       };
+    },
+    async vote(planId) {
+      if (entry(planId).plan.status === "draft") throw new Error("la votación no está abierta");
+      return voteView(planId);
+    },
+    async closeVote(planId) {
+      if (entry(planId).plan.status !== "voting") throw new Error("la votación no está abierta");
+      setPlan(planId, { status: "closed" });
+      const v = voteView(planId);
+      if (v.result?.winnerId) setPlan(planId, { winnerDestinationId: v.result.winnerId });
+      return voteView(planId);
+    },
+    async pickWinner(planId, destinationId) {
+      const v = voteView(planId);
+      if (!v.result?.tiedForFirst.includes(destinationId)) throw new Error("solo se elige entre los empatados");
+      setPlan(planId, { winnerDestinationId: destinationId });
+      return voteView(planId);
     },
     members: async () => members,
     async putMembers(list) {

@@ -315,6 +315,38 @@ describe("with everyone signed in", () => {
       clock = new Date("2026-10-20T20:00:00Z");
       expect(((await (await as("ana", `/${PLAN}/results`)).json()) as any).winnerId).toBe("opo");
     });
+
+    it("shows the organiser who voted, and the count only once closed", async () => {
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "lis", "nap"] });
+      const open = (await (await admin(`/plans/${PLAN}/vote`, "GET")).json()) as any;
+      expect(open).toEqual({ status: "voting", voteDeadline: "2026-10-20T20:00:00Z", partySize: 6, voted: ["ana"], result: null });
+    });
+
+    it("closes early on the organiser's word, not before anyone votes", async () => {
+      expect((await admin(`/plans/${PLAN}/close`, "POST")).status).toBe(409);
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "lis", "nap"] });
+      await as("bea", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "nap", "lis"] });
+      const closed = (await (await admin(`/plans/${PLAN}/close`, "POST")).json()) as any;
+      expect(closed.status).toBe("closed");
+      expect(closed.result.winnerId).toBe("opo");
+      expect((await as("carlos", `/${PLAN}/ballot`, "PUT", { ranking: ["lis", "nap", "opo"] })).status).toBe(409);
+      expect(((await (await as("carlos", `/${PLAN}/results`)).json()) as any).winnerId).toBe("opo");
+      expect((await admin(`/plans/${PLAN}/close`, "POST")).status).toBe(409);
+    });
+
+    it("lets the organiser break a tie for first, and only then", async () => {
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["lis", "nap", "opo"] });
+      await as("bea", `/${PLAN}/ballot`, "PUT", { ranking: ["nap", "lis", "opo"] });
+      expect((await admin(`/plans/${PLAN}/winner`, "PUT", { destinationId: "lis" })).status).toBe(409);
+      const tied = (await (await admin(`/plans/${PLAN}/close`, "POST")).json()) as any;
+      expect(tied.result.winnerId).toBeNull();
+      expect(tied.result.tiedForFirst.sort()).toEqual(["lis", "nap"]);
+      expect((await admin(`/plans/${PLAN}/winner`, "PUT", { destinationId: "opo" })).status).toBe(409);
+      const picked = (await (await admin(`/plans/${PLAN}/winner`, "PUT", { destinationId: "nap" })).json()) as any;
+      expect(picked.result.winnerId).toBe("nap");
+      expect(((await (await as("ana", `/${PLAN}/results`)).json()) as any).winnerId).toBe("nap");
+      expect(((await (await as("ana", "")).json()) as any[])[0].winnerCity).toBe("nap");
+    });
   });
 
   describe("comments", () => {

@@ -124,6 +124,26 @@ try {
   await org.getByRole("link", { name: "Personas" }).first().click();
   await org.getByRole("listitem", { name: "Ana" }).getByText("Dentro").waitFor();
   console.log("✓ panel: Ana is inside");
+
+  // 7. Ana votes on her phone; the organiser follows it and closes early.
+  await ana.getByRole("link", { name: "Repartir mis puntos" }).click();
+  for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();
+  await ana.getByRole("button", { name: "Votar" }).click();
+  await ana.getByText("Reparto guardado").waitFor();
+  await org.getByRole("link", { name: "Votación" }).first().click();
+  await org.getByText("1 de 6").waitFor();
+  await org.getByRole("button", { name: "Cerrar ya" }).click();
+  await org.getByRole("button", { name: "Cerrar con 1 voto" }).click();
+  await org.getByText("Ganó").waitFor();
+  const winner = (await org.getByRole("heading", { level: 2 }).first().textContent())!.trim();
+  await org.getByRole("button", { name: "Anunciar el resultado" }).click();
+  assert.match(await org.getByLabel("Mensaje para el grupo").inputValue(), new RegExp(`nos vamos a ${winner}`));
+  console.log(`✓ panel: vote closed early, ${winner} announced`);
+
+  // 8. The site shows the same result to Ana.
+  await ana.goto(`${SITE}/p/noviembre-2026`);
+  await ana.getByText(`Votación cerrada · ganó ${winner}`).waitFor();
+  console.log("✓ site: Ana sees the result");
 } finally {
   await browser.close();
   site.kill();

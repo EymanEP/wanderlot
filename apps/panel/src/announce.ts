@@ -38,6 +38,16 @@ export function voteOpenedMessage(plan: Pick<Plan, "id" | "name">, deadline: str
   return lines.join("\n");
 }
 
+// A nudge naming who's missing: nobody sees anyone's ballot, only who voted.
+export function voteReminderMessage(plan: Pick<Plan, "id" | "name">, deadline: string, siteUrl: string, missing: string[]): string {
+  const who = missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`;
+  return [
+    `${who} por votar ${plan.name}.`,
+    `Se cierra el ${formatDeadline(deadline)}; son dos minutos: ordenad vuestros 3 favoritos.`,
+    `${new URL(`/p/${plan.id}/votacion`, siteUrl)}`,
+  ].join("\n");
+}
+
 export function voteClosedMessage(plan: Pick<Plan, "id" | "name">, winnerCity: string | null, siteUrl: string): string {
   const url = new URL(`/p/${plan.id}`, siteUrl).toString();
   return winnerCity

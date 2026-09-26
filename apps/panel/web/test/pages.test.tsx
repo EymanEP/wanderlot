@@ -135,12 +135,41 @@ describe("Comparativa", () => {
 
     await user.click(within(bud).getByLabelText("Entra en la votación"));
     await user.click(screen.getByRole("button", { name: "Enviar las 3 a votación" }));
-    const dialog = document.querySelector("dialog")!;
-    await user.click(within(dialog).getByRole("button", { name: "Abrir con 3 destinos", hidden: true }));
-    const message = (await within(dialog).findByLabelText("Mensaje para el grupo", {}, {})) as HTMLTextAreaElement;
+    await user.click(within(document.querySelector("dialog[open]") as HTMLElement).getByRole("button", { name: "Abrir con 3 destinos" }));
+    const message = (await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement;
     expect(message.value).toContain("Abierta la votación de Noviembre 2026");
     expect(message.value).toContain("• Laura:");
     expect(await screen.findByText(/Votación abierta hasta el/)).toBeTruthy();
+  });
+});
+
+describe("Votación", () => {
+  it("follows the vote, nudges who's missing, closes early and announces", async () => {
+    const user = userEvent.setup();
+    renderAt("/votacion");
+    expect(await screen.findByText("La votación aún no está abierta")).toBeTruthy();
+
+    await user.click(screen.getByRole("link", { name: "Ir a Comparativa" }));
+    await user.click(await screen.findByRole("button", { name: "Enviar las 4 a votación" }));
+    await user.click(within(document.querySelector("dialog[open]") as HTMLElement).getByRole("button", { name: "Abrir con 4 destinos" }));
+    await user.click(await within(document.querySelector("dialog[open]") as HTMLElement).findByRole("button", { name: "Cerrar" }));
+    await user.click(screen.getByRole("link", { name: /Votación abierta/ }));
+
+    expect(await screen.findByText("4 de 6")).toBeTruthy();
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("4");
+    await user.click(screen.getByRole("button", { name: "Recordar a quien falta" }));
+    const reminder = (await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement;
+    expect(reminder.value).toContain("Laura, Diego");
+    await user.click(within(document.querySelector("dialog[open]") as HTMLElement).getByRole("button", { name: "Cerrar" }));
+
+    await user.click(screen.getByRole("button", { name: "Cerrar ya" }));
+    await user.click(within(document.querySelector("dialog[open]") as HTMLElement).getByRole("button", { name: "Cerrar con 4 votos" }));
+    expect(await screen.findByText("Votación cerrada")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Marrakech" })).toBeTruthy();
+    expect(screen.getAllByText("No votó")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Anunciar el resultado" }));
+    expect(((await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement).value).toContain("nos vamos a Marrakech");
   });
 });
 
