@@ -14,11 +14,13 @@ export interface DialogProps {
   busy?: boolean;
   // Replaces the default Cancel / Confirm buttons.
   actions?: ReactNode;
+  // Room for a grid, e.g. the photo picker.
+  wide?: boolean;
 }
 
 // A modal confirmation on the native <dialog>: focus trapping, Escape and the
 // backdrop come from the browser.
-export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions }: DialogProps) {
+export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions, wide }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -31,7 +33,7 @@ export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Can
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
-      className="m-auto w-[min(480px,calc(100vw-32px))] rounded-card border-0 bg-surface p-0 text-ink shadow-pop backdrop:bg-ink/40"
+      className={`m-auto ${wide ? "w-[min(880px,calc(100vw-32px))]" : "w-[min(480px,calc(100vw-32px))]"} rounded-card border-0 bg-surface p-0 text-ink shadow-pop backdrop:bg-ink/40`}
     >
       <div className="flex flex-col gap-4 p-6">
         <Heading size="subheading">{title}</Heading>

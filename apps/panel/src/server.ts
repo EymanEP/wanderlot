@@ -4,7 +4,9 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPanel, type PanelStatus } from "./app.ts";
+import { anthropicProvider } from "./providers/anthropic.ts";
 import { claudeProvider } from "./providers/claude.ts";
+import { pexels, unsplash, wikimedia, type PhotoSource } from "./providers/photos.ts";
 import { duffelProvider } from "./providers/duffel.ts";
 import { siteClient } from "./publish.ts";
 import { PanelStore } from "./store.ts";
@@ -21,21 +23,25 @@ const port = Number(process.env.PORT ?? 5151);
 // What this computer can do (SPEC §8).
 const claudeBin = process.env.CLAUDE_BIN ?? "claude";
 const hasClaude = spawnSync(claudeBin, ["--version"], { stdio: "ignore" }).status === 0;
+const photos: PhotoSource[] = [
+  wikimedia(),
+  ...(process.env.UNSPLASH_ACCESS_KEY ? [unsplash(process.env.UNSPLASH_ACCESS_KEY)] : []),
+  ...(process.env.PEXELS_API_KEY ? [pexels(process.env.PEXELS_API_KEY)] : []),
+];
+
 const status: PanelStatus = {
-  research: process.env.ANTHROPIC_API_KEY ? "anthropic-api" : hasClaude ? "claude-cli" : "none",
+  // The command first: it runs on the organiser's Claude plan, with no API bill.
+  research: hasClaude ? "claude-cli" : process.env.ANTHROPIC_API_KEY ? "anthropic-api" : "none",
   flights: process.env.DUFFEL_API_KEY ? "duffel" : "none",
-  photos: [
-    "wikimedia",
-    ...(process.env.UNSPLASH_ACCESS_KEY ? (["unsplash"] as const) : []),
-    ...(process.env.PEXELS_API_KEY ? (["pexels"] as const) : []),
-  ],
+  photos: photos.map((s) => s.name),
 };
 
 const app = createPanel({
   status,
   store: new PanelStore(process.env.WANDERLOT_PANEL_DATA ?? "data/panel.json"),
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
-  research: claudeProvider(),
+  research: status.research === "anthropic-api" ? anthropicProvider() : claudeProvider(),
+  photos,
   site: siteClient(siteUrl, adminToken),
   siteUrl,
 });

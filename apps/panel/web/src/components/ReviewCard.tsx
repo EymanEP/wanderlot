@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { Plan, Proposal } from "@wanderlot/core";
+import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
 import { euros } from "@wanderlot/core";
-import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge } from "@wanderlot/ui";
+import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, total, trustOf, trustText } from "../lib/view.ts";
 
@@ -14,10 +14,12 @@ export interface ReviewCardProps {
   onVerify: () => void;
   // Whether a flight API is configured to verify against.
   canVerify: boolean;
+  photos: PhotoData[];
+  onPickPhotos: () => void;
 }
 
 // A proposal as the organiser judges it: photo, provenance, facts, decision.
-export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify }: ReviewCardProps) {
+export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, photos, onPickPhotos }: ReviewCardProps) {
   const [showSources, setShowSources] = useState(false);
   const trust = trustOf(p, now);
   const approved = p.review === "approved";
@@ -36,7 +38,14 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
     >
       <Photo
         label={`Foto de ${p.place.city}`}
+        src={photos[0]?.url}
+        alt={photos[0]?.alt}
         className="h-[180px] sm:h-[214px]"
+        bottom={
+          <button type="button" onClick={onPickPhotos} className={cn(buttonClasses({ variant: "secondary" }), "h-9 bg-surface px-3.5 text-[13px]")}>
+            {photos.length ? `Fotos · ${photos.length}` : "Elegir fotos"}
+          </button>
+        }
         top={
           <>
             <Badge tone="white" size="md">

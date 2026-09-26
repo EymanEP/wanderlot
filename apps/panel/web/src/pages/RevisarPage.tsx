@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
+import { PhotoPicker } from "../components/PhotoPicker.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
 import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
@@ -10,7 +11,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish } = usePanel();
+  const { state, now, setReview, verify, publish, setEditorial, searchPhotos } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -19,7 +20,9 @@ export function RevisarPage() {
   const [sort, setSort] = useState<Sort>("price");
   const [hideUnverified, setHideUnverified] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [picking, setPicking] = useState<string | null>(null);
   const plan = usePlan();
+  const pickingProposal = state.proposals.find((p) => p.id === picking);
 
   // Arriving from Generar's "Revisar" link: scroll to that card.
   useEffect(() => {
@@ -119,6 +122,8 @@ export function RevisarPage() {
                 verifying={state.verifying.includes(p.id)}
                 canVerify={state.status?.flights !== "none"}
                 onReview={(r) => setReview(p.id, r)}
+                photos={state.editorial[p.id]?.photos ?? []}
+                onPickPhotos={() => setPicking(p.id)}
                 onVerify={() =>
                   verify(p.id).then((r) => toast(r.verified ? `${p.place.city}: verificado con la API` : `${p.place.city}: ${r.reason ?? "no se pudo verificar"}`))
                 }
@@ -127,6 +132,20 @@ export function RevisarPage() {
           </section>
         )}
       </main>
+
+      <PhotoPicker
+        open={pickingProposal !== undefined}
+        city={pickingProposal?.place.city ?? ""}
+        suggestions={(picking && state.editorial[picking]?.photoQueries) || []}
+        chosen={(picking && state.editorial[picking]?.photos) || []}
+        search={searchPhotos}
+        onClose={() => setPicking(null)}
+        onSave={(photos) => {
+          if (picking) setEditorial(picking, { photos });
+          setPicking(null);
+          toast(photos.length ? `${pickingProposal?.place.city}: ${photos.length} ${photos.length === 1 ? "foto guardada" : "fotos guardadas"}` : "Fotos quitadas");
+        }}
+      />
 
       <Dialog
         open={confirming}

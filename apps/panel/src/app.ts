@@ -4,7 +4,8 @@ import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
 import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal } from "@wanderlot/core";
-import type { FlightProvider, ResearchProvider, SearchRequest } from "./providers/types.ts";
+import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
+import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
 import { inviteUrl, voteOpenedMessage } from "./announce.ts";
@@ -21,6 +22,7 @@ export interface PanelOptions {
   status?: PanelStatus;
   flights: FlightProvider;
   research: ResearchProvider;
+  photos?: PhotoSource[];
   site: SiteClient;
   siteUrl: string;
   now?: () => Date;
@@ -59,10 +61,15 @@ const NewPlan = z.object({
   maxPriceCents: z.number().int().positive(),
 });
 
+async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
+  for await (const proposal of it) yield { proposal };
+}
+
 export function createPanel({
   store,
   flights,
   research,
+  photos = [],
   site,
   siteUrl,
   now = () => new Date(),
@@ -138,9 +145,9 @@ export function createPanel({
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
     };
-    let source: AsyncIterable<Omit<Proposal, "review">>;
+    let source: AsyncIterable<ResearchResult>;
     try {
-      source = body.data.source === "api" ? flights.search(req, c.req.raw.signal) : research.research(req, c.req.raw.signal);
+      source = body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : research.research(req, c.req.raw.signal);
     } catch (e) {
       // e.g. no flight provider configured
       return c.json({ error: (e as Error).message }, 409);
@@ -149,12 +156,28 @@ export function createPanel({
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
       try {
-        for await (const p of source) {
+        for await (const { proposal: p, notes } of source) {
           const proposal: Proposal = { ...p, review: "pending" };
-          store.update(plan.id, (e) => ({
-            entry: { ...e!, proposals: [...e!.proposals.filter((x) => x.id !== proposal.id), proposal] },
-            result: null,
-          }));
+          store.update(plan.id, (e) => {
+            // Research's notes seed Comparativa; the organiser's edits win.
+            const prev = e!.editorial[proposal.id] ?? {};
+            const editorial = notes
+              ? {
+                  ...e!.editorial,
+                  [proposal.id]: {
+                    pros: notes.pros,
+                    cons: notes.cons,
+                    weather: notes.weather,
+                    ...prev,
+                    photoQueries: notes.photoSubjects.length ? notes.photoSubjects : (prev.photoQueries ?? []),
+                  },
+                }
+              : e!.editorial;
+            return {
+              entry: { ...e!, editorial, proposals: [...e!.proposals.filter((x) => x.id !== proposal.id), proposal] },
+              result: null,
+            };
+          });
           await s.writeln(JSON.stringify({ proposal }));
         }
         await s.writeln(JSON.stringify({ done: true }));
@@ -208,12 +231,26 @@ export function createPanel({
     return c.json({ verified: true, proposal: verified });
   });
 
+  // The photo picker: every configured source at once (SPEC §6).
+  app.get("/api/photos", async (c) => {
+    const q = (c.req.query("q") ?? "").trim().slice(0, 100);
+    if (!q) return c.json({ error: "expected ?q=" }, 400);
+    const count = Math.min(Math.max(Number(c.req.query("count")) || 12, 1), 30);
+    return c.json(await searchAll(photos, q, count, c.req.raw.signal));
+  });
+
   // Comparativa: pros/cons, weather, photos, the inVote checkbox.
   app.patch("/api/plans/:planId/proposals/:id/editorial", async (c) => {
     const { planId, id } = c.req.param();
     const body = EditorialBody.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid editorial", issues: body.error.issues }, 400);
     if (!store.get(planId)?.proposals.some((p) => p.id === id)) return c.json({ error: "not found" }, 404);
+    // Newly kept photos count as downloads where the source asks for it.
+    const before = new Set((store.get(planId)!.editorial[id]?.photos ?? []).map((p) => p.url));
+    for (const photo of body.data.photos ?? []) {
+      if (before.has(photo.url)) continue;
+      photos.find((s) => s.name === photo.source)?.picked?.(photo).catch(() => {});
+    }
     store.update(planId, (e) => ({
       entry: { ...e!, editorial: { ...e!.editorial, [id]: { ...e!.editorial[id], ...body.data } } },
       result: null,

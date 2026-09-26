@@ -4,6 +4,7 @@ import { createPanel } from "../src/app.ts";
 import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
 import type { FlightProvider, ResearchProvider } from "../src/providers/types.ts";
+import type { PhotoSource } from "../src/providers/photos.ts";
 import { createApp } from "../../site/src/app.ts";
 import { SqliteStore } from "../../site/src/sqlite.ts";
 import { SoftAuthenticator } from "../../site/test/authenticator.ts";
@@ -19,6 +20,7 @@ const claudeSources = { kind: "claude" as const, sources: [{ label: "x", url: "h
 
 let clock: Date;
 let panel: ReturnType<typeof createPanel>;
+let picked: string[] = [];
 let site: ReturnType<typeof createApp>;
 
 const call = async (path: string, method = "GET", body?: unknown) => {
@@ -40,9 +42,12 @@ beforeEach(async () => {
 
   const research: ResearchProvider = {
     async *research() {
-      yield strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources }));
-      yield strip(proposal("nap", "Nápoles", "NAP", { provenance: claudeSources }));
-      yield strip(proposal("edi", "Edimburgo", "EDI", { provenance: claudeSources }));
+      yield {
+        proposal: strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })),
+        notes: { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoSubjects: ["Alfama Lisboa"] },
+      };
+      yield { proposal: strip(proposal("nap", "Nápoles", "NAP", { provenance: claudeSources })) };
+      yield { proposal: strip(proposal("edi", "Edimburgo", "EDI", { provenance: claudeSources })) };
     },
   };
   const flights: FlightProvider = {
@@ -57,10 +62,19 @@ beforeEach(async () => {
     },
   };
 
+  picked = [];
+  const unsplashStub: PhotoSource = {
+    name: "unsplash",
+    search: async (q) => [
+      { url: "https://images.unsplash.com/a", source: "unsplash", author: "Rui", license: "Unsplash License", sourceUrl: "https://unsplash.com/photos/a", alt: q, downloadLocation: "https://api.unsplash.com/photos/a/download" },
+    ],
+    picked: async (p) => void picked.push(p.url),
+  };
   panel = createPanel({
     store: new PanelStore(null),
     flights,
     research,
+    photos: [unsplashStub],
     site: siteClient(SITE, ADMIN, async (input, init) => site.request(String(input), init)),
     siteUrl: SITE,
     now: () => clock,
@@ -92,6 +106,8 @@ describe("panel → site", () => {
     expect(lines.map((l) => l.proposal?.id ?? "done")).toEqual(["lis", "nap", "edi", "done"]);
     const { data } = await json(`/api/plans/${PLAN}`);
     expect(data.proposals.every((p: Proposal) => p.review === "pending")).toBe(true);
+    // Research's notes seed Comparativa and the photo picker.
+    expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
   });
 
   it("publishes only what was approved, confirming unverified ones, then opens the vote", async () => {
@@ -206,5 +222,20 @@ describe("plans and settings", () => {
     expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
     const status = (await json("/api/status")).data;
     expect(status.site).toEqual({ url: SITE, reachable: true });
+  });
+
+  it("searches photos and counts a download only when a new one is kept", async () => {
+    expect((await call("/api/photos")).status).toBe(400);
+    const { data } = await json("/api/photos?q=Alfama");
+    expect(data.photos).toHaveLength(1);
+    expect(data.photos[0].alt).toBe("Alfama");
+
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    const save = () => json(`/api/plans/${PLAN}/proposals/lis/editorial`, "PATCH", { photos: data.photos });
+    expect((await save()).status).toBe(200);
+    await save();
+    expect(picked).toEqual(["https://images.unsplash.com/a"]);
+    const { data: entry } = await json(`/api/plans/${PLAN}`);
+    expect(entry.editorial.lis.photos[0].author).toBe("Rui");
   });
 });

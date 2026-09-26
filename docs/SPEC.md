@@ -259,16 +259,18 @@ web is usually copyrighted, may block direct linking, may be moved or deleted,
 and would let a third-party site log every friend who opens the page. So the
 work is split:
 
-1. **Claude picks what to show.** With each proposal it suggests 4–6 photo
-   subjects: one hero ("Bahía de Nápoles al atardecer") and the landmarks the
+1. **Claude picks what to show.** With each proposal it suggests three photo
+   subjects as search terms: a hero ("Bahía de Nápoles") and landmarks the
    proposal mentions ("Pompeya", "Spaccanapoli").
-2. **The panel finds candidates** for each subject through the services' own
-   search APIs (Unsplash/Pexels for the hero, Wikimedia for landmarks), using
-   whichever keys the organiser configured. With no keys, Wikimedia alone works.
-3. **The panel checks each candidate** before showing it: the URL loads, it is
-   an image, and the service returned a licence and an author.
-4. **The organiser picks** in Revisar (one hero, up to three tiles). Picking an
-   Unsplash photo triggers its download event.
+2. **The panel finds candidates** for a subject (or anything the organiser
+   types) through every configured service's own search API at once, results
+   interleaved (`GET /api/photos?q=`). With no keys, Wikimedia alone works.
+3. **The panel filters candidates**: Wikimedia results need a reusable licence
+   (CC0, public domain, CC BY, CC BY-SA) and get their author in plain text; a
+   service that fails is reported in the picker while the others still show.
+4. **The organiser picks** in Revisar's photo picker, up to four in order: the
+   first is the hero, the rest tiles. Keeping a new Unsplash photo triggers its
+   download event.
 5. **Publish carries the choice** with its credits. The site renders the image
    from the service's URL and the credit under it. An image that fails to load
    falls back to the labelled placeholder.
@@ -306,7 +308,7 @@ configures only the ones they have. The panel works with none of the paid ones.
 | provider | how | cost to the hoster |
 |---|---|---|
 | `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema …` | their Claude subscription, no API bill |
-| `anthropic-api` | Anthropic API with the web search tool, `ANTHROPIC_API_KEY` | pay per use |
+| `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
 
 Other providers can implement the same interface later. Whatever the provider,
 research always yields `claude` provenance (§3): it is labelled as written by

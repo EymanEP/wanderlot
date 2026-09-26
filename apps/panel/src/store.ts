@@ -4,8 +4,9 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Destination, Plan, Proposal } from "@wanderlot/core";
 
-// What Comparativa adds on top of an approved proposal.
-export type Editorial = Pick<Destination, "pros" | "cons" | "weather" | "photos" | "inVote">;
+// What Comparativa adds on top of an approved proposal, plus what to search
+// for in the photo picker (never published).
+export type Editorial = Pick<Destination, "pros" | "cons" | "weather" | "photos" | "inVote"> & { photoQueries: string[] };
 
 export interface PlanEntry {
   plan: Plan;

@@ -155,7 +155,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
-| `ANTHROPIC_API_KEY` | panel | — (optional; otherwise the `claude` command) |
+| `ANTHROPIC_API_KEY` | panel | — (research through the API when the `claude` command isn't installed) |
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
@@ -166,10 +166,13 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - Both UIs run on their servers: plans are created and researched in the
   panel, published to the site, and voted on by friends with passkeys. The
   whole path is covered end to end.
-- Claude research runs through `claude -p --json-schema`; it hasn't been run
-  against the real binary yet.
+- Research runs through `claude -p --json-schema` or, without the command, the
+  Anthropic API with web search; both return proposals plus pros, cons,
+  weather and photo subjects. Neither has been run against the real service
+  from CI; they're tested with recorded shapes.
+- Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
+  (with keys) and publishes the chosen ones with their credits (SPEC §6).
 - The Duffel provider is a stub.
-- Photos are labelled placeholders until sources are picked (SPEC §6).
 
 ## Licence
 

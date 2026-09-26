@@ -6,6 +6,7 @@ import {
   type Ballot,
   type Comment,
   type Destination,
+  type Photo,
   type Plan,
   type Proposal,
 } from "@wanderlot/core";
@@ -317,6 +318,9 @@ export interface Editorial {
   cons: string[];
   weather: string;
   inVote: boolean;
+  // Chosen in Revisar's photo picker; research suggests what to search for.
+  photos?: Photo[];
+  photoQueries?: string[];
 }
 
 export const editorial: Record<string, Editorial> = {

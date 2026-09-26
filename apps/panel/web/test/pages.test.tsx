@@ -10,6 +10,15 @@ import { PanelProvider } from "../src/data/store.tsx";
 
 afterEach(cleanup);
 
+// jsdom has <dialog> but not its modal methods.
+HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+  this.open = true;
+};
+HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+  this.open = false;
+  this.dispatchEvent(new Event("close"));
+};
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -83,6 +92,32 @@ describe("Revisar", () => {
     await user.click(await screen.findByLabelText("Ocultar las que no estén verificadas"));
     expect(screen.queryByRole("article", { name: "Edimburgo" })).toBeNull();
     expect(screen.getAllByRole("article")).toHaveLength(10);
+  });
+});
+
+describe("Revisar · fotos", () => {
+  it("picks photos in order from Claude's suggestions and shows the cover", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Lisboa" });
+    await user.click(within(card).getByRole("button", { name: "Elegir fotos" }));
+
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    // Opens on the first idea research gave for this destination.
+    expect(dialog.getByRole("button", { name: "Tranvía en Alfama" }).getAttribute("aria-pressed")).toBe("true");
+    const results = await dialog.findAllByRole("button", { name: /Tranvía en Alfama \d/ });
+    await user.click(results[2]!);
+    await user.click(results[0]!);
+
+    // A new search keeps what's picked.
+    await user.click(dialog.getByRole("button", { name: "Belém" }));
+    await dialog.findAllByRole("button", { name: /Belém \d/ });
+    expect(dialog.getAllByRole("button", { pressed: true }).filter((b) => /Tranvía/.test(b.getAttribute("aria-label") ?? ""))).toHaveLength(2);
+
+    await user.click(dialog.getByRole("button", { name: "Guardar 2 fotos" }));
+    expect(await screen.findByText("Lisboa: 2 fotos guardadas")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Fotos · 2" })).toBeTruthy();
+    expect(card.querySelector("img")!.getAttribute("alt")).toBe("Tranvía en Alfama 3");
   });
 });
 

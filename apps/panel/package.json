@@ -12,6 +12,7 @@
     "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-panel.html"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@hono/node-server": "^1.19.0",
     "@wanderlot/core": "*",
     "@wanderlot/mocks": "*",
