@@ -71,6 +71,8 @@ describe("standardImageUrl", () => {
     expect(standardImageUrl(thumb(1600))).toBe(thumb(1280));
     expect(standardImageUrl(thumb(1000))).toBe(thumb(960));
     expect(standardImageUrl(thumb(10))).toBe(thumb(20));
+    const onThumbHost = thumb(1600).replace("upload.wikimedia.org", "thumb.wikimedia.org");
+    expect(standardImageUrl(onThumbHost)).toBe(thumb(1280).replace("upload.wikimedia.org", "thumb.wikimedia.org"));
   });
 
   it("leaves standard widths, originals and other hosts alone", () => {

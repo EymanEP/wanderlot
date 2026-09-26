@@ -264,9 +264,37 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       const { plan } = entry(planId);
       patchProposal(planId, id, (p) => ({
         ...applyCheckedPrices(p, prices, plan.nights),
-        provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: p.provenance.kind === "api" ? [] : p.provenance.sources },
+        provenance: {
+          kind: "organiser",
+          checkedAt: MOCK_NOW.toISOString(),
+          sources: p.provenance.kind === "api" ? [] : p.provenance.sources,
+          // As the server: times checked now, earlier, or by the API.
+          ...(prices.outbound || p.provenance.kind === "api" || (p.provenance.kind === "organiser" && p.provenance.flightDetails) ? { flightDetails: true } : {}),
+        },
       }));
       return entry(planId).proposals.find((p) => p.id === id)!;
+    },
+    // Reads any screenshot as the same KLM flight or Amsterdam flat.
+    async extract(planId, id, kind) {
+      await wait(Math.min(tickMs, 400));
+      const p = entry(planId).proposals.find((x) => x.id === id)!;
+      if (kind === "stay") return { kind, name: "Apartamento con terraza en De Pijp", description: "3 habitaciones · 6 huéspedes", stayCents: 151200, nights: entry(planId).plan.nights };
+      const leg = (from: string, to: string, day: string, dep: string, arr: string, n: string) => ({
+        from,
+        to,
+        departAt: `${day}T${dep}:00+01:00`,
+        arriveAt: `${day}T${arr}:00+01:00`,
+        carrier: "KLM",
+        flightNumber: n,
+        stops: 0,
+      });
+      const { plan } = entry(planId);
+      return {
+        kind,
+        outbound: leg(plan.origin, p.place.iata, plan.dateFrom, "11:55", "14:05", "KL1524"),
+        inbound: leg(p.place.iata, plan.origin, plan.dateTo, "14:25", "16:30", "KL1525"),
+        flightCents: 27200,
+      };
     },
     async searchPhotos(query) {
       await wait(Math.min(tickMs, 400));

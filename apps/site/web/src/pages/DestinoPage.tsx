@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router";
-import { euros, longDate, pointsFor, tripLabel } from "@wanderlot/core";
+import { baseStay, euros, flightDetailsKnown, flightPriceCents, longDate, pointsFor, tripLabel } from "@wanderlot/core";
 import {
   BulletList,
   Card,
@@ -13,7 +13,7 @@ import {
   buttonClasses,
 } from "@wanderlot/ui";
 import { CommentComposer, CommentThread } from "../components/Comments.tsx";
-import { FlightLegRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
+import { FlightLegRow, FlightTotalRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
@@ -77,7 +77,7 @@ export function DestinoPage() {
       <PhotoMosaic city={d.place.city} photos={d.photos} landmarks={d.see.map((s) => s.title)} />
 
       <section aria-label="Resumen" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatTile label="Vuelo" value={tripLabel(d.outbound)} />
+        <StatTile label="Vuelo" value={flightDetailsKnown(d) ? tripLabel(d.outbound) : `${euros(flightPriceCents(d))} ida y vuelta`} />
         <StatTile label={`Alojamiento · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"}`} value={stayShareLabel(d, plan) ?? "—"} />
         <StatTile label={month[0]!.toUpperCase() + month.slice(1)} value={d.weather} />
         {trust === "unverified" ? (
@@ -92,15 +92,23 @@ export function DestinoPage() {
           <section className="flex flex-col gap-2.5">
             <SectionHeader title="Vuelos" />
             <div className="flex flex-col gap-2">
-              <FlightLegRow label="Ida" leg={d.outbound} />
-              <FlightLegRow label="Vuelta" leg={d.inbound} />
+              {/* Checked by hand: the round trip's price, and the times only
+                  if they were checked too (from a screenshot). */}
+              {flightDetailsKnown(d) && (
+                <>
+                  <FlightLegRow label="Ida" leg={d.outbound} price={d.provenance.kind !== "organiser"} />
+                  <FlightLegRow label="Vuelta" leg={d.inbound} price={d.provenance.kind !== "organiser"} />
+                </>
+              )}
+              {d.provenance.kind === "organiser" && <FlightTotalRow from={d.outbound.from} to={d.outbound.to} cents={flightPriceCents(d)} />}
             </div>
           </section>
 
           <section className="flex flex-col gap-2.5">
             <SectionHeader title="Dónde dormimos" />
             <div className="flex flex-col gap-2">
-              {d.stays.map((s) => (
+              {/* Checked by hand: the stay they're going with, not research's other options. */}
+              {(d.provenance.kind === "organiser" ? d.stays.filter((s) => s === baseStay(d.stays)) : d.stays).map((s) => (
                 <StayOption key={s.name} stay={s} nights={plan.nights} partySize={plan.partySize} />
               ))}
             </div>

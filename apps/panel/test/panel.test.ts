@@ -5,6 +5,7 @@ import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
 import type { FlightProvider, ResearchProvider, SearchRequest } from "../src/providers/types.ts";
 import type { PhotoSource } from "../src/providers/photos.ts";
+import type { ExtractRequest } from "../src/providers/extract.ts";
 import { createApp } from "../../site/src/app.ts";
 import { SqliteStore } from "../../site/src/sqlite.ts";
 import { SoftAuthenticator } from "../../site/test/authenticator.ts";
@@ -22,6 +23,7 @@ let clock: Date;
 let panel: ReturnType<typeof createPanel>;
 let picked: string[] = [];
 let lastRequest: SearchRequest | undefined;
+let lastExtract: ExtractRequest | undefined;
 let site: ReturnType<typeof createApp>;
 
 const call = async (path: string, method = "GET", body?: unknown) => {
@@ -42,7 +44,23 @@ beforeEach(async () => {
   site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: SITE }, now: () => clock });
 
   lastRequest = undefined;
+  lastExtract = undefined;
   const research: ResearchProvider = {
+    // What Claude would read off a KLM screenshot and an Airbnb one.
+    async extract(req) {
+      lastExtract = req;
+      if (req.kind === "stay") return { name: "Piso con terraza en Chiaia", description: "3 habitaciones", totalEuros: 1540, nights: 7 };
+      const leg = (from: string, to: string, day: string, n: string) => ({
+        from,
+        to,
+        departAt: `${day}T07:20:00+01:00`,
+        arriveAt: `${day}T09:55:00+01:00`,
+        carrier: "ITA Airways",
+        flightNumber: n,
+        stops: 0,
+      });
+      return { outbound: leg("MAD", "NAP", "2026-11-07", "AZ61"), inbound: leg("NAP", "MAD", "2026-11-14", "AZ62"), pricePerPersonEuros: null, totalEuros: 690, passengers: 6 };
+    },
     async *research(req, _signal, onProgress) {
       lastRequest = req;
       onProgress?.({ kind: "note", text: "Voy a buscar vuelos directos" });
@@ -83,6 +101,7 @@ beforeEach(async () => {
     site: siteClient(SITE, ADMIN, async (input, init) => site.request(String(input), init)),
     siteUrl: SITE,
     now: () => clock,
+    status: { research: "claude-cli", flights: "none", photos: ["unsplash"] },
   });
 
   await json(`/api/plans/${PLAN}`, "PUT", {
@@ -130,6 +149,49 @@ describe("panel → site", () => {
     expect(lastRequest?.exclude).toEqual(["Lisboa (LIS)", "Nápoles (NAP)", "Edimburgo (EDI)"]);
     // Research's notes seed Comparativa and the photo picker.
     expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
+  });
+
+  it("reads screenshots of the flights and the stay, and keeps only what was checked", async () => {
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    const png = { mediaType: "image/png", data: Buffer.from("fake png").toString("base64") };
+    const extract = (body: unknown) => json(`/api/plans/${PLAN}/proposals/nap/extract`, "POST", body);
+
+    // Bad uploads are refused before anything reaches Claude.
+    expect((await extract({ kind: "flight", images: [] })).status).toBe(400);
+    expect((await extract({ kind: "flight", images: [{ mediaType: "application/pdf", data: "x" }] })).status).toBe(400);
+    expect(lastExtract).toBeUndefined();
+
+    // A total for 6 passengers becomes one person's price; the trip goes along as context.
+    const flight = (await extract({ kind: "flight", images: [png] })).data;
+    expect(flight).toMatchObject({ kind: "flight", flightCents: 11500, outbound: { flightNumber: "AZ61" }, inbound: { flightNumber: "AZ62" } });
+    expect(lastExtract?.context).toEqual({ origin: "MAD", city: "Nápoles", iata: "NAP", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 });
+    expect(lastExtract?.images).toEqual([png]);
+    const stay = (await extract({ kind: "stay", images: [png, png] })).data;
+    expect(stay).toEqual({ kind: "stay", name: "Piso con terraza en Chiaia", description: "3 habitaciones", stayCents: 154000, nights: 7 });
+
+    // Saving the price alone: the times are research's, so they don't count as checked.
+    const priceOnly = (await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 11500 })).data;
+    expect(priceOnly.provenance.flightDetails).toBeUndefined();
+    // Saving what the screenshots said: the real times, and one stay, theirs.
+    const { kind: _k, flightCents, ...legs } = flight;
+    const saved = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", {
+      flightCents,
+      ...legs,
+      stayCents: stay.stayCents,
+      stay: { name: stay.name, description: stay.description, url: "https://www.airbnb.es/rooms/123" },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.data.provenance).toMatchObject({ kind: "organiser", flightDetails: true });
+    expect(saved.data.outbound).toMatchObject({ flightNumber: "AZ61", departAt: "2026-11-07T07:20:00+01:00" });
+    expect(saved.data.outbound.priceCents + saved.data.inbound.priceCents).toBe(11500);
+    expect(saved.data.stays).toEqual([
+      { name: "Piso con terraza en Chiaia", kind: "Apartamento", description: "3 habitaciones", url: "https://www.airbnb.es/rooms/123", nightlyCents: 22000, recommended: true },
+    ]);
+    // A later price-only check keeps the times checked earlier.
+    const later = (await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 12000 })).data;
+    expect(later.provenance.flightDetails).toBe(true);
+    // One leg without the other isn't a checked itinerary.
+    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 1, outbound: legs.outbound })).status).toBe(400);
   });
 
   it("clears what isn't approved, and pushes any change to the site, even emptying it", async () => {

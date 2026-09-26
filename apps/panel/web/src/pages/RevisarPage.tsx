@@ -13,7 +13,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -189,6 +189,7 @@ export function RevisarPage() {
       <PriceDialog
         proposal={state.proposals.find((p) => p.id === pricing)}
         plan={plan}
+        onExtract={(kind, images) => extract(pricing!, kind, images)}
         onClose={() => setPricing(null)}
         onSave={async (prices) => {
           const city = state.proposals.find((p) => p.id === pricing)?.place.city;

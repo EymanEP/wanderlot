@@ -58,6 +58,10 @@ export const Provenance = z.discriminatedUnion("kind", [
     checkedAt: isoDateTime,
     // Research's links, kept for reference.
     sources: z.array(Source).default([]),
+    // The flights' times, dates and numbers were checked too (read from a
+    // screenshot), not only the price. Without it they're research's guess,
+    // and the site shows the price alone.
+    flightDetails: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("claude"),

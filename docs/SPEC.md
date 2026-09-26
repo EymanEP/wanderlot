@@ -153,6 +153,16 @@ stores both the way proposals keep prices (each flight leg per person, the stay
 per night); provenance becomes `organiser`. Revisar shows prices the same way:
 the flight per person, the stay's total with each person's share beside it.
 
+The organiser can also upload screenshots (the airline or Google Flights, Airbnb)
+and have Claude read them: the flights' times, numbers and price (a total for
+several passengers becomes one person's share), and the stay's name, a short
+description and its total. The dialog fills in what was read for the organiser
+to review; nothing is saved until they do. Checked this way the flights carry
+`flightDetails: true`. Without it, a hand-checked price sits beside research's
+guessed times, so the site shows the round trip's price alone (no times, dates
+or flight numbers). A checked stay replaces research's options: the site shows
+only that one, with its link if the organiser added one.
+
 A new search in Generar adds to a trip's proposals and never replaces them:
 research is told which destinations are already there, and each new proposal
 gets an unused id.
@@ -351,7 +361,9 @@ Each photo stores:
   author, authorUrl, license, sourceUrl, alt, downloadLocation? }
 ```
 
-Wikimedia serves other sites only its standard thumbnail widths (…, 960, 1280,
+Wikimedia serves thumbnails from `thumb.wikimedia.org` (originals from
+`upload.wikimedia.org`); the site's Content-Security-Policy allows both. It serves
+other sites only its standard thumbnail widths (…, 960, 1280,
 1920, …) and rejects the rest. The panel asks for 1280px, and every screen
 moves a saved thumbnail to the largest standard width that fits
 (`standardImageUrl`), so photos saved at another width still load. A photo that
@@ -482,7 +494,8 @@ it). Calls that touch the site go through the admin API above.
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
 | `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{progress}` and `{proposal}` lines, then `{done}` or `{error}`; `409` when asked to search with a flight API and none is connected; with scope `named`, researches that one place by name (one proposal); with `suggestionId`, researches that friend's idea by name and credits them |
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
-| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ flightCents, stayCents? }` (one person's flights there and back; the whole stay for the group) |
+| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ flightCents, stayCents?, outbound?, inbound?, stay? }` (one person's flights there and back; the whole stay for the group; the flights' real times, together; the stay's name, description and link) |
+| `POST` | `/api/plans/:planId/proposals/:id/extract` | `{ kind: flight \| stay, images: [{ mediaType, data }] }` (1–4 screenshots, base64): what Claude read, for the price dialog; saves nothing. The `claude` command gets only the Read tool, only on a temporary folder holding the images |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/clear-unapproved` | deletes every proposal not approved (to review or discarded) with its notes and photos; `{ removed }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |

@@ -3,6 +3,7 @@
 // constrained to the same schema the command uses.
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { extractPrompt, extractSchemas } from "./extract.ts";
 import { ResearchOutput, buildPrompt, toResults } from "./research.ts";
 import type { ResearchProvider } from "./types.ts";
 
@@ -20,6 +21,33 @@ export type MessagesClient = Pick<Anthropic["beta"]["messages"], "stream">;
 
 export function anthropicProvider(client: MessagesClient = new Anthropic().beta.messages, model = MODEL): ResearchProvider {
   return {
+    async extract(req, signal) {
+      const message = await client
+        .stream(
+          {
+            model,
+            max_tokens: 4000,
+            output_config: { format: zodOutputFormat(extractSchemas[req.kind]) },
+            messages: [
+              {
+                role: "user",
+                content: [
+                  ...req.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
+                  { type: "text" as const, text: extractPrompt(req) },
+                ],
+              },
+            ],
+          },
+          { signal },
+        )
+        .finalMessage();
+      if (message.stop_reason === "refusal") throw new Error("Claude no ha querido leer esta captura");
+      const text = message.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      return JSON.parse(text);
+    },
     async *research(req, signal) {
       const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: buildPrompt(req) }];
       let message: Anthropic.Beta.BetaMessage | undefined;

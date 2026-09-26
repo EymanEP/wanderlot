@@ -69,3 +69,27 @@ describe("anthropic research provider", () => {
     await expect(collect(anthropicProvider(client).research(req))).rejects.toThrow(/no ha querido/);
   });
 });
+
+describe("anthropic reading screenshots", () => {
+  it("sends the images with the trip, no tools, and parses the answer", async () => {
+    const read = { outbound: null, inbound: null, pricePerPersonEuros: 174, totalEuros: null, passengers: null };
+    const { client, calls } = fake([{ stop_reason: "end_turn", text: JSON.stringify(read) }]);
+    const got = await anthropicProvider(client).extract({
+      kind: "flight",
+      images: [{ mediaType: "image/webp", data: "d2VicA==" }],
+      context: { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-12", dateTo: "2026-11-17", nights: 5, partySize: 6 },
+    });
+    expect(got).toEqual(read);
+    const content = calls[0].messages[0].content;
+    expect(content[0]).toEqual({ type: "image", source: { type: "base64", media_type: "image/webp", data: "d2VicA==" } });
+    expect(content[1].text).toContain("de MAD a Lisboa (LIS)");
+    expect(calls[0].tools).toBeUndefined();
+  });
+
+  it("says so when Claude won't read it", async () => {
+    const { client } = fake([{ stop_reason: "refusal", text: "" }]);
+    await expect(
+      anthropicProvider(client).extract({ kind: "stay", images: [{ mediaType: "image/png", data: "eA==" }], context: { origin: "MAD", city: "X", iata: "XXX", dateFrom: "2026-11-12", dateTo: "2026-11-17", nights: 5, partySize: 6 } }),
+    ).rejects.toThrow(/no ha querido leer/);
+  });
+});

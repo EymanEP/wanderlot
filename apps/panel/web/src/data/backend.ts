@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { CheckedPrices, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
+import type { CheckedPrices, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -71,6 +71,17 @@ export interface VoteView extends VoteState {
 
 export type { CheckedPrices };
 
+export interface ScreenshotImage {
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  data: string; // base64
+}
+
+// What Claude read from a screenshot; null where it didn't see it.
+export type ExtractedLeg = Omit<FlightLeg, "priceCents">;
+export type Extracted =
+  | { kind: "flight"; outbound: ExtractedLeg | null; inbound: ExtractedLeg | null; flightCents: number | null }
+  | { kind: "stay"; name: string | null; description: string | null; stayCents: number | null; nights: number | null };
+
 export interface TripSummary {
   plan: Plan;
   proposals: number;
@@ -113,6 +124,8 @@ export interface PanelBackend {
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
   setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
+  // Claude reads screenshots of the flights or the stay; nothing is saved.
+  extract(planId: string, id: string, kind: "flight" | "stay", images: ScreenshotImage[]): Promise<Extracted>;
   suggestions(planId: string): Promise<SuggestionView[]>;
   setSuggestion(planId: string, id: string, status: SuggestionView["status"]): Promise<SuggestionView[]>;
   searchPhotos(query: string): Promise<PhotoResults>;
@@ -200,6 +213,7 @@ export const httpBackend: PanelBackend = {
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
+  extract: (planId, id, kind, images) => call<Extracted>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/extract`, "POST", { kind, images }),
   suggestions: (planId) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions`),
   setSuggestion: (planId, id, status) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions/${enc(id)}`, "PUT", { status }),
   searchPhotos: (q) => call<PhotoResults>(`/api/photos?q=${enc(q)}`),

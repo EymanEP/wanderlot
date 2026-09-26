@@ -2,6 +2,8 @@
 import {
   baseStay,
   euros,
+  flightDetailsKnown,
+  flightPriceCents,
   mediumDate,
   ordinal,
   stayShareCents,
@@ -21,8 +23,14 @@ export function trustOf(d: Destination, now: Date): Trust {
 }
 
 // "Marruecos · directo 1 h 55 m"
+// "Portugal · directo 1 h 20 m", or "Portugal · vuelo 174 € i/v" when the
+// organiser checked the price by hand but not the times.
 export function placeLine(d: Destination): string {
-  return `${d.place.country} · ${tripLabel(d.outbound).toLowerCase().replace(" · ", " ")}`;
+  return `${d.place.country} · ${flightLabel(d)}`;
+}
+
+export function flightLabel(d: Destination): string {
+  return flightDetailsKnown(d) ? tripLabel(d.outbound).toLowerCase().replace(" · ", " ") : `vuelo ${euros(flightPriceCents(d))} i/v`;
 }
 
 // Each person's share of the whole stay: "204 € por persona".

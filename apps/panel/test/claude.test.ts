@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ResearchProgress } from "../src/providers/types.ts";
 import { buildPrompt, claudeProvider, outputSchema } from "../src/providers/claude.ts";
@@ -26,6 +27,37 @@ const sources = [{ label: "TAP · horarios", url: "https://www.flytap.com/es-es"
 
 // The last line of `claude --output-format stream-json`.
 const resultLine = (structured_output: unknown) => JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output });
+
+describe("claude reading screenshots", () => {
+  it("hands claude the files in a folder of their own, read-only, and cleans up", async () => {
+    let args: string[] = [];
+    let seen: string[] = [];
+    const provider = claudeProvider(async (a, onLine) => {
+      args = a;
+      const dir = a[a.indexOf("--add-dir") + 1]!;
+      seen = readdirSync(dir).map((f) => `${f}:${readFileSync(join(dir, f), "utf8")}`);
+      onLine(resultLine({ name: "Piso en Alfama", description: null, totalEuros: 900, nights: 7 }));
+    });
+    const got = await provider.extract({
+      kind: "stay",
+      images: [
+        { mediaType: "image/png", data: Buffer.from("uno").toString("base64") },
+        { mediaType: "image/jpeg", data: Buffer.from("dos").toString("base64") },
+      ],
+      context: { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 },
+    });
+    expect(got).toEqual({ name: "Piso en Alfama", description: null, totalEuros: 900, nights: 7 });
+    expect(seen).toEqual(["captura-1.png:uno", "captura-2.jpg:dos"]);
+    // Only Read, only there: no web, no shell, nothing else on disk.
+    expect(args[args.indexOf("--tools") + 1]).toBe("Read");
+    expect(args[args.indexOf("--allowedTools") + 1]).toBe("Read");
+    const dir = args[args.indexOf("--add-dir") + 1]!;
+    expect(args[1]).toContain(join(dir, "captura-1.png"));
+    expect(args[1]).toContain("6 personas, de MAD a Lisboa (LIS)");
+    expect(JSON.parse(args[args.indexOf("--json-schema") + 1]!).$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(existsSync(dir)).toBe(false);
+  });
+});
 
 describe("claude research provider", () => {
   it("reports each step of a real recorded run, then its proposals", async () => {
