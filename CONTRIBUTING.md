@@ -55,9 +55,11 @@ it describes, update it in the same pull request.
 
 ## Conventions
 
-- **Language.** The product speaks Spanish (Spain), so UI text and the
-  messages it writes are in Spanish. Code, comments, docs and commits are in
-  English. Translating the UI is welcome, but open an issue first.
+- **Language.** The site and the panel speak Spanish (Spain): their UI text
+  and the group-chat messages they write. Everything a hoster or developer
+  reads is in English: the setup and deploy scripts, server errors and logs,
+  code, comments, docs and commits. Translating the UI is welcome, but open
+  an issue first.
 - **TypeScript, ESM, strict.** Validate anything that crosses a boundary (API
   bodies, AI output, third-party responses) with zod.
 - **Tests with the change.** Server and rule changes come with unit tests.

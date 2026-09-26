@@ -10,4 +10,4 @@
 
 - [ ] `npm run typecheck`, `npm test` and `npm run test:e2e` pass
 - [ ] `docs/SPEC.md` is updated if behaviour it describes changed
-- [ ] UI text is in Spanish; code, comments and docs in English
+- [ ] UI text is in Spanish; scripts, server messages, code and docs in English

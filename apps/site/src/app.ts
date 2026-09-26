@@ -156,7 +156,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   // --- pages -----------------------------------------------------------------
 
   const page = (c: Context<Env>) =>
-    indexHtml ? c.html(indexHtml) : c.text("La web no está compilada: npm run build -w @wanderlot/site", 503);
+    indexHtml ? c.html(indexHtml) : c.text("The web UI isn't built yet: npm run build -w @wanderlot/site", 503);
   app.get("/", page);
   app.get("/entrar", page);
   app.get("/i/:token", page); // never consumes the invite: link previews are harmless

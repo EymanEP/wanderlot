@@ -16,12 +16,12 @@ export interface Env {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) {
-      return new Response("Falta el secreto ADMIN_TOKEN (32 caracteres o más): npx wrangler secret put ADMIN_TOKEN", { status: 500 });
+      return new Response("Missing the ADMIN_TOKEN secret (32+ characters): npx wrangler secret put ADMIN_TOKEN", { status: 500 });
     }
     // Required rather than taken from the request, so a preview or second
     // hostname can't start collecting passkeys that work nowhere else.
     if (!env.ORIGIN) {
-      return new Response("Falta la variable ORIGIN con la dirección pública del sitio: vuelve a ejecutar npm run deploy:site", { status: 500 });
+      return new Response("Missing ORIGIN, the site's public address: run npm run deploy:site again", { status: 500 });
     }
     const limiter = env.AUTH_LIMIT;
     const app = createApp({
