@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { Calendar, Chip, ProvenanceBadge, Select, Stepper } from "../src/index.ts";
+import { Calendar, Chip, Photo, ProvenanceBadge, Select, Stepper } from "../src/index.ts";
 
 afterEach(cleanup);
 
@@ -85,5 +85,14 @@ describe("controls", () => {
     expect(selected).toHaveLength(8);
     await user.click(screen.getByRole("button", { name: "2026-11-20" }));
     expect(picks).toEqual(["2026-11-20"]);
+  });
+});
+
+describe("Photo", () => {
+  it("falls back to its placeholder when the image fails to load", () => {
+    render(<Photo src="https://upload.wikimedia.org/x.jpg" alt="Torre de Belém" label="Lisboa" />);
+    fireEvent.error(screen.getByRole("img", { name: "Torre de Belém" }));
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("[Lisboa]")).toBeTruthy();
   });
 });

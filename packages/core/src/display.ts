@@ -184,3 +184,19 @@ export function slugify(text: string): string {
     .replace(/^-|-$/g, "")
     .slice(0, 60);
 }
+
+// Wikimedia serves other sites only these thumbnail widths and rejects the
+// rest, so a photo saved at, say, 1600px fails to load. A thumbnail address
+// is moved to the largest standard width that fits: never wider than the one
+// saved, which Wikimedia already had enough pixels for. Other addresses pass
+// through untouched.
+export const WIKIMEDIA_WIDTHS = [20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840] as const;
+
+export function standardImageUrl(url: string): string {
+  const m = /^(https:\/\/upload\.wikimedia\.org\/.+\/thumb\/.+\/)(\d+)px-([^/]+)$/.exec(url);
+  if (!m) return url;
+  const width = Number(m[2]);
+  if ((WIKIMEDIA_WIDTHS as readonly number[]).includes(width)) return url;
+  const fit = [...WIKIMEDIA_WIDTHS].reverse().find((w) => w <= width) ?? WIKIMEDIA_WIDTHS[0];
+  return `${m[1]}${fit}px-${m[3]}`;
+}

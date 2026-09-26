@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Photo } from "@wanderlot/core";
+import { standardImageUrl, type Photo } from "@wanderlot/core";
 import { Button, Chip, Dialog, Field, Notice, ScrollRow, Skeleton, TextInput, cn } from "@wanderlot/ui";
 import type { PhotoResults } from "../data/backend.ts";
 
@@ -126,7 +126,7 @@ export function PhotoPicker({ open, city, suggestions, chosen, search, onSave, o
                     n >= 0 && "outline-3 outline-accent outline-solid",
                   )}
                 >
-                  <img src={p.url} alt="" loading="lazy" className="size-full object-cover" />
+                  <img src={standardImageUrl(p.url)} alt="" loading="lazy" className="size-full object-cover" />
                   {n >= 0 && (
                     <span className="absolute top-2 left-2 flex size-7 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
                       {n + 1}

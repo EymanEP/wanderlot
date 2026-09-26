@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { euros, type Destination, type Plan } from "@wanderlot/core";
+import { euros, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
 import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, type Trust } from "@wanderlot/ui";
 import { placeLine, rankLabel, stayLine } from "../lib/view.ts";
 
@@ -22,7 +22,7 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
     <article className="group relative flex flex-col gap-3.5">
       <Photo
         label={d.photos[0] ? undefined : `Foto de ${d.place.city}`}
-        src={d.photos[0]?.url}
+        src={d.photos[0] ? standardImageUrl(d.photos[0].url) : undefined}
         alt={d.photos[0]?.alt}
         className="h-[240px] rounded-2xl sm:h-[310px]"
         top={

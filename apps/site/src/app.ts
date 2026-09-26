@@ -359,6 +359,20 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ member });
   });
 
+  // Choose a new PIN while signed in: how PINs from before the switch to 4
+  // digits move over (SPEC §5), and a way to change one anytime.
+  app.put("/api/session/pin", async (c) => {
+    const member = await currentMember(c);
+    if (!member) return c.json({ error: "unauthorized" }, 401);
+    const body = z.object({ pin: z.string() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {pin}" }, 400);
+    const problem = pinProblem(body.data.pin);
+    if (problem) return c.json({ error: problem }, 400);
+    const salt = randomToken(16);
+    await store.setPin(member.id, await (await hashPin)(member.id, salt, body.data.pin), salt, iso());
+    return c.json({ ok: true });
+  });
+
   app.post("/api/session/options", async (c) => {
     if (await throttled(c)) return tooMany(c);
     const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });

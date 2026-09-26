@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   daysUntil,
+  standardImageUrl,
   deadlineLabel,
   duration,
   euros,
@@ -60,5 +61,23 @@ describe("display", () => {
     expect(relativeTime("2026-09-25T08:00:00Z", now)).toBe("hace 4 horas");
     expect(relativeTime("2026-09-23T10:00:00Z", now)).toBe("hace 2 días");
     expect(relativeTime("2026-09-25T11:59:40Z", now)).toBe("ahora mismo");
+  });
+});
+
+describe("standardImageUrl", () => {
+  const thumb = (w: number) => `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Bel%C3%A9m.jpg/${w}px-Bel%C3%A9m.jpg`;
+
+  it("moves a Wikimedia thumbnail to the largest standard width that fits", () => {
+    expect(standardImageUrl(thumb(1600))).toBe(thumb(1280));
+    expect(standardImageUrl(thumb(1000))).toBe(thumb(960));
+    expect(standardImageUrl(thumb(10))).toBe(thumb(20));
+  });
+
+  it("leaves standard widths, originals and other hosts alone", () => {
+    expect(standardImageUrl(thumb(1280))).toBe(thumb(1280));
+    const original = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Bel%C3%A9m.jpg";
+    expect(standardImageUrl(original)).toBe(original);
+    const unsplash = "https://images.unsplash.com/photo-1?w=1600";
+    expect(standardImageUrl(unsplash)).toBe(unsplash);
   });
 });

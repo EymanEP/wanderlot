@@ -228,6 +228,12 @@ organiser brings each person in with a **one-time invite**; they choose a
 device. A **passkey** (Face ID, a fingerprint) is an optional extra for
 whoever wants it on a given device.
 
+PINs used to be 6 digits. Those still sign in ("Mi PIN tiene 6 números" on the
+sign-in screen), and doing so leads straight to choosing a new 4-digit PIN
+(`PUT /api/session/pin`, signed in, same rules as a new PIN), so everyone moves
+to 4 digits without a new invite. "Cambiar mi PIN" in the account menu uses the
+same screen.
+
 ### Trips
 - Members belong to the group, and the organiser puts them on **trips**
   (plans): who goes is chosen when the trip is created and can change later
@@ -344,6 +350,12 @@ Each photo stores:
 { url, width, height, source: "unsplash"|"pexels"|"wikimedia",
   author, authorUrl, license, sourceUrl, alt, downloadLocation? }
 ```
+
+Wikimedia serves other sites only its standard thumbnail widths (…, 960, 1280,
+1920, …) and rejects the rest. The panel asks for 1280px, and every screen
+moves a saved thumbnail to the largest standard width that fits
+(`standardImageUrl`), so photos saved at another width still load. A photo that
+fails to load anyway shows its grey placeholder, never a broken image.
 
 Copying files into our own storage (Cloudflare R2's free tier would hold
 them) is not part of v1. It becomes worth doing if linked Wikimedia images

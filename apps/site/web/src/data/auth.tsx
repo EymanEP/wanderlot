@@ -25,6 +25,8 @@ export interface AuthClient {
   // With a PIN: works on any device.
   acceptInviteWithPin(token: string, pin: string): Promise<Member>;
   signInWithPin(name: string, pin: string): Promise<Member>;
+  // A new PIN while signed in: moves a 6-digit PIN from before to 4 digits.
+  changePin(pin: string): Promise<void>;
   // With a passkey on this device, for those who want Face ID or a fingerprint.
   acceptInvite(token: string): Promise<Member>;
   signIn(): Promise<Member>;
@@ -43,9 +45,9 @@ function friendly(e: unknown): AuthError {
   return e instanceof AuthError ? e : new AuthError((e as Error)?.message || "Algo ha fallado. Vuelve a intentarlo.");
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   const res = await fetch(path, {
-    method: "POST",
+    method,
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -76,6 +78,9 @@ export const httpAuthClient: AuthClient = {
   },
   async signInWithPin(name, pin) {
     return (await post<{ member: Member }>("/api/session/pin", { name, pin })).member;
+  },
+  async changePin(pin) {
+    await post("/api/session/pin", { pin }, "PUT");
   },
   async acceptInvite(token) {
     try {
@@ -116,11 +121,16 @@ export function mockAuthClient(startSignedIn = true): AuthClient {
       if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
       return (member = { id: ME.id, name: ME.name });
     },
-    // The design's PIN for everyone is 4801.
+    // The design's PIN for everyone is 4801; 480152 stands for a 6-digit one
+    // from before the switch to 4.
     signInWithPin: async (name, pin) => {
       await wait();
-      if (pin !== "4801" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
+      if ((pin !== "4801" && pin !== "480152") || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
       return (member = { id: ME.id, name: ME.name });
+    },
+    changePin: async (pin) => {
+      await wait();
+      if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
     },
     acceptInvite: async () => {
       await wait();
@@ -147,6 +157,7 @@ export interface AuthApi {
   signInWithPin: (name: string, pin: string) => Promise<Member>;
   acceptInvite: (token: string) => Promise<Member>;
   acceptInviteWithPin: (token: string, pin: string) => Promise<Member>;
+  changePin: (pin: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -185,6 +196,7 @@ export function AuthProvider({ client, children }: { client: AuthClient; childre
       signInWithPin: (name, pin) => client.signInWithPin(name, pin).then(enter),
       acceptInvite: (token) => client.acceptInvite(token).then(enter),
       acceptInviteWithPin: (token, pin) => client.acceptInviteWithPin(token, pin).then(enter),
+      changePin: (pin) => client.changePin(pin),
       signOut: async () => {
         await client.signOut();
         setState({ status: "out" });
