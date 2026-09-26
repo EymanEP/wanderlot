@@ -137,6 +137,8 @@ try {
   await bea.getByRole("button", { name: "Prefiero Face ID o huella en este dispositivo" }).click();
   // Her two trips, to pick one.
   await bea.getByRole("heading", { level: 1, name: "Tus viajes" }).waitFor();
+  // The heading comes before the list loads: wait for the cards themselves.
+  await bea.getByRole("article", { name: "Puente" }).waitFor();
   assert.equal(await bea.getByRole("article").count(), 2);
   await bea.getByRole("link", { name: /Puente/ }).click();
   await bea.waitForURL(/\/p\/puente/);
