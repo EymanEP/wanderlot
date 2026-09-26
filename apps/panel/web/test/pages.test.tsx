@@ -112,6 +112,34 @@ describe("Revisar", () => {
     expect(await screen.findByText("5 destinos publicados en el sitio")).toBeTruthy();
   });
 
+  it("clears what isn't approved, and knows when the site is behind", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const dialog = () => within(document.querySelector("dialog[open]") as HTMLElement);
+
+    // Never published yet, with 4 approved.
+    expect(await screen.findByText("Cambios sin publicar")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Publicar 4 aprobadas" }));
+    expect(await screen.findByText("4 destinos publicados en el sitio")).toBeTruthy();
+    expect(await screen.findByText("El sitio está al día")).toBeTruthy();
+
+    // One click (and a confirmation) clears the other 8.
+    await user.click(screen.getByRole("button", { name: "Borrar las no aprobadas · 8" }));
+    expect(dialog().getByText(/Las 4 aprobadas se quedan/)).toBeTruthy();
+    await user.click(dialog().getByRole("button", { name: "Borrar" }));
+    expect(await screen.findByText("8 propuestas borradas. Quedan las aprobadas.")).toBeTruthy();
+    expect(screen.getAllByRole("article")).toHaveLength(4);
+    expect((screen.getByRole("button", { name: "Borrar las no aprobadas" }) as HTMLButtonElement).disabled).toBe(true);
+
+    // Un-approving them all: publishing now empties the trip on the site.
+    for (const card of screen.getAllByRole("article")) await user.click(within(card).getByRole("button", { name: "Aprobada" }));
+    expect(await screen.findByText("Cambios sin publicar")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Vaciar el sitio" }));
+    await user.click(dialog().getByRole("button", { name: "Vaciar el sitio" }));
+    expect(await screen.findByText("Noviembre 2026 ya no tiene destinos en el sitio")).toBeTruthy();
+    expect(await screen.findByText("El sitio está al día")).toBeTruthy();
+  });
+
   it("offers verification instead of approval for Claude's proposals", async () => {
     const user = userEvent.setup();
     renderAt("/revisar");

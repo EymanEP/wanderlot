@@ -132,6 +132,48 @@ describe("panel → site", () => {
     expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
   });
 
+  it("clears what isn't approved, and pushes any change to the site, even emptying it", async () => {
+    const generate = () => call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    const status = async () => (await json(`/api/plans/${PLAN}/publish-status`)).data;
+    const publish = () => json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
+    await generate();
+
+    // Nothing approved and never published: nothing to send.
+    expect(await status()).toEqual({ publishedAt: null, changed: false });
+    expect((await publish()).status).toBe(409);
+
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/proposals/nap/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/proposals/edi/review`, "POST", { review: "discarded" });
+    expect((await status()).changed).toBe(true);
+    expect((await publish()).data.published).toBe(2);
+    expect(await status()).toEqual({ publishedAt: clock.toISOString(), changed: false });
+
+    // One fewer approved, or new notes on one that stays: the site is behind.
+    await json(`/api/plans/${PLAN}/proposals/nap/review`, "POST", { review: "pending" });
+    expect((await status()).changed).toBe(true);
+    expect((await publish()).data.published).toBe(1);
+    await json(`/api/plans/${PLAN}/proposals/lis/editorial`, "PATCH", { weather: "19 °C" });
+    expect((await status()).changed).toBe(true);
+    await publish();
+
+    // Clearing keeps the approved one and drops the rest with their notes.
+    const cleared = await json(`/api/plans/${PLAN}/proposals/clear-unapproved`, "POST");
+    expect(cleared.data).toEqual({ removed: 2 });
+    const entry = (await json(`/api/plans/${PLAN}`)).data;
+    expect(entry.proposals.map((p: Proposal) => p.id)).toEqual(["lis"]);
+    expect(Object.keys(entry.editorial)).toEqual(["lis"]);
+    expect((await status()).changed).toBe(false);
+
+    // Un-approving the last one and publishing empties the trip on the site.
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "pending" });
+    expect((await status()).changed).toBe(true);
+    const emptied = await publish();
+    expect(emptied.status).toBe(200);
+    expect(emptied.data.published).toBe(0);
+    expect((await status()).changed).toBe(false);
+  });
+
   it("publishes only what was approved, confirming unverified ones, then opens the vote", async () => {
     await call(`/api/plans/${PLAN}/generate`, "POST", {
       source: "claude",

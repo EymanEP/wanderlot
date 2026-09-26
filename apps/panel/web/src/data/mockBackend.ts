@@ -91,6 +91,13 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     if (!e) throw new Error("not found");
     return e;
   };
+  // What the site last got, per plan: the approved proposals and their notes.
+  const published = new Map<string, { at: string; key: string }>();
+  const publishKey = (planId: string) => {
+    const e = entry(planId);
+    const approved = e.proposals.filter((p) => p.review === "approved");
+    return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null)]);
+  };
   const patchProposal = (planId: string, id: string, fn: (p: Proposal) => Proposal) => {
     const e = entry(planId);
     entries.set(planId, { ...e, proposals: e.proposals.map((p) => (p.id === id ? fn(p) : p)) });
@@ -216,6 +223,13 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       return ideas;
     },
     review: async (planId, id, review) => patchProposal(planId, id, (p) => ({ ...p, review })),
+    async clearUnapproved(planId) {
+      const e = entry(planId);
+      const kept = e.proposals.filter((p) => p.review === "approved");
+      const editorial = Object.fromEntries(Object.entries(e.editorial).filter(([id]) => kept.some((p) => p.id === id)));
+      entries.set(planId, { ...e, proposals: kept, editorial });
+      return { removed: e.proposals.length - kept.length };
+    },
     async verify(planId, id) {
       await wait(verifyMs);
       patchProposal(planId, id, (p) => ({ ...p, provenance: { kind: "api", provider: "duffel", checkedAt: MOCK_NOW.toISOString() } }));
@@ -237,7 +251,15 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       await wait(Math.min(tickMs, 400));
       return { photos: Array.from({ length: 8 }, (_, i) => mockPhoto(query, i)), errors: [] };
     },
-    publish: async (planId) => ({ published: entry(planId).proposals.filter((p) => p.review === "approved").length }),
+    async publish(planId) {
+      published.set(planId, { at: MOCK_NOW.toISOString(), key: publishKey(planId) });
+      return { published: entry(planId).proposals.filter((p) => p.review === "approved").length };
+    },
+    async publishStatus(planId) {
+      const last = published.get(planId);
+      const approved = entry(planId).proposals.some((p) => p.review === "approved");
+      return { publishedAt: last?.at ?? null, changed: last ? last.key !== publishKey(planId) : approved };
+    },
     async openVote(planId, deadline) {
       const e = entry(planId);
       entries.set(planId, { ...e, plan: { ...e.plan, status: "voting", voteDeadline: deadline } });

@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, Review, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, PublishStatus, Review, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -56,6 +56,8 @@ export interface PanelApi {
   startGeneration: (opts: SearchOptions) => void;
   stopGeneration: () => void;
   setReview: (id: string, review: Review) => void;
+  // Deletes every proposal not approved; resolves to how many went.
+  clearUnapproved: () => Promise<number>;
   verify: (id: string) => Promise<{ verified: boolean; reason?: string }>;
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
@@ -63,6 +65,7 @@ export interface PanelApi {
   suggestions: () => Promise<SuggestionView[]>;
   dismissSuggestion: (id: string) => Promise<SuggestionView[]>;
   publish: () => Promise<number>;
+  publishStatus: () => Promise<PublishStatus>;
   openVote: (deadline: string) => Promise<string>;
   vote: () => Promise<VoteView>;
   closeVote: () => Promise<VoteView>;
@@ -267,6 +270,12 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       searchPhotos: (q) => backend.searchPhotos(q),
       suggestions: () => backend.suggestions(need()),
       dismissSuggestion: (id) => backend.setSuggestion(need(), id, "dismissed"),
+      async clearUnapproved() {
+        const pid = need();
+        const { removed } = await backend.clearUnapproved(pid);
+        patch((s) => ({ proposals: s.proposals.filter((p) => p.review === "approved") }));
+        return removed;
+      },
       async setPrices(id, prices) {
         const updated = await backend.setPrices(need(), id, prices);
         patch((s) => ({ proposals: s.proposals.map((p) => (p.id === id ? updated : p)) }));
@@ -274,6 +283,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       async publish() {
         return (await backend.publish(need())).published;
       },
+      publishStatus: () => backend.publishStatus(need()),
       async openVote(deadline) {
         const pid = need();
         const { message } = await backend.openVote(pid, deadline);

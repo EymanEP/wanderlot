@@ -71,6 +71,13 @@ export interface VoteView extends VoteState {
 
 export type { CheckedPrices };
 
+// When the trip was last published (null: never), and whether anything that
+// would go to the site has changed since.
+export interface PublishStatus {
+  publishedAt: string | null;
+  changed: boolean;
+}
+
 export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
 
 export interface PanelBackend {
@@ -86,6 +93,8 @@ export interface PanelBackend {
   // Calls onProposal as each one arrives; resolves when the search ends.
   generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal, onStep?: (s: SearchStep) => void): Promise<void>;
   review(planId: string, id: string, review: Review): Promise<void>;
+  // Deletes every proposal not approved; how many went.
+  clearUnapproved(planId: string): Promise<{ removed: number }>;
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
   setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
@@ -93,6 +102,8 @@ export interface PanelBackend {
   setSuggestion(planId: string, id: string, status: SuggestionView["status"]): Promise<SuggestionView[]>;
   searchPhotos(query: string): Promise<PhotoResults>;
   publish(planId: string): Promise<{ published: number }>;
+  // Whether the site shows what a publish would send now.
+  publishStatus(planId: string): Promise<PublishStatus>;
   openVote(planId: string, deadline: string): Promise<{ message: string }>;
   vote(planId: string): Promise<VoteView>;
   closeVote(planId: string): Promise<VoteView>;
@@ -168,6 +179,7 @@ export const httpBackend: PanelBackend = {
     }
   },
   review: async (planId, id, review) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/review`, "POST", { review })),
+  clearUnapproved: (planId) => call(`/api/plans/${enc(planId)}/proposals/clear-unapproved`, "POST"),
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
@@ -176,6 +188,7 @@ export const httpBackend: PanelBackend = {
   searchPhotos: (q) => call<PhotoResults>(`/api/photos?q=${enc(q)}`),
   // The screens confirm unverified prices themselves before calling this.
   publish: (planId) => call<{ published: number }>(`/api/plans/${enc(planId)}/publish`, "POST", { confirm: true }),
+  publishStatus: (planId) => call<PublishStatus>(`/api/plans/${enc(planId)}/publish-status`),
   openVote: (planId, deadline) => call<{ message: string }>(`/api/plans/${enc(planId)}/open-vote`, "POST", { deadline }),
   vote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/vote`),
   closeVote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/close`, "POST"),
