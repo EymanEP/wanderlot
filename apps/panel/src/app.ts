@@ -3,10 +3,11 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, addDaysIso, baseStay, slugify, type Proposal, type VoteState } from "@wanderlot/core";
-import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
+import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, baseStay, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
+
 import { SiteError, buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
 import { inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage } from "./announce.ts";
@@ -99,13 +100,16 @@ export function createPanel({
   app.get("/api/status", async (c) => {
     let reachable = true;
     let error: string | undefined;
+    let outdated = false;
     try {
       await site.settings();
+      // A site deployed from older code lacks routes this panel uses.
+      outdated = (await site.version()) < SITE_API_VERSION;
     } catch (e) {
       reachable = false;
       error = (e as Error).message;
     }
-    return c.json({ ...status, site: { url: siteUrl, reachable, ...(error ? { error } : {}) } });
+    return c.json({ ...status, site: { url: siteUrl, reachable, outdated, ...(error ? { error } : {}) } });
   });
 
   app.get("/api/settings", async (c) => c.json(await site.settings()));
@@ -187,9 +191,17 @@ export function createPanel({
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
     };
+    if (body.data.source === "api" && status.flights === "none") {
+      return c.json({ error: "No hay ninguna API de vuelos conectada. Busca con Claude, o añade la clave con npm run setup." }, 409);
+    }
+    // Research's steps, relayed as they happen for Generar's live view.
+    const progress: ResearchProgress[] = [];
+    let relay: ((p: ResearchProgress) => void) | undefined;
+    const onProgress = (p: ResearchProgress) => (relay ? relay(p) : progress.push(p));
     let source: AsyncIterable<ResearchResult>;
     try {
-      source = body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : research.research(req, c.req.raw.signal);
+      source =
+        body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : research.research(req, c.req.raw.signal, onProgress);
     } catch (e) {
       // e.g. no flight provider configured
       return c.json({ error: (e as Error).message }, 409);
@@ -198,6 +210,11 @@ export function createPanel({
     let researched: string | undefined;
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
+      // Writes queue up in order; progress can arrive between proposals.
+      let writing = Promise.resolve();
+      const write = (line: unknown) => (writing = writing.then(async () => void (await s.writeln(JSON.stringify(line)))));
+      relay = (p) => void write({ progress: p });
+      for (const p of progress.splice(0)) relay(p);
       try {
         for await (const { proposal: p, notes } of source) {
           // A new search adds to the list and never replaces a proposal the
@@ -228,20 +245,28 @@ export function createPanel({
               result: null,
             };
           });
-          await s.writeln(JSON.stringify({ proposal }));
+          await write({ proposal });
         }
         // Mark the idea done, pointing at what came of it. Best effort: the
         // proposals are saved either way.
         if (idea && researched) await site.setSuggestion(plan.id, idea.id, "researched", researched).catch(() => {});
-        await s.writeln(JSON.stringify({ done: true }));
+        await write({ done: true });
       } catch (err) {
-        await s.writeln(JSON.stringify({ error: (err as Error).message }));
+        await write({ error: (err as Error).message });
       }
     });
   });
 
   // Ideas friends sent from the site for this trip.
-  app.get("/api/plans/:planId/suggestions", async (c) => c.json(await site.suggestions(c.req.param("planId"))));
+  app.get("/api/plans/:planId/suggestions", async (c) => {
+    try {
+      return c.json(await site.suggestions(c.req.param("planId")));
+    } catch (e) {
+      // A site from before ideas existed: none to show (status says why).
+      if (e instanceof SiteError && e.status === 404) return c.json([]);
+      throw e;
+    }
+  });
 
   app.put("/api/plans/:planId/suggestions/:id", async (c) => {
     const { planId, id } = c.req.param();

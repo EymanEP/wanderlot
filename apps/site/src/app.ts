@@ -15,6 +15,7 @@ import {
 } from "@simplewebauthn/server";
 import {
   DEFAULT_SETTINGS,
+  SITE_API_VERSION,
   GroupSettings,
   Snapshot,
   effectiveStatus,
@@ -521,6 +522,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   });
 
   admin.get("/plans/:planId/members", async (c) => c.json(await store.planMembers(c.req.param("planId"))));
+
+  admin.get("/version", (c) => c.json({ api: SITE_API_VERSION }));
 
   admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));
 

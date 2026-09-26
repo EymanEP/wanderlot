@@ -370,8 +370,14 @@ configures only the ones they have. The panel works with none of the paid ones.
 
 | provider | how | cost to the hoster |
 |---|---|---|
-| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema <draft-07 schema> --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (only web search and fetch, pre-approved, since a headless run can't ask) | their Claude subscription, no API bill |
+| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format stream-json --verbose --json-schema <draft-07 schema> --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (only web search and fetch, pre-approved, since a headless run can't ask) | their Claude subscription, no API bill |
 | `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
+
+A Claude search takes minutes and its proposals arrive together at the end, so
+the provider also reports progress as it goes: what Claude says it is doing,
+each web search (the query) and each page it reads (the host). The panel relays
+these as `{progress}` lines and Generar shows them live, with the elapsed time
+and a Detener button.
 
 Other providers can implement the same interface later. Whatever the provider,
 research always yields `claude` provenance (§3): it is labelled as written by
@@ -383,7 +389,7 @@ provenance.
 
 | provider | status |
 |---|---|
-| Duffel (default) | real bookable fares with a live account; test mode returns made-up flights. Check its pricing for search-only use before relying on it |
+| Duffel (default) | not wired up yet: the client is a stub, so the panel reports no flight API and searches with Claude. Real bookable fares need a live account; test mode returns made-up flights. Check its pricing for search-only use before relying on it |
 | Amadeus Self-Service | reportedly being decommissioned in 2026 — confirm before use |
 | Kiwi (Tequila) | public sign-ups reportedly closed — confirm access |
 
@@ -450,12 +456,12 @@ it). Calls that touch the site go through the admin API above.
 
 | method | path | notes |
 |---|---|---|
-| `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers |
+| `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers, and whether it runs an older version than the panel (`GET /api/admin/version`) |
 | `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
 | `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
-| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}`; with `suggestionId`, researches that friend's idea by name and credits them |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{progress}` and `{proposal}` lines, then `{done}` or `{error}`; `409` when asked to search with a flight API and none is connected; with `suggestionId`, researches that friend's idea by name and credits them |
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
 | `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ outboundCents, inboundCents, stayNightlyCents? }` |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |

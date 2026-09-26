@@ -43,8 +43,10 @@ beforeEach(async () => {
 
   lastRequest = undefined;
   const research: ResearchProvider = {
-    async *research(req) {
+    async *research(req, _signal, onProgress) {
       lastRequest = req;
+      onProgress?.({ kind: "note", text: "Voy a buscar vuelos directos" });
+      onProgress?.({ kind: "search", query: "vuelos Madrid Lisboa noviembre" });
       yield {
         proposal: strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })),
         notes: { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoSubjects: ["Alfama Lisboa"] },
@@ -106,7 +108,16 @@ describe("panel → site", () => {
       suggestThings: true,
     });
     const lines = r.body.trim().split("\n").map((l) => JSON.parse(l));
-    expect(lines.map((l) => l.proposal?.id ?? "done")).toEqual(["lis", "nap", "edi", "done"]);
+    // Research's steps come first, as they happen, then the proposals.
+    expect(lines.slice(0, 2)).toEqual([
+      { progress: { kind: "note", text: "Voy a buscar vuelos directos" } },
+      { progress: { kind: "search", query: "vuelos Madrid Lisboa noviembre" } },
+    ]);
+    expect(lines.slice(2).map((l) => l.proposal?.id ?? "done")).toEqual(["lis", "nap", "edi", "done"]);
+    // No flight API connected: an API search is refused up front, clearly.
+    const api = await json(`/api/plans/${PLAN}/generate`, "POST", { source: "api", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    expect(api.status).toBe(409);
+    expect(api.data.error).toMatch(/Busca con Claude/);
     const { data } = await json(`/api/plans/${PLAN}`);
     expect(data.proposals.every((p: Proposal) => p.review === "pending")).toBe(true);
     // A second search adds to the list with fresh ids, keeping decisions, and
@@ -277,7 +288,7 @@ describe("plans and settings", () => {
     expect(saved.data).toEqual({ groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" });
     expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
     const status = (await json("/api/status")).data;
-    expect(status.site).toEqual({ url: SITE, reachable: true });
+    expect(status.site).toEqual({ url: SITE, reachable: true, outdated: false });
   });
 
   it("researches a friend's idea by name, credits them and marks it done", async () => {

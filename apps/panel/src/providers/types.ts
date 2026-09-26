@@ -49,10 +49,16 @@ export interface ResearchResult {
   notes?: ResearchNotes;
 }
 
+// What research is doing right now, for Generar's live view.
+export type ResearchProgress =
+  | { kind: "note"; text: string } // Claude saying what it's about to do
+  | { kind: "search"; query: string } // a web search
+  | { kind: "read"; host: string; url: string }; // a page it's reading
+
 // Claude doing web research. Its results always carry `claude` provenance,
 // even when it quotes an airline price (SPEC §8).
 export interface ResearchProvider {
-  research(req: SearchRequest, signal?: AbortSignal): AsyncIterable<ResearchResult>;
+  research(req: SearchRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): AsyncIterable<ResearchResult>;
 }
 
 export type { Source };

@@ -3,7 +3,8 @@ import { addDaysIso, type SuggestionView } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
 import { IdeasCard } from "../components/IdeasCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
-import { ProposalRow, ProposalRowLoading } from "../components/ProposalRow.tsx";
+import { GenerationProgress } from "../components/GenerationProgress.tsx";
+import { ProposalRow } from "../components/ProposalRow.tsx";
 import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
 import { usePanel, usePlan } from "../data/store.tsx";
 
@@ -15,7 +16,7 @@ export function GenerarPage() {
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
-  const initial = searchFromPlan(plan);
+  const initial = searchFromPlan(plan, status?.flights !== "none");
   const running = generation?.running ?? false;
   const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
 
@@ -46,6 +47,7 @@ export function GenerarPage() {
       nearbyAirports: false,
       count: 1,
       suggestionId: idea.id,
+      idea: idea.place,
     });
     toast(`Investigando ${idea.place}, la idea de ${idea.member.name}`);
   };
@@ -104,25 +106,32 @@ export function GenerarPage() {
                 {plan.name} · {rangeSummary(initial)} · {plan.partySize} personas · {STOPS_LABEL[stops]}
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              {generation && (
-                <span className="text-sm font-bold text-muted tabular-nums" aria-live="polite">
-                  {generation.running || generation.stopped ? `${generation.received} / ${generation.requested}` : `${generation.received} propuestas`}
+            {generation && !running && !generation.error && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-muted tabular-nums">
+                  {generation.received} {generation.received === 1 ? "propuesta nueva" : "propuestas nuevas"}
                 </span>
-              )}
-              {running ? (
-                <Button onClick={stopGeneration}>Detener</Button>
-              ) : generation && !generation.error ? (
                 <Badge tone={generation.stopped ? "neutral" : "accent"} size="md">
                   {generation.stopped ? "Búsqueda detenida" : "Búsqueda terminada"}
                 </Badge>
-              ) : null}
-            </div>
+              </div>
+            )}
           </div>
+
+          {generation && running && <GenerationProgress generation={generation} onStop={stopGeneration} />}
 
           <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 
-          {generation?.error && <Notice>La búsqueda se cortó: {generation.error}</Notice>}
+          {generation?.error && (
+            <Notice role="alert">
+              {generation.received === 0 ? "No se pudo buscar" : `La búsqueda se cortó tras ${generation.received} ${generation.received === 1 ? "propuesta" : "propuestas"}`}: {generation.error}
+            </Notice>
+          )}
+          {generation && !running && !generation.error && !generation.stopped && generation.received === 0 && (
+            <Notice tone="neutral">
+              {generation.idea ? `No se encontró nada para ${generation.idea}.` : "La búsqueda terminó sin propuestas nuevas."} Prueba con otras fechas, más presupuesto o escalas.
+            </Notice>
+          )}
           {status?.research === "none" && (
             <Notice tone="neutral">
               No encuentro el comando <code>claude</code> ni una clave de Anthropic en este ordenador. Ejecuta <code>npm run setup</code> para configurarlo.
@@ -148,7 +157,6 @@ export function GenerarPage() {
                 }
               />
             ))}
-            {running && <ProposalRowLoading />}
           </div>
 
           <p className="m-0 text-[13px] text-muted">

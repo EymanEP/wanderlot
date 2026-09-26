@@ -24,7 +24,8 @@ export interface Status {
   research: "claude-cli" | "anthropic-api" | "none";
   flights: "duffel" | "none";
   photos: string[];
-  site: { url: string; reachable: boolean; error?: string };
+  // outdated: deployed from older code; some panel features need a redeploy.
+  site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
 }
 
 export interface PlanEntry {
@@ -35,11 +36,16 @@ export interface PlanEntry {
   participants?: string[];
 }
 
+// What a search is doing right now (the panel server relays it as it happens).
+export type SearchStep = { kind: "note"; text: string } | { kind: "search"; query: string } | { kind: "read"; host: string; url: string };
+
 export interface SearchOptions {
   source: "api" | "claude";
   scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "place"; iata: string };
   // Research one friend's idea (the server searches that place by name).
   suggestionId?: string;
+  // Its name, for the progress view.
+  idea?: string;
   stops: "direct" | "one" | "any";
   estimateStays: boolean;
   suggestThings: boolean;
@@ -83,7 +89,7 @@ export interface PanelBackend {
   savePlan(p: Plan): Promise<Plan>;
   setParticipants(planId: string, memberIds: string[]): Promise<PlanEntry>;
   // Calls onProposal as each one arrives; resolves when the search ends.
-  generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal): Promise<void>;
+  generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal, onStep?: (s: SearchStep) => void): Promise<void>;
   review(planId: string, id: string, review: Review): Promise<void>;
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
@@ -136,7 +142,7 @@ export const httpBackend: PanelBackend = {
   createPlan: (p) => call<Plan>("/api/plans", "POST", p),
   savePlan: (p) => call<Plan>(`/api/plans/${enc(p.id)}`, "PUT", p),
   setParticipants: (planId, ids) => call<PlanEntry>(`/api/plans/${enc(planId)}/participants`, "PUT", ids),
-  async generate(planId, opts, onProposal, signal) {
+  async generate(planId, opts, onProposal, signal, onStep) {
     const res = await fetch(`/api/plans/${enc(planId)}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -159,8 +165,9 @@ export const httpBackend: PanelBackend = {
         const line = buffer.slice(0, nl).trim();
         buffer = buffer.slice(nl + 1);
         if (!line) continue;
-        const msg = JSON.parse(line) as { proposal?: Proposal; error?: string; done?: true };
+        const msg = JSON.parse(line) as { proposal?: Proposal; progress?: SearchStep; error?: string; done?: true };
         if (msg.error) throw new BackendError(msg.error);
+        if (msg.progress) onStep?.(msg.progress);
         if (msg.proposal) onProposal(msg.proposal);
       }
     }
