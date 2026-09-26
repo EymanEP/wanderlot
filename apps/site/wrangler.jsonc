@@ -16,7 +16,7 @@
       "binding": "DB",
       "database_name": "wanderlot",
       // Filled in by `npm run deploy:site` the first time.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "16afe2e0-da17-46eb-b64e-81463f3e4550",
       "migrations_dir": "migrations"
     }
   ],
