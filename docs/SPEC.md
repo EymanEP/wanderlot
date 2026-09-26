@@ -378,6 +378,34 @@ browser's response. A flow expires after 5 minutes and can be used once.
 
 Members belong to the group, not to a plan: one sign-up works for every plan.
 
+### Panel API (local)
+
+The panel's own server, for its UI only. It listens on `127.0.0.1`, answers
+only requests whose `Host` is the panel itself, and takes changes only as
+JSON from its own origin (so other web pages the organiser opens can't drive
+it). Calls that touch the site go through the admin API above.
+
+| method | path | notes |
+|---|---|---|
+| `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers |
+| `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
+| `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
+| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals and editorial notes / save the plan |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}` |
+| `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
+| `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
+| `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |
+| `GET` | `/api/photos?q=` | photo search across configured sources (§6) |
+| `POST` | `/api/plans/:planId/publish` | `{ confirm }`; `409` with warnings for unverified prices |
+| `POST` | `/api/plans/:planId/open-vote` | `{ deadline }`; returns the group-chat message |
+| `GET` | `/api/plans/:planId/vote` | who voted, reminder and result messages, the count once closed |
+| `POST` | `/api/plans/:planId/close` | close early |
+| `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie |
+| `GET` / `PUT` | `/api/members` | people and their access / add or rename |
+| `POST` | `/api/members/:id/invite` | a fresh one-time invite link |
+| `DELETE` | `/api/members/:id/sessions` | sign them out everywhere |
+| `POST` | `/api/members/:id/revoke` | remove access |
+
 On the site, a plan in `draft` has been published for browsing and comments
 but its vote hasn't opened.
 

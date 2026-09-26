@@ -1,5 +1,7 @@
 # Wanderlot
 
+[![CI](https://github.com/EymanEP/wanderlot/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EymanEP/wanderlot/actions/workflows/ci.yml)
+
 An open-source project for planning trips between friends. One person
 organises: a **local panel** on their computer researches destinations with
 Claude and curates them. Everyone else gets a **published site** where the
@@ -13,9 +15,18 @@ invite, with no accounts or passwords, and can add the site to their home
 screen like an app. Hosting and setup:
 [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
 
-MIT licensed; contributions welcome.
-
+MIT licensed; contributions welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 The full design is in [`docs/SPEC.md`](docs/SPEC.md).
+
+| The friends' site | Ranking on a phone |
+|---|---|
+| ![A plan on the site: four destinations with prices, and the latest comments](docs/screenshots/site-plan.png) | ![Votación on a phone: the vote so far and your three picks](docs/screenshots/site-votacion-phone.png) |
+
+| The organiser's panel: reviewing proposals | Following the vote |
+|---|---|
+| ![Revisar: proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![Votación in the panel: who has voted, remind, close early](docs/screenshots/panel-votacion.png) |
+
+<sub>Screenshots use the demo data, so photos appear as labelled placeholders.</sub>
 
 ## Layout
 
@@ -180,7 +191,17 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   from CI; they're tested with recorded shapes.
 - Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
   (with keys) and publishes the chosen ones with their credits (SPEC §6).
-- The Duffel provider is a stub.
+- The organiser follows the vote in the panel: who has voted, a reminder for
+  the rest, closing early, breaking a tie, and the result message.
+- Friends can install the site on their phone's home screen.
+- The Duffel provider is a stub, so every price is labelled as written by
+  Claude until a flight API is connected.
+
+## Contributing
+
+Issues and pull requests are welcome; start with
+[CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately
+([SECURITY.md](SECURITY.md)).
 
 ## Licence
 
