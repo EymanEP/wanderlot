@@ -3,7 +3,7 @@ import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
 import { euros } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
-import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, total, trustOf, trustText } from "../lib/view.ts";
+import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
 
 export interface ReviewCardProps {
   proposal: Proposal;
@@ -74,8 +74,9 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         </div>
 
         <div className="flex flex-col gap-[5px] text-sm text-ink-2">
-          <span>{flightLine(p)}</span>
-          <span>{stayLine(p, plan)}</span>
+          <span>{flightLine(p, plan)}</span>
+          {stayLine(p, plan) && <span>{stayLine(p, plan)}</span>}
+          <span>{thingsLine(p)}</span>
         </div>
 
         {trust === "unverified" && <Notice>Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar.</Notice>}

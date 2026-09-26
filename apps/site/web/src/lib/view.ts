@@ -4,7 +4,7 @@ import {
   euros,
   mediumDate,
   ordinal,
-  stayPerPersonNightCents,
+  stayShareCents,
   tripLabel,
   trustState,
   type Destination,
@@ -25,14 +25,15 @@ export function placeLine(d: Destination): string {
   return `${d.place.country} · ${tripLabel(d.outbound).toLowerCase().replace(" · ", " ")}`;
 }
 
-export function perNightLabel(d: Destination, plan: Plan): string | null {
-  const c = stayPerPersonNightCents(d.stays, plan.partySize);
-  return c === null ? null : `${euros(c)}/noche`;
+// Each person's share of the whole stay: "204 € por persona".
+export function stayShareLabel(d: Destination, plan: Plan): string | null {
+  const c = stayShareCents(d.stays, plan.nights, plan.partySize);
+  return c === null ? null : `${euros(c)} por persona`;
 }
 
-// "Riad entero en la Medina · 29 €/noche"
+// "Riad entero en la Medina · 204 € por persona"
 export function stayLine(d: Destination, plan: Plan): string {
-  return [baseStay(d.stays)?.name, perNightLabel(d, plan)].filter(Boolean).join(" · ");
+  return [baseStay(d.stays)?.name, stayShareLabel(d, plan)].filter(Boolean).join(" · ");
 }
 
 export function rankLabel(position: number): string {

@@ -38,13 +38,14 @@ export function buildPrompt(req: SearchRequest): string {
           : `el aeropuerto ${req.scope.iata}`;
   const stops = { direct: "solo vuelos directos", one: "máximo 1 escala", any: "escalas indiferentes" }[req.stops];
   return [
-    `Busca ${req.count} propuestas de viaje de grupo saliendo de ${req.origin} hacia ${scope}.`,
+    `Busca ${req.count === 1 ? "una propuesta" : `${req.count} propuestas`} de viaje de grupo saliendo de ${req.origin} hacia ${scope}.`,
     req.nearbyAirports
       ? `También vale salir de otro aeropuerto a unas 2 horas de ${req.origin} por carretera o tren si el vuelo sale mejor; pon el aeropuerto real de salida en outbound.from y el de llegada de vuelta en inbound.to, y menciónalo en los contras.`
       : `Sal siempre de ${req.origin}.`,
     ...(req.scope.kind === "named"
       ? [
-          `Es una idea de ${req.scope.by ?? "alguien del grupo"}${req.scope.note ? `, que dice: «${req.scope.note}»` : ""}. Si es una región o isla, elige el aeropuerto que mejor le sirva; si no hay forma razonable de ir, omite la propuesta.`,
+          ...(req.scope.by ? [`Es una idea de ${req.scope.by}${req.scope.note ? `, que dice: «${req.scope.note}»` : ""}.`] : []),
+          "Si es una región o isla, elige el aeropuerto que mejor le sirva; si no hay forma razonable de ir, omite la propuesta.",
         ]
       : []),
     ...(req.exclude?.length ? [`Ya tenemos propuestas para: ${req.exclude.join(", ")}. Busca destinos distintos a esos.`] : []),

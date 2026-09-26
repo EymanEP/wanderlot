@@ -61,6 +61,7 @@ export function GenerarPage() {
 
   const onSubmit = async (v: SearchValues) => {
     if (!v.start || !v.end) return toast("Elige en el calendario el día de salida y el de vuelta");
+    if (v.scope === "place" && !v.place.trim()) return toast("Escribe adónde quieres ir");
     // Dates, people, budget and origin belong to the plan: save them first.
     try {
       await savePlan({
@@ -77,14 +78,17 @@ export function GenerarPage() {
       return toast(`No se pudo guardar el plan: ${(e as Error).message}`);
     }
     setStops(v.stops);
+    // A specific destination is one proposal, researched by name.
+    const place = v.scope === "place" ? v.place.trim() : "";
     startGeneration({
       source: v.source,
-      scope: v.scope === "place" ? { kind: "place", iata: originCode(v.place, "XXX") } : v.scope === "europe" ? { kind: "europe" } : { kind: "anywhere" },
+      scope: place ? { kind: "named", name: place } : v.scope === "europe" ? { kind: "europe" } : { kind: "anywhere" },
       stops: v.stops,
       estimateStays: v.estimateStays,
       suggestThings: v.suggestThings,
       nearbyAirports: v.nearbyAirports,
-      count: COUNT,
+      count: place ? 1 : COUNT,
+      ...(place ? { idea: place } : {}),
     });
   };
 

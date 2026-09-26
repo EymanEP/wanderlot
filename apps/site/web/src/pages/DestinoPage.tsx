@@ -16,7 +16,7 @@ import { CommentComposer, CommentThread } from "../components/Comments.tsx";
 import { FlightLegRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
-import { memberOf, perNightLabel, rankLabel, sourcesFor, trustOf } from "../lib/view.ts";
+import { memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
 
 export function DestinoPage() {
   const site = useSite();
@@ -78,7 +78,7 @@ export function DestinoPage() {
 
       <section aria-label="Resumen" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatTile label="Vuelo" value={tripLabel(d.outbound)} />
-        <StatTile label="Alojamiento" value={`${perNightLabel(d, plan)?.replace("/noche", "") ?? "—"} por noche`} />
+        <StatTile label={`Alojamiento · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"}`} value={stayShareLabel(d, plan) ?? "—"} />
         <StatTile label={month[0]!.toUpperCase() + month.slice(1)} value={d.weather} />
         {trust === "unverified" ? (
           <StatTile label="Datos de vuelo" value="Los escribió Claude" tone="claude" />

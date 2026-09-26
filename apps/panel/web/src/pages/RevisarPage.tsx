@@ -138,6 +138,7 @@ export function RevisarPage() {
 
       <PriceDialog
         proposal={state.proposals.find((p) => p.id === pricing)}
+        plan={plan}
         onClose={() => setPricing(null)}
         onSave={async (prices) => {
           const city = state.proposals.find((p) => p.id === pricing)?.place.city;

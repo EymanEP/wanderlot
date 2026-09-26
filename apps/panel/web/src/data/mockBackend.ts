@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, baseStay, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { addDaysIso, applyGroupTotals, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
@@ -173,22 +173,24 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       return p;
     },
     async generate(planId, opts, onProposal, signal, onStep) {
-      // A friend's idea: one proposal for that place, credited to them.
+      // One named place, typed by the organiser or a friend's idea (credited
+      // to them): one proposal for it.
       const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;
-      if (idea) {
-        onStep?.({ kind: "note", text: `Busco cómo ir a ${idea.place} desde Madrid en esas fechas.` });
+      const place = idea?.place ?? (opts.scope.kind === "named" ? opts.scope.name : undefined);
+      if (place) {
+        onStep?.({ kind: "note", text: `Busco cómo ir a ${place} desde Madrid en esas fechas.` });
         await wait(tickMs, signal);
-        onStep?.({ kind: "search", query: `vuelos Madrid ${idea.place} noviembre 2026` });
+        onStep?.({ kind: "search", query: `vuelos Madrid ${place} noviembre 2026` });
         await wait(tickMs, signal);
-        const known = mockProposals.find((p) => p.place.city.toLowerCase() === idea.place.toLowerCase());
-        const base = known ?? { ...mockProposals[0]!, place: { city: idea.place, country: "", iata: idea.place.slice(0, 3).toUpperCase() } };
+        const known = mockProposals.find((p) => p.place.city.toLowerCase() === place.toLowerCase());
+        const base = known ?? { ...mockProposals[0]!, place: { city: place, country: "", iata: place.slice(0, 3).toUpperCase() } };
         const taken = new Set(entry(planId).proposals.map((p) => p.id));
         let id = base.place.iata.toLowerCase();
         for (let n = 2; taken.has(id); n++) id = `${base.place.iata.toLowerCase()}-${n}`;
-        const fresh: Proposal = { ...base, id, planId, review: "pending", suggestedBy: idea.member.name };
+        const fresh: Proposal = { ...base, id, planId, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) };
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals, fresh] });
-        ideas = ideas.map((i) => (i.id === idea.id ? { ...i, status: "researched", proposalId: id } : i));
+        if (idea) ideas = ideas.map((i) => (i.id === idea.id ? { ...i, status: "researched", proposalId: id } : i));
         onProposal(fresh);
         return;
       }
@@ -223,17 +225,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       const e = entry(planId);
       entries.set(planId, { ...e, editorial: { ...e.editorial, [id]: { ...e.editorial[id], ...patch } } });
     },
-    async setPrices(planId, id, { outboundCents, inboundCents, stayNightlyCents }) {
-      patchProposal(planId, id, (p) => {
-        const stay = baseStay(p.stays);
-        return {
-          ...p,
-          outbound: { ...p.outbound, priceCents: outboundCents },
-          inbound: { ...p.inbound, priceCents: inboundCents },
-          stays: p.stays.map((s) => (s === stay && stayNightlyCents !== undefined ? { ...s, nightlyCents: stayNightlyCents } : s)),
-          provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: p.provenance.kind === "api" ? [] : p.provenance.sources },
-        };
-      });
+    async setPrices(planId, id, totals) {
+      const { plan } = entry(planId);
+      patchProposal(planId, id, (p) => ({
+        ...applyGroupTotals(p, totals, plan.nights, plan.partySize),
+        provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: p.provenance.kind === "api" ? [] : p.provenance.sources },
+      }));
       return entry(planId).proposals.find((p) => p.id === id)!;
     },
     async searchPhotos(query) {

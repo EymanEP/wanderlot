@@ -57,10 +57,16 @@ export function flightPriceCents(p: Pick<Proposal, "outbound" | "inbound">): num
   return p.outbound.priceCents + p.inbound.priceCents;
 }
 
-// A person's share of one night at the base stay.
-export function stayPerPersonNightCents(stays: readonly Stay[], partySize: number): number | null {
+// What the whole group pays for the base stay, all the nights, and each
+// person's share of it: how Airbnb and booking sites show a stay.
+export function stayGroupCents(stays: readonly Stay[], nights: number): number | null {
   const stay = baseStay(stays);
-  return stay ? Math.round(stay.nightlyCents / partySize) : null;
+  return stay ? stayTotalCents(stay, nights) : null;
+}
+
+export function stayShareCents(stays: readonly Stay[], nights: number, partySize: number): number | null {
+  const total = stayGroupCents(stays, nights);
+  return total === null ? null : Math.ceil(total / partySize);
 }
 
 export function stayTotalCents(stay: Stay, nights: number): number {
