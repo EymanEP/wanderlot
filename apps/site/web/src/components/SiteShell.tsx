@@ -34,7 +34,12 @@ function Chrome() {
   const nav = useNav();
   const { pathname } = useLocation();
 
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Braces matter: newer Chrome's scrollTo returns a Promise, and an effect
+  // that returns one hands React a "cleanup" it then fails to call, which
+  // blanked the site on the next page change.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   return (
     <Page>
