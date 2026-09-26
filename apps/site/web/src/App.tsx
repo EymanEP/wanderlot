@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { EmptyState, Main, Skeleton } from "@wanderlot/ui";
+import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
 import { SiteShell } from "./components/SiteShell.tsx";
 import { useAuth } from "./data/auth.tsx";
 import { currentPlan, usePlans } from "./data/store.tsx";
@@ -45,17 +46,19 @@ function Home() {
 
 export function App() {
   return (
-    <Routes>
-      <Route index element={<RequireSession><Home /></RequireSession>} />
-      <Route path="/entrar" element={<SignInPage />} />
-      <Route path="/i/:token" element={<InvitePage />} />
-      <Route path="/p/:planId" element={<RequireSession><SiteShell /></RequireSession>}>
-        <Route index element={<PlanPage />} />
-        <Route path="destinos/:destinationId" element={<DestinoPage />} />
-        <Route path="votacion" element={<VotacionPage />} />
-        <Route path="comentarios" element={<ComentariosPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <PageErrorBoundary>
+      <Routes>
+        <Route index element={<RequireSession><Home /></RequireSession>} />
+        <Route path="/entrar" element={<SignInPage />} />
+        <Route path="/i/:token" element={<InvitePage />} />
+        <Route path="/p/:planId" element={<RequireSession><SiteShell /></RequireSession>}>
+          <Route index element={<PlanPage />} />
+          <Route path="destinos/:destinationId" element={<DestinoPage />} />
+          <Route path="votacion" element={<VotacionPage />} />
+          <Route path="comentarios" element={<ComentariosPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </PageErrorBoundary>
   );
 }

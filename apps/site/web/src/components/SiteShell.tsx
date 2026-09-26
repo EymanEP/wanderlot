@@ -5,6 +5,7 @@ import { Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui
 import { AccountMenu } from "./AccountMenu.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { PlanProvider, useSite } from "../data/store.tsx";
+import { PageErrorBoundary } from "./PageErrorBoundary.tsx";
 
 function useNav() {
   const { planId } = useParams();
@@ -53,7 +54,9 @@ function Chrome() {
         end={<AccountMenu me={me} />}
       />
       <div className="flex flex-1 flex-col pb-20 md:pb-0">
-        <Outlet />
+        <PageErrorBoundary>
+          <Outlet />
+        </PageErrorBoundary>
       </div>
       <nav
         aria-label="Secciones"

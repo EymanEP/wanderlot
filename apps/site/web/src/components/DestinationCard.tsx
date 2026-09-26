@@ -21,7 +21,9 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
   return (
     <article className="group relative flex flex-col gap-3.5">
       <Photo
-        label={`Foto de ${d.place.city}`}
+        label={d.photos[0] ? undefined : `Foto de ${d.place.city}`}
+        src={d.photos[0]?.url}
+        alt={d.photos[0]?.alt}
         className="h-[240px] rounded-2xl sm:h-[310px]"
         top={
           <>
