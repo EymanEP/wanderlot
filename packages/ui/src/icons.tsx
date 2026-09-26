@@ -49,6 +49,7 @@ export const MountainIcon = make(<path d="m3 19 6-11 4 7 2.5-4L21 19z" />, { str
 export const PlaneIcon = make(<path d="M10.5 13.5 3 11l1.5-1.5 7.5 1 4-4.5a2.1 2.1 0 0 1 3 3l-4.5 4 1 7.5L14 22l-2.5-7.5z" />, { strokeWidth: 1.7 });
 export const SendIcon = make(<><path d="M4 12 20 4l-6 16-3-7z" /><path d="m11 13 9-9" /></>, { strokeWidth: 1.8 });
 export const StopIcon = make(<rect x="6" y="6" width="12" height="12" rx="2" />, { strokeWidth: 2 });
+export const TrashIcon = make(<><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></>);
 export const CloseIcon = make(<><path d="M6 6l12 12" /><path d="M18 6 6 18" /></>, { strokeWidth: 2 });
 export const HeartIcon = make(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" />, { strokeWidth: 1.8 });
 export const ExternalIcon = make(<><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>, { strokeWidth: 1.8 });

@@ -481,10 +481,12 @@ it). Calls that touch the site go through the admin API above.
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
 | `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ flightCents, stayCents? }` (one person's flights there and back; the whole stay for the group) |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
+| `POST` | `/api/plans/:planId/proposals/clear-unapproved` | deletes every proposal not approved (to review or discarded) with its notes and photos; `{ removed }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
 | `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |
 | `GET` | `/api/photos?q=` | photo search across configured sources (§6) |
-| `POST` | `/api/plans/:planId/publish` | `{ confirm }`; `409` with warnings for unverified prices |
+| `POST` | `/api/plans/:planId/publish` | `{ confirm }`; `409` with warnings for unverified prices. Sends what's approved now, replacing what the site had; with nothing approved it empties a trip already published (`409` if never published) |
+| `GET` | `/api/plans/:planId/publish-status` | `{ publishedAt, changed }`: whether anything that would go to the site changed since the last publish (Revisar shows "Cambios sin publicar") |
 | `POST` | `/api/plans/:planId/open-vote` | `{ deadline }`; returns the group-chat message |
 | `GET` | `/api/plans/:planId/vote` | who voted, reminder and result messages, the count once closed |
 | `POST` | `/api/plans/:planId/close` | close early |

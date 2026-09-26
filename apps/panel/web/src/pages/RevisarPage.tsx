@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, useToast } from "@wanderlot/ui";
+import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, TrashIcon, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PhotoPicker } from "../components/PhotoPicker.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
+import type { PublishStatus } from "../data/backend.ts";
 import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
 
@@ -12,7 +13,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, setEditorial, searchPhotos, setPrices } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -23,6 +24,18 @@ export function RevisarPage() {
   const [confirming, setConfirming] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
   const [pricing, setPricing] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const unapproved = counts.pending + counts.discarded;
+  const doClear = async () => {
+    setClearing(false);
+    try {
+      const n = await clearUnapproved();
+      setFilter("all");
+      toast(`${n} ${n === 1 ? "propuesta borrada" : "propuestas borradas"}. Quedan las aprobadas.`);
+    } catch (e) {
+      toast(`No se pudo borrar: ${(e as Error).message}`);
+    }
+  };
   const plan = usePlan();
   const pickingProposal = state.proposals.find((p) => p.id === picking);
 
@@ -47,29 +60,61 @@ export function RevisarPage() {
 
   const risky = approved.filter((p) => trustOf(p, now) !== "verified");
 
+  // Whether the site is behind: checked again shortly after any change, once
+  // the server has it.
+  const [status, setStatus] = useState<PublishStatus | null>(null);
+  const [statusTick, setStatusTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => {
+      publishStatus().then(
+        (s) => live && setStatus(s),
+        () => live && setStatus(null),
+      );
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // Not on `publishStatus` itself: it's a new function on every panel change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, state.proposals, state.editorial, statusTick]);
+
   const [publishing, setPublishing] = useState(false);
+  const [emptying, setEmptying] = useState(false);
   const doPublish = async () => {
     setConfirming(false);
+    setEmptying(false);
     setPublishing(true);
     try {
       const n = await publish();
-      toast(`${n} ${n === 1 ? "destino publicado" : "destinos publicados"} en el sitio`);
+      toast(n ? `${n} ${n === 1 ? "destino publicado" : "destinos publicados"} en el sitio` : `${plan.name} ya no tiene destinos en el sitio`);
     } catch (e) {
       toast(`No se pudo publicar: ${(e as Error).message}`);
     } finally {
       setPublishing(false);
+      setStatusTick((n) => n + 1);
     }
   };
 
+  // With nothing approved, publishing empties a trip already on the site.
+  const empties = approved.length === 0;
   const publishButton = (
-    <Button
-      variant="primary"
-      icon={<ArrowUpIcon size={17} strokeWidth={1.9} />}
-      disabled={approved.length === 0 || publishing}
-      onClick={() => (risky.length ? setConfirming(true) : doPublish())}
-    >
-      Publicar {approved.length} {approved.length === 1 ? "aprobada" : "aprobadas"}
-    </Button>
+    <div className="flex items-center gap-3">
+      {status && (status.changed || status.publishedAt) && (
+        <span className={`hidden text-[13px] sm:inline ${status.changed ? "font-semibold text-claude" : "text-muted"}`} aria-live="polite">
+          {status.changed ? "Cambios sin publicar" : "El sitio está al día"}
+        </span>
+      )}
+      <Button
+        variant="primary"
+        icon={<ArrowUpIcon size={17} strokeWidth={1.9} />}
+        disabled={publishing || (empties ? !(status?.publishedAt && status.changed) : false)}
+        onClick={() => (empties ? setEmptying(true) : risky.length ? setConfirming(true) : doPublish())}
+      >
+        {empties ? "Vaciar el sitio" : `Publicar ${approved.length} ${approved.length === 1 ? "aprobada" : "aprobadas"}`}
+      </Button>
+    </div>
   );
 
   return (
@@ -79,17 +124,22 @@ export function RevisarPage() {
           title={plan.name}
           subtitle={`${counts.all} propuestas generadas · ${counts.approved} aprobadas · ${counts.discarded} descartadas · ${counts.pending} por revisar`}
           actions={
-            <Select
-              className="w-full sm:w-[290px]"
-              label="Ordenar propuestas"
-              value={sort}
-              onChange={setSort}
-              options={[
-                { value: "price", label: "Ordenar por precio" },
-                { value: "duration", label: "Por duración de vuelo" },
-                { value: "total", label: "Por coste total" },
-              ]}
-            />
+            <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
+              <Button icon={<TrashIcon size={16} />} disabled={unapproved === 0} onClick={() => setClearing(true)}>
+                Borrar las no aprobadas{unapproved ? ` · ${unapproved}` : ""}
+              </Button>
+              <Select
+                className="w-full sm:w-[290px]"
+                label="Ordenar propuestas"
+                value={sort}
+                onChange={setSort}
+                options={[
+                  { value: "price", label: "Ordenar por precio" },
+                  { value: "duration", label: "Por duración de vuelo" },
+                  { value: "total", label: "Por coste total" },
+                ]}
+              />
+            </div>
           }
         />
 
@@ -160,6 +210,28 @@ export function RevisarPage() {
           toast(photos.length ? `${pickingProposal?.place.city}: ${photos.length} ${photos.length === 1 ? "foto guardada" : "fotos guardadas"}` : "Fotos quitadas");
         }}
       />
+
+      <Dialog
+        open={emptying}
+        title={`¿Quitar los destinos de ${plan.name} del sitio?`}
+        confirmLabel="Vaciar el sitio"
+        tone="warning"
+        onConfirm={() => void doPublish()}
+        onClose={() => setEmptying(false)}
+      >
+        No queda ninguna propuesta aprobada, así que la cuadrilla verá {plan.name} sin destinos hasta que publiques otros. Si alguien ya ha votado, el sitio no dejará quitarlos.
+      </Dialog>
+
+      <Dialog
+        open={clearing}
+        title={`¿Borrar ${unapproved} ${unapproved === 1 ? "propuesta" : "propuestas"}?`}
+        confirmLabel="Borrar"
+        tone="warning"
+        onConfirm={() => void doClear()}
+        onClose={() => setClearing(false)}
+      >
+        Se borran las {counts.pending} por revisar y las {counts.discarded} descartadas de {plan.name}, con sus fotos. Las {counts.approved} aprobadas se quedan. No se puede deshacer.
+      </Dialog>
 
       <Dialog
         open={confirming}

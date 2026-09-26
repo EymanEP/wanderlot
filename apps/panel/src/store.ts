@@ -14,6 +14,9 @@ export interface PlanEntry {
   editorial: Record<string, Partial<Editorial>>;
   // Member ids on this trip: only they see it on the site (SPEC §5).
   participants?: string[];
+  // The last publish: when, and a fingerprint of what went, to tell whether
+  // the site is behind the panel.
+  published?: { at: string; fingerprint: string };
 }
 
 // The latest invite link per member, kept here so the organiser can copy it

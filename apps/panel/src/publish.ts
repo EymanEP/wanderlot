@@ -1,5 +1,6 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
+import { createHash } from "node:crypto";
 import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
 import type { PlanEntry } from "./store.ts";
 
@@ -21,6 +22,13 @@ export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
     });
   const { status: _s, winnerDestinationId: _w, ...planFields } = plan;
   return Snapshot.parse({ plan: planFields, destinations, publishedAt: now.toISOString() });
+}
+
+// What a publish would send, minus its timestamp: equal fingerprints mean
+// the site already shows exactly this.
+export function snapshotFingerprint(entry: PlanEntry): string {
+  const { publishedAt: _at, ...content } = buildSnapshot(entry, new Date(0));
+  return createHash("sha256").update(JSON.stringify(content)).digest("hex");
 }
 
 export interface PublishWarning {

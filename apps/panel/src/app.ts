@@ -8,7 +8,7 @@ import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
 
-import { SiteError, buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
+import { SiteError, buildSnapshot, publishWarnings, snapshotFingerprint, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
 import { inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage } from "./announce.ts";
 
@@ -278,6 +278,19 @@ export function createPanel({
   });
 
   // Revisar y aprobar.
+  // Clear out everything not approved (to review or discarded), with its
+  // photos and notes, to start the next search clean. Approved ones stay.
+  app.post("/api/plans/:planId/proposals/clear-unapproved", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const removed = store.update(planId, (e) => {
+      const gone = new Set(e!.proposals.filter((p) => p.review !== "approved").map((p) => p.id));
+      const editorial = Object.fromEntries(Object.entries(e!.editorial).filter(([id]) => !gone.has(id)));
+      return { entry: { ...e!, proposals: e!.proposals.filter((p) => !gone.has(p.id)), editorial }, result: gone.size };
+    });
+    return c.json({ removed });
+  });
+
   app.post("/api/plans/:planId/proposals/:id/review", async (c) => {
     const { planId, id } = c.req.param();
     const body = z.object({ review: z.enum(["pending", "approved", "discarded"]) }).safeParse(await c.req.json());
@@ -384,10 +397,24 @@ export function createPanel({
     const warnings = publishWarnings(entry, now());
     if (warnings.length && !confirm) return c.json({ needsConfirmation: true, warnings }, 409);
     const snapshot = buildSnapshot(entry, now());
-    if (snapshot.destinations.length === 0) return c.json({ error: "no hay propuestas aprobadas" }, 409);
+    // Nothing approved empties a trip that's on the site; one never published
+    // has nothing to send.
+    if (snapshot.destinations.length === 0 && !entry.published) return c.json({ error: "no hay propuestas aprobadas" }, 409);
     await site.publish(snapshot);
     await site.setPlanMembers(entry.plan.id, entry.participants ?? []);
+    const published = { at: snapshot.publishedAt, fingerprint: snapshotFingerprint(entry) };
+    store.update(entry.plan.id, (e) => ({ entry: { ...e!, published }, result: null }));
     return c.json({ ok: true, published: snapshot.destinations.length, warnings });
+  });
+
+  // Whether the site shows what the panel would publish now.
+  app.get("/api/plans/:planId/publish-status", (c) => {
+    const entry = entryOr404(c.req.param("planId"));
+    if (!entry) return c.json({ error: "not found" }, 404);
+    return c.json({
+      publishedAt: entry.published?.at ?? null,
+      changed: entry.published ? entry.published.fingerprint !== snapshotFingerprint(entry) : entry.proposals.some((p) => p.review === "approved"),
+    });
   });
 
   // --- Personas (SPEC §5) -------------------------------------------------
