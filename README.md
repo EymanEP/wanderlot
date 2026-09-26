@@ -9,7 +9,8 @@ their top three). Nothing reaches the site until the organiser approves it.
 Anyone can host their own copy for their group: one deployment serves one group
 of friends. The site runs free on Cloudflare (Workers + D1); the panel runs on
 the organiser's own computer. Friends sign in with passkeys from a one-time
-invite, with no accounts or passwords. Hosting and setup:
+invite, with no accounts or passwords, and can add the site to their home
+screen like an app. Hosting and setup:
 [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
 
 MIT licensed; contributions welcome.

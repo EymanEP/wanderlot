@@ -77,3 +77,16 @@ describe("memoryLimiter", () => {
     expect(await limit("a")).toBe(true);
   });
 });
+
+describe("installable site", () => {
+  it("has a manifest whose icons exist", () => {
+    const pub = new URL("../web/public/", import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL("manifest.webmanifest", pub), "utf8"));
+    expect(manifest).toMatchObject({ name: "Wanderlot", start_url: "/", display: "standalone" });
+    expect(manifest.icons.some((i: { purpose?: string }) => i.purpose === "maskable")).toBe(true);
+    for (const icon of manifest.icons) expect(readFileSync(new URL(`.${icon.src}`, pub)).length).toBeGreaterThan(0);
+    const html = readFileSync(new URL("../web/index.html", import.meta.url), "utf8");
+    expect(html).toContain('rel="manifest"');
+    expect(html).toContain('rel="apple-touch-icon"');
+  });
+});

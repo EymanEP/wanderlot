@@ -32,7 +32,8 @@ const app = createApp({
   limit: memoryLimiter(60, 60_000),
   ...(indexHtml ? { indexHtml } : {}),
 });
-app.use("/assets/*", serveStatic({ root: relative(process.cwd(), webDir) }));
+// The built files: /assets/*, the icons and the manifest. Page routes above win.
+app.use("/*", serveStatic({ root: relative(process.cwd(), webDir) }));
 
 serve({ fetch: app.fetch, port });
 console.log(`Wanderlot site on ${origin}`);
