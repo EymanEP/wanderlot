@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { GroupSettings, GroupTotals, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
+import type { CheckedPrices, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -69,10 +69,7 @@ export interface VoteView extends VoteState {
   announcement: string | null;
 }
 
-// Prices the organiser checked by hand, in cents, as booking sites show them:
-// the flights there and back for the whole group, and the recommended stay for
-// all the nights.
-export type CheckedPrices = GroupTotals;
+export type { CheckedPrices };
 
 export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
 

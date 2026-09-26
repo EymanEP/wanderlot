@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, applyGroupTotals, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { addDaysIso, applyCheckedPrices, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
@@ -225,10 +225,10 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       const e = entry(planId);
       entries.set(planId, { ...e, editorial: { ...e.editorial, [id]: { ...e.editorial[id], ...patch } } });
     },
-    async setPrices(planId, id, totals) {
+    async setPrices(planId, id, prices) {
       const { plan } = entry(planId);
       patchProposal(planId, id, (p) => ({
-        ...applyGroupTotals(p, totals, plan.nights, plan.partySize),
+        ...applyCheckedPrices(p, prices, plan.nights),
         provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: p.provenance.kind === "api" ? [] : p.provenance.sources },
       }));
       return entry(planId).proposals.find((p) => p.id === id)!;

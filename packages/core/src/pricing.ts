@@ -19,37 +19,27 @@ export function totalPerPersonCents(
   return flights + stayShare;
 }
 
-// What the whole group pays to fly there and back.
-export function groupFlightsCents(p: Pick<Proposal, "outbound" | "inbound">, partySize: number): number {
-  return (p.outbound.priceCents + p.inbound.priceCents) * partySize;
-}
-
-// Prices the organiser checked by hand, as booking sites show them: the
-// flights there and back for everyone, and the stay for all the nights.
-export interface GroupTotals {
-  flightsCents: number;
+// Prices the organiser checked by hand, as booking sites show them: one
+// person's flights there and back, and the stay for the whole group and all
+// the nights (as Airbnb does).
+export interface CheckedPrices {
+  flightCents: number;
   // Only when the proposal has a stay.
   stayCents?: number;
 }
 
-// Stores group totals the way a proposal keeps prices: each flight leg per
-// person, the stay per night. The flight total is split between the legs in
+// Stores checked prices the way a proposal keeps them: each flight leg per
+// person, the stay per night. The flight price is split between the legs in
 // the proportion research found (half each without one); rounding moves at
-// most a cent per person or per night.
-export function applyGroupTotals<P extends Pick<Proposal, "outbound" | "inbound" | "stays">>(
-  p: P,
-  totals: GroupTotals,
-  nights: number,
-  partySize: number,
-): P {
-  const perPerson = Math.round(totals.flightsCents / partySize);
+// most a cent per night.
+export function applyCheckedPrices<P extends Pick<Proposal, "outbound" | "inbound" | "stays">>(p: P, prices: CheckedPrices, nights: number): P {
   const before = p.outbound.priceCents + p.inbound.priceCents;
-  const outbound = Math.round(before > 0 ? (perPerson * p.outbound.priceCents) / before : perPerson / 2);
+  const outbound = Math.round(before > 0 ? (prices.flightCents * p.outbound.priceCents) / before : prices.flightCents / 2);
   const stay = baseStay(p.stays);
   return {
     ...p,
     outbound: { ...p.outbound, priceCents: outbound },
-    inbound: { ...p.inbound, priceCents: perPerson - outbound },
-    stays: p.stays.map((s) => (s === stay && totals.stayCents !== undefined ? { ...s, nightlyCents: Math.round(totals.stayCents / nights) } : s)),
+    inbound: { ...p.inbound, priceCents: prices.flightCents - outbound },
+    stays: p.stays.map((s) => (s === stay && prices.stayCents !== undefined ? { ...s, nightlyCents: Math.round(prices.stayCents / nights) } : s)),
   };
 }

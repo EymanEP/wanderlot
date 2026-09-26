@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { baseStay, euros, groupFlightsCents, stayTotalCents, type Plan, type Proposal } from "@wanderlot/core";
+import { baseStay, euros, flightPriceCents, stayTotalCents, type Plan, type Proposal } from "@wanderlot/core";
 import { Button, DataRow, Dialog, Field, Notice, TextInput } from "@wanderlot/ui";
 import type { CheckedPrices } from "../data/backend.ts";
 
@@ -22,9 +22,9 @@ const toCents = (text: string): number | null => {
 };
 
 // The organiser checked the real prices (airline, Airbnb, booking site) and
-// types them in the way those sites show them: what the whole group pays for
-// the flights there and back, and for the whole stay. The panel works out
-// each person's share. From then on the proposal shows as checked by hand
+// types them in the way those sites show them: one person's flights there and
+// back, and what the whole group pays for the stay. The panel works out each
+// person's share of the stay. From then on the proposal shows as checked by hand
 // (SPEC §3).
 export function PriceDialog({ proposal: p, plan, onSave, onClose }: PriceDialogProps) {
   const stay = p ? baseStay(p.stays) : undefined;
@@ -36,25 +36,24 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose }: PriceDialogP
 
   useEffect(() => {
     if (!p) return;
-    setFlights(toEuros(groupFlightsCents(p, people)));
+    setFlights(toEuros(flightPriceCents(p)));
     setStayTotal(stay ? toEuros(stayTotalCents(stay, plan.nights)) : "");
     setError(null);
     // Refill each time a different proposal opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id]);
 
-  const flightsCents = toCents(flights);
+  const flightCents = toCents(flights);
   const stayCents = stay ? toCents(stayTotal) : undefined;
   const share = (cents: number | null | undefined) => (cents === null || cents === undefined ? null : Math.round(cents / people));
-  const flightsShare = share(flightsCents);
   const stayShare = share(stayCents);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (flightsCents === null || stayCents === null) return setError("Escribe cada precio en euros, por ejemplo 1044 o 1044,50");
+    if (flightCents === null || stayCents === null) return setError("Escribe cada precio en euros, por ejemplo 174 o 174,50");
     setBusy(true);
     try {
-      await onSave({ flightsCents, ...(stayCents !== undefined ? { stayCents } : {}) });
+      await onSave({ flightCents, ...(stayCents !== undefined ? { stayCents } : {}) });
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -92,24 +91,24 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose }: PriceDialogP
     >
       <form id="precios" onSubmit={submit} className="flex flex-col gap-3.5">
         <span>
-          Pon el total que te piden hoy para los {people}, como lo muestran la aerolínea o Airbnb. Se mostrarán como «Comprobado a mano» durante 72 horas;
-          después toca volver a mirarlos.
+          Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los {people}, como lo muestra Airbnb. Se mostrarán como «Comprobado a
+          mano» durante 72 horas; después toca volver a mirarlos.
         </span>
         {p &&
           euroField(
-            "Vuelos, ida y vuelta · € en total",
-            `${p.outbound.from} → ${p.outbound.to} y vuelta, para ${people} ${people === 1 ? "persona" : "personas"}`,
+            "Vuelo, ida y vuelta · € por persona",
+            `${p.outbound.from} → ${p.outbound.to} y vuelta, una persona`,
             flights,
             setFlights,
           )}
         {stay && euroField("Alojamiento · € en total", `${stay.name} · las ${plan.nights} noches, todo el grupo`, stayTotal, setStayTotal)}
         <dl className="m-0 flex flex-col gap-2" aria-label="Por persona">
-          <DataRow label="Vuelos por persona" value={flightsShare === null ? "—" : euros(flightsShare)} />
+          <DataRow label="Vuelo por persona" value={flightCents === null ? "—" : euros(flightCents)} />
           {stay && <DataRow label="Alojamiento por persona" value={stayShare === null || stayShare === undefined ? "—" : euros(stayShare)} />}
           <DataRow
             variant="highlight"
             label="Total por persona"
-            value={flightsShare === null || stayShare === null ? "—" : euros(flightsShare + (stayShare ?? 0))}
+            value={flightCents === null || stayShare === null ? "—" : euros(flightCents + (stayShare ?? 0))}
           />
         </dl>
         {error && <Notice role="alert">{error}</Notice>}
