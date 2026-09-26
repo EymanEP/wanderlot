@@ -437,7 +437,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `POST` | `/api/session/verify` | anyone | starts a session |
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
-| `GET` | `/api/plans` | member | the trips they're on: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity }` |
+| `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe }` |
 | `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
@@ -449,6 +449,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `PUT` | `/api/admin/plans/:planId/suggestions/:id` | panel | `{ status: new \| researched \| dismissed, proposalId? }` |
 | `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
+| `DELETE` | `/api/admin/plans/:planId` | panel | delete the trip with its ballots, comments, likes, ideas and people; `{ deleted }` (false if it wasn't there). Site API version 6 |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
 | `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted, tally, ballots, result }`: the live count and every ballot for the organiser; `result` once closed |
 | `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
@@ -476,6 +477,8 @@ it). Calls that touch the site go through the admin API above.
 | `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
 | `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
+| `GET` | `/api/trips` | the Viajes page: each trip with its proposal counts, participants and publish status |
+| `DELETE` | `/api/plans/:planId` | delete the trip here and on the site; `409` if the site is older than API version 6, touching nothing |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
 | `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{progress}` and `{proposal}` lines, then `{done}` or `{error}`; `409` when asked to search with a flight API and none is connected; with scope `named`, researches that one place by name (one proposal); with `suggestionId`, researches that friend's idea by name and credits them |
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |

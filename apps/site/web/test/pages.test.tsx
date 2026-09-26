@@ -187,7 +187,15 @@ describe("Signing in", () => {
     await user.clear(screen.getByLabelText("Repítelo"));
     await user.type(screen.getByLabelText("Repítelo"), "4801");
     await user.click(screen.getByRole("button", { name: "Guardar PIN y entrar" }));
+    // In: their trips, to pick one.
+    expect(await screen.findByRole("heading", { level: 1, name: "Tus viajes" })).toBeTruthy();
+    const trip = await screen.findByRole("article", { name: "Noviembre 2026" });
+    expect(within(trip).getByText("Ya has votado")).toBeTruthy();
+    await user.click(trip);
     expect(await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" })).toBeTruthy();
+    // The logo leads back to them.
+    await user.click(screen.getByRole("link", { name: "Tus viajes" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Tus viajes" })).toBeTruthy();
   });
 
   it("explains a used invite and offers signing in", async () => {

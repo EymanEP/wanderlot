@@ -8,6 +8,7 @@ import { usePanel } from "../data/store.tsx";
 const PREVIEW_SITE_URL = import.meta.env.VITE_SITE_URL as string | undefined;
 
 const NAV = [
+  { to: "/", label: "Viajes" },
   { to: "/generar", label: "Generar" },
   { to: "/revisar", label: "Revisar" },
   { to: "/comparativa", label: "Comparativa" },
@@ -21,7 +22,7 @@ export function PanelNav({ className }: { className?: string }) {
   return (
     <nav aria-label="Panel" className={cn("flex items-center gap-1.5", className)}>
       {NAV.map((n) => (
-        <NavLink key={n.to} to={n.to} className={({ isActive }) => chipClasses("nav", isActive)}>
+        <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => chipClasses("nav", isActive)}>
           {n.label}
         </NavLink>
       ))}

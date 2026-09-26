@@ -61,6 +61,15 @@ export class SqlStore implements SiteStore {
     );
   }
 
+  async deletePlan(planId: string): Promise<boolean> {
+    await this.run("delete from comment_likes where comment_id in (select id from comments where plan_id = ?)", planId);
+    await this.run("delete from comments where plan_id = ?", planId);
+    await this.run("delete from ballots where plan_id = ?", planId);
+    await this.run("delete from suggestions where plan_id = ?", planId);
+    await this.run("delete from plan_members where plan_id = ?", planId);
+    return (await this.run("delete from plans where id = ?", planId)) > 0;
+  }
+
   async setStatus(planId: string, status: PlanStatus, fields: { voteDeadline?: string; winnerDestinationId?: string | null } = {}) {
     await this.run(
       `update plans set status = ?, vote_deadline = coalesce(?, vote_deadline), winner_destination_id = ? where id = ?`,

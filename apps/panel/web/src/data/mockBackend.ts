@@ -170,6 +170,27 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       participants.set(id, going);
       return plan;
     },
+    async trips() {
+      const list = await Promise.all(
+        [...entries.values()].map(async ({ plan, proposals }) => {
+          const status = await this.publishStatus(plan.id);
+          return {
+            plan,
+            proposals: proposals.length,
+            approved: proposals.filter((p) => p.review === "approved").length,
+            pending: proposals.filter((p) => p.review === "pending").length,
+            participants: participants.get(plan.id)?.length ?? 0,
+            ...status,
+          };
+        }),
+      );
+      return list.reverse();
+    },
+    async deletePlan(planId) {
+      entries.delete(planId);
+      participants.delete(planId);
+      published.delete(planId);
+    },
     async setParticipants(planId, ids) {
       participants.set(planId, ids);
       setPlan(planId, { partySize: Math.max(1, ids.length) });

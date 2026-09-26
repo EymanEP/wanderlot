@@ -123,6 +123,38 @@ export function createPanel({
   // Newest first.
   app.get("/api/plans", (c) => c.json([...store.list()].reverse()));
 
+  // The trips page: each trip with how far along it is.
+  app.get("/api/trips", (c) =>
+    c.json(
+      [...store.list()].reverse().map((plan) => {
+        const entry = store.get(plan.id)!;
+        const count = (r: Proposal["review"]) => entry.proposals.filter((p) => p.review === r).length;
+        return {
+          plan,
+          proposals: entry.proposals.length,
+          approved: count("approved"),
+          pending: count("pending"),
+          participants: entry.participants?.length ?? 0,
+          publishedAt: entry.published?.at ?? null,
+          changed: entry.published ? entry.published.fingerprint !== snapshotFingerprint(entry) : count("approved") > 0,
+        };
+      }),
+    ),
+  );
+
+  // Deleting a trip removes it here and on the site, with its votes and
+  // comments there. An older site can't delete, so nothing is touched.
+  app.delete("/api/plans/:planId", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    if ((await site.version()) < 6) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe borrar viajes. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
+    await site.deletePlan(planId);
+    store.remove(planId);
+    return c.json({ ok: true });
+  });
+
   // A new trip window, as a draft (SPEC §1).
   app.post("/api/plans", async (c) => {
     const body = NewPlan.safeParse(await c.req.json().catch(() => null));

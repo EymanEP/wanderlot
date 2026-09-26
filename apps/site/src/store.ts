@@ -75,6 +75,8 @@ export interface SiteStore {
   getPlan(id: string): Promise<StoredPlan | undefined>;
   plans(): Promise<(StoredPlan & { id: string })[]>;
   upsertSnapshot(s: Snapshot): Promise<void>;
+  // A trip and everything hanging off it: ballots, comments, likes, ideas, who goes.
+  deletePlan(planId: string): Promise<boolean>;
   setStatus(planId: string, status: PlanStatus, fields?: { voteDeadline?: string; winnerDestinationId?: string | null }): Promise<void>;
 
   // members

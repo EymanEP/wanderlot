@@ -9,6 +9,7 @@ import { NewPlanPage } from "./pages/NewPlanPage.tsx";
 import { VotacionPage } from "./pages/VotacionPage.tsx";
 import { PersonasPage } from "./pages/PersonasPage.tsx";
 import { RevisarPage } from "./pages/RevisarPage.tsx";
+import { TripsPage } from "./pages/TripsPage.tsx";
 
 // Generar, Revisar and Comparativa work on a plan; without one, make one.
 function RequirePlan({ children }: { children: ReactNode }) {
@@ -56,14 +57,14 @@ function RequirePlan({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <Routes>
-      <Route index element={<Navigate to="/generar" replace />} />
+      <Route index element={<TripsPage />} />
       <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
       <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
       <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
       <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
       <Route path="/personas" element={<PersonasPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
-      <Route path="*" element={<Navigate to="/generar" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

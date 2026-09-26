@@ -60,6 +60,11 @@ export class PanelStore {
     return result;
   }
 
+  remove(planId: string) {
+    delete this.state.plans[planId];
+    this.save();
+  }
+
   invite(memberId: string): PendingInvite | undefined {
     return this.state.invites[memberId];
   }

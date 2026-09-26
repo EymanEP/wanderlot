@@ -31,6 +31,43 @@ function renderAt(path: string, tickMs = 2) {
   );
 }
 
+describe("Viajes", () => {
+  it("lists every trip, opens one, edits another and deletes a third", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    expect(await screen.findByRole("heading", { level: 1, name: "Viajes" })).toBeTruthy();
+    const card = (name: string) => screen.getByRole("article", { name });
+    await screen.findByRole("article", { name: "Noviembre 2026" });
+    expect(screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"))).toEqual(["Puente de mayo 2026", "Semana Santa 2027", "Noviembre 2026"]);
+    expect(within(card("Noviembre 2026")).getByText("Borrador")).toBeTruthy();
+    expect(within(card("Puente de mayo 2026")).getByText("Votación cerrada")).toBeTruthy();
+    expect(within(card("Noviembre 2026")).getByText("Abierto")).toBeTruthy();
+    expect(within(card("Noviembre 2026")).getByText(/12 propuestas · 4 aprobadas/)).toBeTruthy();
+    expect(within(card("Semana Santa 2027")).getByText("Borrador")).toBeTruthy();
+
+    // Editing a trip that isn't open leaves the open one alone.
+    await user.click(within(card("Semana Santa 2027")).getByRole("button", { name: "Editar" }));
+    const dialog = () => within(document.querySelector("dialog[open]") as HTMLElement);
+    const name = dialog().getByLabelText("Nombre");
+    await user.clear(name);
+    await user.type(name, "Pascua 2027");
+    await user.click(dialog().getByRole("button", { name: "Guardar" }));
+    expect(await screen.findByRole("article", { name: "Pascua 2027" })).toBeTruthy();
+    expect(within(card("Noviembre 2026")).getByText("Abierto")).toBeTruthy();
+
+    // Deleting asks first.
+    await user.click(within(card("Puente de mayo 2026")).getByRole("button", { name: "Borrar" }));
+    expect(dialog().getByText(/No se puede deshacer/)).toBeTruthy();
+    await user.click(dialog().getByRole("button", { name: "Borrar viaje" }));
+    expect(await screen.findByText("Puente de mayo 2026 borrado")).toBeTruthy();
+    expect(screen.queryByRole("article", { name: "Puente de mayo 2026" })).toBeNull();
+
+    // Opening one with proposals goes to Revisar.
+    await user.click(within(card("Noviembre 2026")).getByRole("button", { name: "Abrir" }));
+    expect(await screen.findByRole("button", { name: /^Publicar/ })).toBeTruthy();
+  });
+});
+
 describe("Generar", () => {
   it("starts from the plan and streams a new search in", async () => {
     const user = userEvent.setup();

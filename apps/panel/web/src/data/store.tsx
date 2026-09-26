@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, PublishStatus, Review, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, PublishStatus, Review, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -51,6 +51,9 @@ export interface PanelApi {
   now: Date;
   selectPlan: (id: string) => Promise<void>;
   createPlan: (p: NewPlan) => Promise<Plan>;
+  trips: () => Promise<TripSummary[]>;
+  // Here and on the site; if it was the open one, the panel moves to another.
+  deletePlan: (id: string) => Promise<void>;
   savePlan: (p: Plan) => Promise<void>;
   setParticipants: (memberIds: string[]) => Promise<void>;
   startGeneration: (opts: SearchOptions) => void;
@@ -200,9 +203,20 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await loadPlan(plan.id);
         return plan;
       },
+      trips: () => backend.trips(),
+      async deletePlan(id) {
+        await backend.deletePlan(id);
+        const rest = state.plans.filter((p) => p.id !== id);
+        patch(() => ({ plans: rest }));
+        if (planId !== id) return;
+        const next = rest.find((p) => p.status !== "closed") ?? rest[0];
+        if (next) await loadPlan(next.id);
+        else patch(() => ({ plan: null, participants: [], proposals: [], editorial: {}, generation: null }));
+      },
       async savePlan(p) {
         const plan = await backend.savePlan(p);
-        patch((s) => ({ plan, plans: s.plans.map((x) => (x.id === plan.id ? plan : x)) }));
+        // Editing another trip from Viajes leaves the open one as it is.
+        patch((s) => ({ plan: s.plan?.id === plan.id ? plan : s.plan, plans: s.plans.map((x) => (x.id === plan.id ? plan : x)) }));
       },
       async setParticipants(ids) {
         const entry = await backend.setParticipants(need(), ids);

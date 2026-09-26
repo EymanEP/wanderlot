@@ -69,6 +69,7 @@ export interface SiteClient {
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
   setPlanMembers(planId: string, memberIds: string[]): Promise<void>;
+  deletePlan(planId: string): Promise<void>;
   suggestions(planId: string): Promise<SuggestionView[]>;
   setSuggestion(planId: string, id: string, status: SuggestionView["status"], proposalId?: string): Promise<SuggestionView[]>;
   vote(planId: string): Promise<VoteState>;
@@ -120,6 +121,7 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     setSuggestion: (planId, id, status, proposalId) =>
       call<SuggestionView[]>(`/plans/${planId}/suggestions/${encodeURIComponent(id)}`, "PUT", { status, ...(proposalId ? { proposalId } : {}) }),
     setPlanMembers: async (planId, ids) => void (await call(`/plans/${planId}/members`, "PUT", ids)),
+    deletePlan: async (planId) => void (await call(`/plans/${planId}`, "DELETE")),
     vote: (planId) => call<VoteState>(`/plans/${planId}/vote`, "GET"),
     closeVote: (planId) => call<VoteState>(`/plans/${planId}/close`, "POST"),
     pickWinner: (planId, destinationId) => call<VoteState>(`/plans/${planId}/winner`, "PUT", { destinationId }),

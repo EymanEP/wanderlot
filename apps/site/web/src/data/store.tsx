@@ -49,11 +49,6 @@ export function usePlans(): PlanSummary[] | null {
   return plans;
 }
 
-// The plan "/" should open: the one being voted on, else the newest.
-export function currentPlan(plans: PlanSummary[]): PlanSummary | undefined {
-  return plans.find((p) => p.status === "voting") ?? plans[0];
-}
-
 // --- one plan ----------------------------------------------------------------
 
 export interface SiteApi {

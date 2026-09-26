@@ -174,6 +174,43 @@ describe("panel → site", () => {
     expect((await status()).changed).toBe(false);
   });
 
+  it("lists trips with how far along they are, and deletes one here and on the site", async () => {
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/proposals/nap/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
+    const other = await json("/api/plans", "POST", { name: "Puente", origin: "MAD", dateFrom: "2026-12-05", nights: 3, flexDays: 0, partySize: 4, maxPriceCents: null, participants: [] });
+
+    const trips = (await json("/api/trips")).data;
+    expect(trips.map((t: any) => [t.plan.id, t.proposals, t.approved, t.pending, t.publishedAt !== null, t.changed])).toEqual([
+      [other.data.id, 0, 0, 0, false, false],
+      [PLAN, 3, 2, 1, true, false],
+    ]);
+
+    // An older site can't delete: nothing is touched.
+    const oldSite = createPanel({
+      store: new PanelStore(null),
+      // Never called: deleting doesn't search.
+      flights: {} as FlightProvider,
+      research: {} as ResearchProvider,
+      photos: [],
+      site: { ...siteClient(SITE, ADMIN, async (input, init) => site.request(String(input), init)), version: async () => 5 },
+      siteUrl: SITE,
+      now: () => clock,
+    });
+    await oldSite.request(`/api/plans/${PLAN}`, { method: "PUT", headers: { "content-type": "application/json", origin: "http://127.0.0.1:5151" }, body: JSON.stringify((await json(`/api/plans/${PLAN}`)).data.plan) });
+    const refused = await oldSite.request(`/api/plans/${PLAN}`, { method: "DELETE", headers: { origin: "http://127.0.0.1:5151" } });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as any).error).toMatch(/deploy:site/);
+
+    const deleted = await json(`/api/plans/${PLAN}`, "DELETE");
+    expect(deleted.data).toEqual({ ok: true });
+    expect((await json(`/api/plans/${PLAN}`)).status).toBe(404);
+    expect((await json("/api/trips")).data.map((t: any) => t.plan.id)).toEqual([other.data.id]);
+    // Gone from the site too: deleting it there again finds nothing.
+    expect(await (await site.request(`/api/admin/plans/${PLAN}`, { method: "DELETE", headers: { authorization: `Bearer ${ADMIN}` } })).json()).toEqual({ deleted: false });
+  });
+
   it("publishes only what was approved, confirming unverified ones, then opens the vote", async () => {
     await call(`/api/plans/${PLAN}/generate`, "POST", {
       source: "claude",
