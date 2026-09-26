@@ -431,6 +431,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     await next();
   });
 
+  // The organiser deleted the trip in the panel: it goes, with its votes,
+  // comments and ideas. Deleting one that isn't here is fine.
+  admin.delete("/plans/:planId", async (c) => c.json({ deleted: await store.deletePlan(c.req.param("planId")) }));
+
   admin.put("/plans/:planId", async (c) => {
     const parsed = Snapshot.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid snapshot", issues: parsed.error.issues }, 400);
@@ -630,15 +634,27 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     await next();
   });
 
-  // Every published plan, newest first, for the plan switcher and footer.
+  // Every trip this person is on, newest first, for the trips page.
   api.get("/", async (c) => {
     const list: PlanSummary[] = [];
-    const mine = new Set(await store.planIdsFor(c.get("member").id));
+    const me = c.get("member").id;
+    const mine = new Set(await store.planIdsFor(me));
     for (const p of (await store.plans()).filter((x) => mine.has(x.id))) {
       const settled = (await settle(p.id))!;
       const winner = settled.snapshot.destinations.find((d) => d.id === settled.winnerDestinationId);
       const { plan } = settled.snapshot;
-      list.push({ id: p.id, name: plan.name, status: settled.status, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: settled.partySize, winnerCity: winner?.place.city ?? null });
+      list.push({
+        id: p.id,
+        name: plan.name,
+        status: settled.status,
+        dateFrom: plan.dateFrom,
+        dateTo: plan.dateTo,
+        partySize: settled.partySize,
+        winnerCity: winner?.place.city ?? null,
+        destinations: settled.snapshot.destinations.length,
+        voteDeadline: settled.voteDeadline ?? null,
+        votedByMe: settled.ballots.some((b) => b.memberId === me),
+      });
     }
     return c.json(list);
   });

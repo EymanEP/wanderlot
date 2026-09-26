@@ -11,6 +11,7 @@ const FRIENDS = ["ana", "bea", "carlos", "dani", "eva", "fer"];
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
 let clock: Date;
+let store: SqliteStore;
 let app: ReturnType<typeof createApp>;
 
 const HEADERS = { "content-type": "application/json", "user-agent": UA };
@@ -62,7 +63,8 @@ async function join(memberId: string): Promise<string> {
 
 beforeEach(async () => {
   clock = new Date("2026-10-10T12:00:00Z");
-  app = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, indexHtml: "<p>ui</p>" });
+  store = new SqliteStore();
+  app = createApp({ store, adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, indexHtml: "<p>ui</p>" });
   expect((await admin("/members", "PUT", FRIENDS.map((id) => ({ id, name: id[0]!.toUpperCase() + id.slice(1) })))).status).toBe(200);
 });
 
@@ -240,7 +242,18 @@ describe("with everyone signed in", () => {
       for (const f of FRIENDS) await as(f, `/${PLAN}/ballot`, "PUT", { ranking: ["nap", "lis", "opo"] });
       const list = (await (await as("ana", "")).json()) as any[];
       expect(list).toEqual([
-        { id: PLAN, name: "Noviembre 2026", status: "closed", dateFrom: "2026-11-07", dateTo: "2026-11-14", partySize: 6, winnerCity: "nap" },
+        {
+          id: PLAN,
+          name: "Noviembre 2026",
+          status: "closed",
+          dateFrom: "2026-11-07",
+          dateTo: "2026-11-14",
+          partySize: 6,
+          winnerCity: "nap",
+          destinations: 4,
+          voteDeadline: "2026-10-20T20:00:00Z",
+          votedByMe: true,
+        },
       ]);
       const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
       expect(view.myBallot).toEqual({ ranking: ["nap", "lis", "opo"], updatedAt: clock.toISOString() });
@@ -248,6 +261,27 @@ describe("with everyone signed in", () => {
   });
 
   describe("publishing", () => {
+    it("deletes a trip with its votes, comments, likes, ideas and people", async () => {
+      await admin(`/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["lis", "nap", "opo"] });
+      const c = (await (await as("ana", `/${PLAN}/comments`, "POST", { destinationId: "lis", body: "¡Sí!" })).json()) as any;
+      await as("ana", `/${PLAN}/comments`, "POST", { destinationId: "lis", body: "Yo también", parentId: c.id });
+      await as("bea", `/${PLAN}/comments/${c.id}/like`, "PUT", { on: true });
+      await as("ana", `/${PLAN}/suggestions`, "POST", { place: "Oporto" });
+
+      expect(await (await admin(`/plans/${PLAN}`, "DELETE")).json()).toEqual({ deleted: true });
+      expect((await as("ana", `/${PLAN}`)).status).toBe(404);
+      expect(await (await as("ana", "")).json()).toEqual([]);
+      expect(await store.ballots(PLAN)).toEqual([]);
+      expect(await store.comments(PLAN)).toEqual([]);
+      expect(await store.suggestions(PLAN)).toEqual([]);
+      expect(await store.planMembers(PLAN)).toEqual([]);
+      // Again, or one that never existed: nothing to do, not an error.
+      expect(await (await admin(`/plans/${PLAN}`, "DELETE")).json()).toEqual({ deleted: false });
+      // And it can be published afresh.
+      expect((await admin(`/plans/${PLAN}`, "PUT", snapshot(four()))).status).toBe(200);
+    });
+
     it("rejects an invalid snapshot", async () => {
       expect((await admin(`/plans/${PLAN}`, "PUT", snapshot([destination("lis", { totalPerPersonCents: -1 })]))).status).toBe(400);
     });

@@ -68,7 +68,7 @@ try {
 
   // 1. First run: no plans yet.
   await org.goto(PANEL);
-  await org.getByText("Todavía no hay ningún plan").waitFor();
+  await org.getByText("Todavía no hay ningún viaje").waitFor();
   await org.getByRole("link", { name: "Crear el primero" }).click();
   await org.getByLabel("Nombre").fill("Noviembre 2026");
   // Two clicks on next month's calendar: leave on the 10th, back on the 15th.
@@ -141,6 +141,7 @@ try {
   await ana.getByLabel("Tu PIN").fill("4801");
   await ana.getByLabel("Repítelo").fill("4801");
   await ana.getByRole("button", { name: "Guardar PIN y entrar" }).click();
+  await ana.getByRole("link", { name: /Noviembre 2026/ }).click();
   await ana.getByRole("heading", { level: 1, name: "Noviembre 2026" }).waitFor();
   for (const city of ["Lisboa", "Nápoles", "Marrakech"]) await ana.getByRole("link", { name: city }).first().waitFor();
   assert.equal(await ana.getByText("Lo escribió Claude").count(), 3);

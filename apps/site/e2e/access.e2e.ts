@@ -77,6 +77,8 @@ try {
   await page.getByLabel("Tu PIN").fill("4801");
   await page.getByLabel("Repítelo").fill("4801");
   await page.getByRole("button", { name: "Guardar PIN y entrar" }).click();
+  await page.getByRole("heading", { level: 1, name: "Tus viajes" }).waitFor();
+  await page.getByRole("link", { name: /Noviembre 2026/ }).click();
   await page.waitForURL(`${ORIGIN}/p/noviembre-2026`);
   assert.deepEqual(await (await page.request.get(`${ORIGIN}/api/session`)).json(), { member: { id: "ana", name: "Ana María" } });
   console.log("✓ invite → PIN → signed in");
@@ -133,12 +135,17 @@ try {
   const beaInvite = (await admin("/members/bea/invite", "POST")).token;
   await bea.goto(`${ORIGIN}/i/${beaInvite}`);
   await bea.getByRole("button", { name: "Prefiero Face ID o huella en este dispositivo" }).click();
-  await bea.waitForURL(/\/p\//);
+  // Her two trips, to pick one.
+  await bea.getByRole("heading", { level: 1, name: "Tus viajes" }).waitFor();
+  assert.equal(await bea.getByRole("article").count(), 2);
+  await bea.getByRole("link", { name: /Puente/ }).click();
+  await bea.waitForURL(/\/p\/puente/);
   await bea.getByRole("button", { name: "Tu cuenta" }).click();
   await bea.getByRole("button", { name: "Cerrar sesión en este dispositivo" }).click();
   await bea.getByRole("heading", { name: "Entra en Grupo E2E" }).waitFor();
   await bea.getByRole("button", { name: "Entrar con passkey (Face ID o huella)" }).click();
-  await bea.waitForURL(/\/p\//);
+  // Back to the trip she was on when she signed out.
+  await bea.waitForURL(/\/p\/puente/);
   const beaTrips = (await (await bea.request.get(`${ORIGIN}/api/plans`)).json()) as { id: string }[];
   assert.deepEqual(beaTrips.map((t) => t.id).sort(), ["noviembre-2026", "puente"]);
   console.log("✓ passkey still works for whoever wants it; Bea sees both her trips");

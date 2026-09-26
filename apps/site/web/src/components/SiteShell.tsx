@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { NavLink, Outlet, useLocation, useParams } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useParams } from "react-router";
 import { rangeLabel } from "@wanderlot/core";
 import { Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
 import { AccountMenu } from "./AccountMenu.tsx";
@@ -45,7 +45,11 @@ function Chrome() {
     <Page>
       <TopBar
         variant="site"
-        brand={<Brand size="lg" sub={group.groupName} />}
+        brand={
+          <Link to="/" aria-label="Tus viajes" className="text-ink no-underline hover:text-ink">
+            <Brand size="lg" sub={group.groupName} />
+          </Link>
+        }
         center={<InfoPill items={[plan.name, rangeLabel(plan.dateFrom, plan.dateTo), `${plan.partySize} personas`]} />}
         nav={
           <nav aria-label="Secciones" className="hidden items-center gap-6 md:flex">

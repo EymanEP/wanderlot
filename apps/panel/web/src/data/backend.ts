@@ -71,6 +71,17 @@ export interface VoteView extends VoteState {
 
 export type { CheckedPrices };
 
+export interface TripSummary {
+  plan: Plan;
+  proposals: number;
+  approved: number;
+  pending: number;
+  participants: number;
+  publishedAt: string | null;
+  // Something that would go to the site changed since the last publish.
+  changed: boolean;
+}
+
 // When the trip was last published (null: never), and whether anything that
 // would go to the site has changed since.
 export interface PublishStatus {
@@ -88,6 +99,10 @@ export interface PanelBackend {
   plans(): Promise<Plan[]>;
   plan(planId: string): Promise<PlanEntry | null>;
   createPlan(p: NewPlan): Promise<Plan>;
+  // The trips page: each trip with how far along it is.
+  trips(): Promise<TripSummary[]>;
+  // Here and on the site, with its votes and comments there.
+  deletePlan(planId: string): Promise<void>;
   savePlan(p: Plan): Promise<Plan>;
   setParticipants(planId: string, memberIds: string[]): Promise<PlanEntry>;
   // Calls onProposal as each one arrives; resolves when the search ends.
@@ -146,6 +161,8 @@ export const httpBackend: PanelBackend = {
     }
   },
   createPlan: (p) => call<Plan>("/api/plans", "POST", p),
+  trips: () => call<TripSummary[]>("/api/trips"),
+  deletePlan: async (planId) => void (await call(`/api/plans/${enc(planId)}`, "DELETE")),
   savePlan: (p) => call<Plan>(`/api/plans/${enc(p.id)}`, "PUT", p),
   setParticipants: (planId, ids) => call<PlanEntry>(`/api/plans/${enc(planId)}/participants`, "PUT", ids),
   async generate(planId, opts, onProposal, signal, onStep) {

@@ -131,6 +131,9 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         dateTo: p.dateTo,
         partySize: p.partySize,
         winnerCity: p.id === plan.id ? (closed ? "Nápoles" : null) : p.winnerDestinationId ? placeName(p.winnerDestinationId) : null,
+        destinations: p.id === plan.id ? mockDestinations.length : 0,
+        voteDeadline: p.id === plan.id ? (plan.voteDeadline ?? null) : null,
+        votedByMe: p.id === plan.id && ballots.some((b) => b.memberId === ME.id),
       }));
     },
     async plan(planId) {

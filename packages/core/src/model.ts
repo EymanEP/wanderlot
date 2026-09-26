@@ -209,6 +209,11 @@ export const PlanSummary = z.object({
   dateTo: isoDate,
   partySize: z.number().int(),
   winnerCity: z.string().nullable(),
+  // For the trips page: how many destinations, until when the vote runs and
+  // whether this person has voted. Older sites leave them out.
+  destinations: z.number().int().optional(),
+  voteDeadline: isoDateTime.nullable().optional(),
+  votedByMe: z.boolean().optional(),
 });
 export type PlanSummary = z.infer<typeof PlanSummary>;
 
@@ -231,4 +236,5 @@ export interface SuggestionView {
 // The site's admin API version. Bumped whenever the panel starts needing
 // something new from the site, so it can tell the organiser to redeploy
 // (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
-export const SITE_API_VERSION = 5;
+// 6: deleting a trip.
+export const SITE_API_VERSION = 6;
