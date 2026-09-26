@@ -186,3 +186,25 @@ describe("panel → site", () => {
     expect(r.data.stale).toHaveLength(2);
   });
 });
+
+describe("plans and settings", () => {
+  it("creates draft plans with unique ids and newest first", async () => {
+    const input = { name: "Semana Santa 2027", origin: "MAD", dateFrom: "2027-03-23", nights: 5, flexDays: 1, partySize: 6, maxPriceCents: 45000 };
+    const a = await json("/api/plans", "POST", input);
+    expect(a.status).toBe(201);
+    expect(a.data).toMatchObject({ id: "semana-santa-2027", dateTo: "2027-03-28", status: "draft" });
+    const b = await json("/api/plans", "POST", input);
+    expect(b.data.id).toBe("semana-santa-2027-2");
+    const list = (await json("/api/plans")).data as any[];
+    expect(list.map((p) => p.id).slice(0, 2)).toEqual(["semana-santa-2027-2", "semana-santa-2027"]);
+    expect((await json("/api/plans", "POST", { ...input, nights: 4 })).status).toBe(400);
+  });
+
+  it("passes group settings through to the site and reports status", async () => {
+    const saved = await json("/api/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" });
+    expect(saved.data).toEqual({ groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" });
+    expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
+    const status = (await json("/api/status")).data;
+    expect(status.site).toEqual({ url: SITE, reachable: true });
+  });
+});

@@ -161,3 +161,20 @@ const AIRPORT_CITY: Record<string, string> = {
 export function airportCity(iata: string): string {
   return AIRPORT_CITY[iata] ?? iata;
 }
+
+// Adds days to a YYYY-MM-DD date.
+export function addDaysIso(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+// "Semana Santa 2027" → "semana-santa-2027"
+export function slugify(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 60);
+}

@@ -12,10 +12,12 @@ export interface ReviewCardProps {
   verifying: boolean;
   onReview: (review: Review) => void;
   onVerify: () => void;
+  // Whether a flight API is configured to verify against.
+  canVerify: boolean;
 }
 
 // A proposal as the organiser judges it: photo, provenance, facts, decision.
-export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify }: ReviewCardProps) {
+export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify }: ReviewCardProps) {
   const [showSources, setShowSources] = useState(false);
   const trust = trustOf(p, now);
   const approved = p.review === "approved";
@@ -106,17 +108,19 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             ) : (
               <>
                 <Button onClick={() => onReview("discarded")}>Descartar</Button>
-                {trust === "unverified" ? (
+                {trust === "unverified" && !approved && canVerify && (
                   <Button variant="warning" onClick={onVerify} disabled={verifying}>
                     {verifying ? "Verificando…" : "Verificar con la API"}
                   </Button>
-                ) : approved ? (
+                )}
+                {approved ? (
                   <Button variant="primary" icon={<CheckIcon size={16} />} aria-pressed onClick={() => onReview("pending")}>
                     Aprobada
                   </Button>
                 ) : (
-                  <Button variant="soft" onClick={() => onReview("approved")}>
-                    Aprobar
+                  // Unverified ones can go out too, labelled (SPEC §3); publishing asks first.
+                  <Button variant={trust === "unverified" && canVerify ? "secondary" : "soft"} onClick={() => onReview("approved")}>
+                    {trust === "unverified" ? "Aprobar sin verificar" : "Aprobar"}
                   </Button>
                 )}
               </>

@@ -1,10 +1,11 @@
 import { deadlineLabel, longDate, relativeTime } from "@wanderlot/core";
-import type { MockAccess, MockMember } from "@wanderlot/mocks";
+import type { Access } from "../data/backend.ts";
+import type { Person } from "../data/store.tsx";
 import { Avatar, Badge, Button, Card, type BadgeTone } from "@wanderlot/ui";
 
 export type PersonState = "inside" | "pending" | "expired" | "none";
 
-export function personState(a: MockAccess): PersonState {
+export function personState(a: Access): PersonState {
   if (a.passkeys.length > 0) return "inside";
   if (a.invite?.status === "valid") return "pending";
   if (a.invite && a.invite.status !== "used") return "expired";
@@ -19,8 +20,8 @@ const BADGE: Record<PersonState, { label: string; tone: BadgeTone }> = {
 };
 
 export interface PersonRowProps {
-  member: MockMember;
-  access: MockAccess;
+  member: Person;
+  access: Access;
   now: Date;
   onInvite: () => void;
   onCopy: (url: string) => void;
@@ -42,7 +43,7 @@ export function PersonRow({ member: m, access: a, now, onInvite, onCopy, onClose
         </div>
         <span className="text-[13px] text-ink-2">
           {state === "inside" &&
-            `${a.passkeys.map((p) => p.device).join(" y ")}${lastSeen ? ` · última vez ${relativeTime(lastSeen, now)}` : " · sin sesión abierta"}`}
+            `${a.passkeys.map((p) => p.device ?? "Un dispositivo").join(" y ")}${lastSeen ? ` · última vez ${relativeTime(lastSeen, now)}` : " · sin sesión abierta"}`}
           {state === "pending" && `Invitación enviada el ${longDate(a.invite!.createdAt)} · caduca el ${deadlineLabel(a.invite!.expiresAt)}`}
           {state === "expired" && `Su invitación caducó el ${longDate(a.invite!.expiresAt)} sin usarse`}
           {state === "none" && "Todavía no le has mandado invitación"}

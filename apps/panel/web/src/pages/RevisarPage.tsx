@@ -3,7 +3,7 @@ import { useLocation } from "react-router";
 import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
-import { useApproved, useCounts, usePanel, type Review } from "../data/store.tsx";
+import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
 
 type Filter = "all" | Review;
@@ -19,7 +19,7 @@ export function RevisarPage() {
   const [sort, setSort] = useState<Sort>("price");
   const [hideUnverified, setHideUnverified] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const { plan } = state;
+  const plan = usePlan();
 
   // Arriving from Generar's "Revisar" link: scroll to that card.
   useEffect(() => {
@@ -42,17 +42,25 @@ export function RevisarPage() {
 
   const risky = approved.filter((p) => trustOf(p, now) !== "verified");
 
-  const doPublish = () => {
+  const [publishing, setPublishing] = useState(false);
+  const doPublish = async () => {
     setConfirming(false);
-    publish();
-    toast(`${approved.length} destinos publicados en el sitio (simulado)`);
+    setPublishing(true);
+    try {
+      const n = await publish();
+      toast(`${n} ${n === 1 ? "destino publicado" : "destinos publicados"} en el sitio`);
+    } catch (e) {
+      toast(`No se pudo publicar: ${(e as Error).message}`);
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const publishButton = (
     <Button
       variant="primary"
       icon={<ArrowUpIcon size={17} strokeWidth={1.9} />}
-      disabled={approved.length === 0}
+      disabled={approved.length === 0 || publishing}
       onClick={() => (risky.length ? setConfirming(true) : doPublish())}
     >
       Publicar {approved.length} {approved.length === 1 ? "aprobada" : "aprobadas"}
@@ -109,8 +117,11 @@ export function RevisarPage() {
                 plan={plan}
                 now={now}
                 verifying={state.verifying.includes(p.id)}
+                canVerify={state.status?.flights !== "none"}
                 onReview={(r) => setReview(p.id, r)}
-                onVerify={() => verify(p.id).then(() => toast(`${p.place.city}: verificado con la API`))}
+                onVerify={() =>
+                  verify(p.id).then((r) => toast(r.verified ? `${p.place.city}: verificado con la API` : `${p.place.city}: ${r.reason ?? "no se pudo verificar"}`))
+                }
               />
             ))}
           </section>

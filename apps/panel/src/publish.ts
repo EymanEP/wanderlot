@@ -1,6 +1,6 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
-import { Snapshot, totalPerPersonCents, trustState, type Destination } from "@wanderlot/core";
+import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings } from "@wanderlot/core";
 import type { PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
@@ -53,6 +53,8 @@ export interface MemberStatus {
 }
 
 export interface SiteClient {
+  settings(): Promise<GroupSettings>;
+  putSettings(s: GroupSettings): Promise<GroupSettings>;
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
   putMembers(members: { id: string; name: string }[]): Promise<void>;
@@ -75,6 +77,8 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     return data as T;
   }
   return {
+    settings: () => call<GroupSettings>("/settings", "GET"),
+    putSettings: (s) => call<GroupSettings>("/settings", "PUT", s),
     publish: async (s) => void (await call(`/plans/${s.plan.id}`, "PUT", s)),
     openVote: async (planId, deadline) => void (await call(`/plans/${planId}/open-vote`, "POST", { deadline })),
     putMembers: async (members) => void (await call("/members", "PUT", members)),

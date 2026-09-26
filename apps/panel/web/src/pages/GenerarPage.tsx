@@ -1,29 +1,55 @@
 import { useState } from "react";
-import { Badge, Button, Heading, useToast } from "@wanderlot/ui";
+import { Badge, Button, Heading, Notice, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { ProposalRow, ProposalRowLoading } from "../components/ProposalRow.tsx";
-import { DEFAULT_SEARCH, SearchForm, rangeSummary, type SearchValues } from "../components/SearchForm.tsx";
-import { usePanel } from "../data/store.tsx";
+import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
+import { usePanel, usePlan } from "../data/store.tsx";
 
 const STOPS_LABEL = { direct: "solo directos", one: "máximo 1 escala", any: "con o sin escalas" };
+const COUNT = 12;
 
 export function GenerarPage() {
-  const { state, now, startGeneration, stopGeneration, verify } = usePanel();
+  const { state, now, startGeneration, stopGeneration, verify, savePlan } = usePanel();
+  const plan = usePlan();
   const toast = useToast();
-  const [search, setSearch] = useState<SearchValues>(DEFAULT_SEARCH);
-  const { generation, proposals, plan } = state;
-  const shown = proposals.slice(0, generation.shown);
+  const { generation, proposals, status } = state;
+  const initial = searchFromPlan(plan);
+  const running = generation?.running ?? false;
+  const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
 
-  const onSubmit = (v: SearchValues) => {
-    setSearch(v);
-    startGeneration();
+  const onSubmit = async (v: SearchValues) => {
+    // Dates, people, budget and origin belong to the plan: save them first.
+    try {
+      await savePlan({
+        ...plan,
+        origin: originCode(v.origin, plan.origin),
+        dateFrom: v.start,
+        dateTo: new Date(Date.parse(`${v.start}T12:00:00Z`) + v.nights * 86_400_000).toISOString().slice(0, 10),
+        nights: v.nights,
+        flexDays: v.flexDays,
+        partySize: v.people,
+        maxPriceCents: v.maxPrice * 100,
+      });
+    } catch (e) {
+      return toast(`No se pudo guardar el plan: ${(e as Error).message}`);
+    }
+    setStops(v.stops);
+    startGeneration({
+      source: v.source,
+      scope: v.scope === "place" ? { kind: "place", iata: originCode(v.place, "XXX") } : v.scope === "europe" ? { kind: "europe" } : { kind: "anywhere" },
+      stops: v.stops,
+      estimateStays: v.estimateStays,
+      suggestThings: v.suggestThings,
+      count: COUNT,
+    });
   };
 
   return (
     <PanelShell>
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
-          <SearchForm onSubmit={onSubmit} count={generation.total} />
+          {/* Keyed so switching plans resets the form to the new plan. */}
+          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} running={running} flightsConnected={status?.flights !== "none"} />
         </div>
 
         <section aria-labelledby="resultados" className="flex min-w-0 flex-1 flex-col gap-[18px] bg-canvas p-4 sm:p-7">
@@ -33,35 +59,52 @@ export function GenerarPage() {
                 Propuestas generadas
               </Heading>
               <span className="text-sm text-muted">
-                {search.origin.split(" · ")[0]} · {rangeSummary(search)} · {search.people} personas · {STOPS_LABEL[search.stops]}
+                {plan.name} · {rangeSummary(initial)} · {plan.partySize} personas · {STOPS_LABEL[stops]}
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-muted tabular-nums" aria-live="polite">
-                {generation.shown} / {generation.total}
-              </span>
-              {generation.running ? (
-                <Button onClick={stopGeneration}>Detener</Button>
-              ) : (
-                <Badge tone={generation.shown === generation.total ? "accent" : "neutral"} size="md">
-                  {generation.shown === generation.total ? "Búsqueda terminada" : "Búsqueda detenida"}
-                </Badge>
+              {generation && (
+                <span className="text-sm font-bold text-muted tabular-nums" aria-live="polite">
+                  {generation.running || generation.stopped ? `${generation.received} / ${generation.requested}` : `${generation.received} propuestas`}
+                </span>
               )}
+              {running ? (
+                <Button onClick={stopGeneration}>Detener</Button>
+              ) : generation && !generation.error ? (
+                <Badge tone={generation.stopped ? "neutral" : "accent"} size="md">
+                  {generation.stopped ? "Búsqueda detenida" : "Búsqueda terminada"}
+                </Badge>
+              ) : null}
             </div>
           </div>
 
+          {generation?.error && <Notice>La búsqueda se cortó: {generation.error}</Notice>}
+          {status?.research === "none" && (
+            <Notice tone="neutral">
+              No encuentro el comando <code>claude</code> ni una clave de Anthropic en este ordenador. Ejecuta <code>npm run setup</code> para configurarlo.
+            </Notice>
+          )}
+
           <div className="flex flex-col gap-2.5" aria-live="polite">
-            {shown.map((p) => (
+            {proposals.length === 0 && !running && (
+              <p className="m-0 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
+                Todavía no hay propuestas para {plan.name}. Ajusta la búsqueda y pulsa «Generar».
+              </p>
+            )}
+            {proposals.map((p) => (
               <ProposalRow
                 key={p.id}
                 proposal={p}
                 plan={plan}
                 now={now}
                 verifying={state.verifying.includes(p.id)}
-                onVerify={() => verify(p.id).then(() => toast(`${p.place.city}: verificado con la API`))}
+                canVerify={status?.flights !== "none"}
+                onVerify={() =>
+                  verify(p.id).then((r) => toast(r.verified ? `${p.place.city}: verificado con la API` : `${p.place.city}: ${r.reason ?? "no se pudo verificar"}`))
+                }
               />
             ))}
-            {generation.running && <ProposalRowLoading />}
+            {running && <ProposalRowLoading />}
           </div>
 
           <p className="m-0 text-[13px] text-muted">

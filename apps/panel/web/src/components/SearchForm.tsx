@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { rangeLabel } from "@wanderlot/core";
+import { airportCity, rangeLabel, type Plan } from "@wanderlot/core";
 import {
   Button,
   Calendar,
@@ -40,21 +40,29 @@ export interface SearchValues {
   provider: Provider;
 }
 
-export const DEFAULT_SEARCH: SearchValues = {
-  origin: "Madrid · MAD",
-  scope: "any",
-  place: "",
-  start: "2026-11-07",
-  nights: 7,
-  flexDays: 0,
-  people: 6,
-  maxPrice: 420,
-  stops: "direct",
-  estimateStays: true,
-  suggestThings: true,
-  source: "api",
-  provider: "duffel",
-};
+// The form starts from the plan; dates, people and budget are saved back to it.
+export function searchFromPlan(plan: Plan): SearchValues {
+  return {
+    origin: `${airportCity(plan.origin)} · ${plan.origin}`,
+    scope: "any",
+    place: "",
+    start: plan.dateFrom,
+    nights: plan.nights,
+    flexDays: plan.flexDays,
+    people: plan.partySize,
+    maxPrice: Math.round(plan.maxPriceCents / 100),
+    stops: "direct",
+    estimateStays: true,
+    suggestThings: true,
+    source: "api",
+    provider: "duffel",
+  };
+}
+
+// "Madrid · MAD" or "mad" → "MAD"
+export function originCode(text: string, fallback: string): string {
+  return /([A-Za-z]{3})\s*$/.exec(text.trim())?.[1]?.toUpperCase() ?? fallback;
+}
 
 const NIGHTS = [3, 5, 7, 10] as const;
 const FLEX = [
@@ -67,9 +75,17 @@ export function rangeSummary(v: SearchValues): string {
   return `${rangeLabel(v.start, addDays(v.start, v.nights))} · ${v.nights} noches`;
 }
 
-export function SearchForm({ onSubmit, count = 12 }: { onSubmit: (v: SearchValues) => void; count?: number }) {
-  const [v, setV] = useState(DEFAULT_SEARCH);
-  const [month, setMonth] = useState({ year: 2026, month0: 10 });
+export interface SearchFormProps {
+  initial: SearchValues;
+  onSubmit: (v: SearchValues) => void;
+  count?: number;
+  running?: boolean;
+  flightsConnected: boolean;
+}
+
+export function SearchForm({ initial, onSubmit, count = 12, running, flightsConnected }: SearchFormProps) {
+  const [v, setV] = useState(initial);
+  const [month, setMonth] = useState({ year: Number(initial.start.slice(0, 4)), month0: Number(initial.start.slice(5, 7)) - 1 });
   const set = <K extends keyof SearchValues>(k: K, value: SearchValues[K]) => setV((s) => ({ ...s, [k]: value }));
 
   const submit = (e: FormEvent) => {
@@ -179,12 +195,12 @@ export function SearchForm({ onSubmit, count = 12 }: { onSubmit: (v: SearchValue
               { value: "kiwi", label: "Kiwi · Tequila" },
             ]}
           />
-          <span className="shrink-0 rounded-full bg-surface px-3 py-2 text-xs font-semibold text-muted">Sin conectar</span>
+          <span className="shrink-0 rounded-full bg-surface px-3 py-2 text-xs font-semibold text-muted">{flightsConnected ? "Conectado" : "Sin conectar"}</span>
         </div>
       </Fieldset>
 
-      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />}>
-        Generar {count} propuestas
+      <Button type="submit" variant="primary" size="lg" block icon={<SearchIcon size={18} />} disabled={running}>
+        {running ? "Buscando…" : `Generar ${count} propuestas`}
       </Button>
     </form>
   );

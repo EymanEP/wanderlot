@@ -14,7 +14,8 @@
     "dev:site": "npm run dev -w @wanderlot/site",
     "setup": "node scripts/setup.mjs",
     "deploy:site": "node scripts/deploy-site.mjs",
-    "panel": "npm run build -w @wanderlot/panel && npm run start -w @wanderlot/panel"
+    "panel": "npm run build -w @wanderlot/panel && npm run start -w @wanderlot/panel",
+    "test:e2e": "npm run build -w @wanderlot/site -w @wanderlot/panel && tsx e2e/roundtrip.e2e.ts && npm run test:e2e -w @wanderlot/site"
   },
   "engines": {
     "node": ">=22.13"

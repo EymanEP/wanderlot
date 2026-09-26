@@ -10,10 +10,11 @@ export interface ProposalRowProps {
   now: Date;
   verifying: boolean;
   onVerify: () => void;
+  canVerify: boolean;
 }
 
 // One result in Generar's list, as it arrives.
-export function ProposalRow({ proposal: p, plan, now, verifying, onVerify }: ProposalRowProps) {
+export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVerify }: ProposalRowProps) {
   const trust = trustOf(p, now);
   return (
     <Card as="article" variant="flat" padding="none" className="flex flex-wrap items-center gap-x-[18px] gap-y-3 px-[18px] py-4 sm:flex-nowrap">
@@ -33,7 +34,7 @@ export function ProposalRow({ proposal: p, plan, now, verifying, onVerify }: Pro
         <strong className="block text-xl font-bold text-ink tabular-nums">{euros(total(p, plan))}</strong>
         por persona
       </span>
-      {trust === "unverified" ? (
+      {trust === "unverified" && canVerify ? (
         <Button variant="warning" size="md" onClick={onVerify} disabled={verifying}>
           {verifying ? "Verificando…" : "Verificar"}
         </Button>

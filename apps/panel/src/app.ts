@@ -3,14 +3,22 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { Photo, Plan, type Proposal } from "@wanderlot/core";
+import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal } from "@wanderlot/core";
 import type { FlightProvider, ResearchProvider, SearchRequest } from "./providers/types.ts";
 import { buildSnapshot, publishWarnings, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
 import { inviteUrl, voteOpenedMessage } from "./announce.ts";
 
+// What this computer can do, found at startup (SPEC §8).
+export interface PanelStatus {
+  research: "claude-cli" | "anthropic-api" | "none";
+  flights: "duffel" | "none";
+  photos: ("wikimedia" | "unsplash" | "pexels")[];
+}
+
 export interface PanelOptions {
   store: PanelStore;
+  status?: PanelStatus;
   flights: FlightProvider;
   research: ResearchProvider;
   site: SiteClient;
@@ -41,12 +49,64 @@ const EditorialBody = z
   })
   .partial();
 
-export function createPanel({ store, flights, research, site, siteUrl, now = () => new Date() }: PanelOptions) {
+const NewPlan = z.object({
+  name: z.string().trim().min(1).max(60),
+  origin: z.string().regex(/^[A-Z]{3}$/),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  nights: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(10)]),
+  flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  partySize: z.number().int().min(1).max(30),
+  maxPriceCents: z.number().int().positive(),
+});
+
+export function createPanel({
+  store,
+  flights,
+  research,
+  site,
+  siteUrl,
+  now = () => new Date(),
+  status = { research: "none", flights: "none", photos: ["wikimedia"] },
+}: PanelOptions) {
   const app = new Hono();
 
   const entryOr404 = (planId: string) => store.get(planId);
 
-  app.get("/api/plans", (c) => c.json(store.list()));
+  // What's configured here, and whether the site answers as admin.
+  app.get("/api/status", async (c) => {
+    let reachable = true;
+    let error: string | undefined;
+    try {
+      await site.settings();
+    } catch (e) {
+      reachable = false;
+      error = (e as Error).message;
+    }
+    return c.json({ ...status, site: { url: siteUrl, reachable, ...(error ? { error } : {}) } });
+  });
+
+  app.get("/api/settings", async (c) => c.json(await site.settings()));
+
+  app.put("/api/settings", async (c) => {
+    const body = GroupSettings.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid settings", issues: body.error.issues }, 400);
+    return c.json(await site.putSettings(body.data));
+  });
+
+  // Newest first.
+  app.get("/api/plans", (c) => c.json([...store.list()].reverse()));
+
+  // A new trip window, as a draft (SPEC §1).
+  app.post("/api/plans", async (c) => {
+    const body = NewPlan.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "invalid plan", issues: body.error.issues }, 400);
+    const base = slugify(body.data.name) || "plan";
+    let id = base;
+    for (let n = 2; store.get(id); n++) id = `${base}-${n}`;
+    const plan: Plan = { ...body.data, id, dateTo: addDaysIso(body.data.dateFrom, body.data.nights), status: "draft" };
+    store.update(id, () => ({ entry: { plan, proposals: [], editorial: {} }, result: null }));
+    return c.json(plan, 201);
+  });
 
   app.get("/api/plans/:planId", (c) => {
     const entry = entryOr404(c.req.param("planId"));
@@ -78,7 +138,13 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
     };
-    const source = body.data.source === "api" ? flights.search(req, c.req.raw.signal) : research.research(req, c.req.raw.signal);
+    let source: AsyncIterable<Omit<Proposal, "review">>;
+    try {
+      source = body.data.source === "api" ? flights.search(req, c.req.raw.signal) : research.research(req, c.req.raw.signal);
+    } catch (e) {
+      // e.g. no flight provider configured
+      return c.json({ error: (e as Error).message }, 409);
+    }
 
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
@@ -117,13 +183,18 @@ export function createPanel({ store, flights, research, site, siteUrl, now = () 
     const { planId, id } = c.req.param();
     const proposal = store.get(planId)?.proposals.find((p) => p.id === id);
     if (!proposal) return c.json({ error: "not found" }, 404);
-    const found = await flights.verify({
-      origin: proposal.outbound.from,
-      destination: proposal.place.iata,
-      outboundDate: proposal.outbound.departAt.slice(0, 10),
-      inboundDate: proposal.inbound.departAt.slice(0, 10),
-      partySize: store.get(planId)!.plan.partySize,
-    });
+    let found;
+    try {
+      found = await flights.verify({
+        origin: proposal.outbound.from,
+        destination: proposal.place.iata,
+        outboundDate: proposal.outbound.departAt.slice(0, 10),
+        inboundDate: proposal.inbound.departAt.slice(0, 10),
+        partySize: store.get(planId)!.plan.partySize,
+      });
+    } catch (e) {
+      return c.json({ verified: false, reason: (e as Error).message });
+    }
     if (!found) return c.json({ verified: false, reason: `${flights.name} no encuentra ese itinerario` });
     const verified: Proposal = {
       ...proposal,

@@ -6,16 +6,19 @@ export interface DialogProps {
   open: boolean;
   title: ReactNode;
   children?: ReactNode;
-  confirmLabel: string;
+  confirmLabel?: string;
   cancelLabel?: string;
   tone?: "primary" | "warning";
-  onConfirm: () => void;
+  onConfirm?: () => void;
   onClose: () => void;
+  busy?: boolean;
+  // Replaces the default Cancel / Confirm buttons.
+  actions?: ReactNode;
 }
 
 // A modal confirmation on the native <dialog>: focus trapping, Escape and the
 // backdrop come from the browser.
-export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose }: DialogProps) {
+export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -34,10 +37,14 @@ export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Can
         <Heading size="subheading">{title}</Heading>
         {children && <Text as="div">{children}</Text>}
         <div className="flex flex-wrap justify-end gap-2 pt-2">
-          <Button onClick={onClose}>{cancelLabel}</Button>
-          <Button variant={tone} onClick={onConfirm} autoFocus>
-            {confirmLabel}
-          </Button>
+          {actions ?? (
+            <>
+              <Button onClick={onClose}>{cancelLabel}</Button>
+              <Button variant={tone} onClick={onConfirm} disabled={busy} autoFocus>
+                {confirmLabel}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </dialog>

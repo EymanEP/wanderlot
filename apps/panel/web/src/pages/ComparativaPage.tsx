@@ -1,16 +1,20 @@
-import { duration, euros } from "@wanderlot/core";
-import { Button, Card, EmptyState, PageHeader, buttonClasses, useToast } from "@wanderlot/ui";
+import { useState } from "react";
+import { deadlineLabel, duration, euros } from "@wanderlot/core";
+import { Badge, Button, Card, EmptyState, PageHeader, buttonClasses } from "@wanderlot/ui";
 import { Link } from "react-router";
 import { CompareCard } from "../components/CompareCard.tsx";
+import { OpenVoteDialog } from "../components/OpenVoteDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
-import { useApproved, usePanel } from "../data/store.tsx";
+import { useApproved, usePanel, usePlan } from "../data/store.tsx";
 import { flightMinutes, total, weatherTemp } from "../lib/view.ts";
 
 export function ComparativaPage() {
-  const { state, setEditorial, sendToVote } = usePanel();
+  const { state, now, setEditorial, openVote } = usePanel();
+  const plan = usePlan();
   const approved = useApproved();
-  const toast = useToast();
-  const { plan, editorial } = state;
+  const [opening, setOpening] = useState(false);
+  const { editorial } = state;
+  const voting = plan.status !== "draft";
   const month = new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" }).format(new Date(`${plan.dateFrom}T12:00:00Z`));
   const monthLabel = month[0]!.toUpperCase() + month.slice(1);
   const inVote = approved.filter((p) => editorial[p.id]?.inVote ?? true);
@@ -27,23 +31,21 @@ export function ComparativaPage() {
           title="Comparativa"
           subtitle={`Las ${n} aprobadas de ${plan.name} · los pros y contras los escribió Claude, puedes reescribirlos antes de publicar`}
           actions={
-            <>
-              <Button size="md" className="h-[46px]" disabled={n === 0} onClick={() => toast("Pros y contras regenerados (simulado)")}>
-                Regenerar pros y contras
-              </Button>
+            voting ? (
+              <Badge tone={plan.status === "voting" ? "accent" : "dark"} size="md">
+                {plan.status === "voting" && plan.voteDeadline ? `Votación abierta hasta el ${deadlineLabel(plan.voteDeadline)}` : "Votación cerrada"}
+              </Badge>
+            ) : (
               <Button
                 variant="primary"
                 className="h-[46px]"
                 disabled={inVote.length < 2}
                 title={inVote.length < 2 ? "La votación necesita al menos 2 destinos" : undefined}
-                onClick={() => {
-                  sendToVote();
-                  toast(`${inVote.length} destinos enviados a votación (simulado)`);
-                }}
+                onClick={() => setOpening(true)}
               >
                 Enviar {inVote.length === 1 ? "1" : `las ${inVote.length}`} a votación
               </Button>
-            </>
+            )
           }
         />
 
@@ -95,6 +97,14 @@ export function ComparativaPage() {
           </Card>
         )}
       </main>
+      <OpenVoteDialog
+        open={opening}
+        planName={plan.name}
+        count={inVote.length}
+        today={now.toISOString().slice(0, 10)}
+        onOpen={openVote}
+        onClose={() => setOpening(false)}
+      />
     </PanelShell>
   );
 }
