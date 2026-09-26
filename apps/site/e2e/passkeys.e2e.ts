@@ -1,7 +1,7 @@
 // End-to-end: the real site and UI in Chromium, with the browser's virtual
 // authenticator standing in for Face ID. Runs against the Node server
 // (npm run test:e2e) or the Cloudflare Worker in wrangler dev with a local D1
-// (npm run test:e2e:worker). Both need the UI built with VITE_AUTH=http.
+// (npm run test:e2e:worker). Both build the UI first.
 import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

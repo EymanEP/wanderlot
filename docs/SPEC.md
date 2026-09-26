@@ -340,6 +340,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | method | path | who | notes |
 |---|---|---|---|
 | `GET` | `/`, `/i/:token`, `/p/*` | anyone | the web UI; it asks the API what to show |
+| `GET` | `/api/site` | anyone | `{ groupName, organiserName }`, for the sign-in screens |
 | `GET` | `/api/invites/:token` | anyone | `{ member: { name }, status: valid \| used \| expired \| cancelled }`; never consumes it |
 | `POST` | `/api/invites/:token/passkey/options` | invitee | `410` unless valid |
 | `POST` | `/api/invites/:token/passkey/verify` | invitee | saves the passkey, uses up the invite, starts a session |
@@ -347,11 +348,14 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `POST` | `/api/session/verify` | anyone | starts a session |
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
+| `GET` | `/api/plans` | member | every published plan: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity }` |
 | `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
-| `GET` | `/api/plans/:planId/comments?destinationId=` | member | newest first; without a filter: the 3 most recent across the plan |
+| `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
 | `POST` | `/api/plans/:planId/comments` | member | `{ destinationId, body, parentId? }` |
+| `PUT` | `/api/plans/:planId/comments/:commentId/like` | member | `{ on }` |
+| `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members |
