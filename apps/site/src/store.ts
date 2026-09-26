@@ -46,6 +46,17 @@ export interface MemberPin {
   lockedUntil: string | null;
 }
 
+export interface Suggestion {
+  id: string;
+  planId: string;
+  memberId: string;
+  place: string;
+  note: string | null;
+  createdAt: string;
+  status: "new" | "researched" | "dismissed";
+  proposalId: string | null;
+}
+
 export interface Flow {
   challenge: string;
   purpose: "register" | "login";
@@ -73,6 +84,11 @@ export interface SiteStore {
   planMembers(planId: string): Promise<string[]>;
   setPlanMembers(planId: string, memberIds: string[]): Promise<void>;
   planIdsFor(memberId: string): Promise<string[]>;
+
+  // destinations friends suggest for a trip, oldest first
+  addSuggestion(s: Suggestion): Promise<void>;
+  suggestions(planId: string): Promise<Suggestion[]>;
+  setSuggestionStatus(id: string, status: Suggestion["status"], proposalId: string | null): Promise<void>;
 
   // PINs: stored as a keyed hash, never the PIN itself
   pin(memberId: string): Promise<MemberPin | undefined>;

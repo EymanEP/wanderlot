@@ -23,16 +23,35 @@ const ResearchProposal = z.object({
 export const ResearchOutput = z.object({ proposals: z.array(ResearchProposal) });
 export type ResearchOutput = z.infer<typeof ResearchOutput>;
 
-export const outputSchema = z.toJSONSchema(ResearchOutput);
+// Draft-07: the `claude` command validates --json-schema with a validator
+// that doesn't know draft 2020-12, zod's default, and refuses to start.
+export const outputSchema = z.toJSONSchema(ResearchOutput, { target: "draft-7" });
 
 export function buildPrompt(req: SearchRequest): string {
   const scope =
-    req.scope.kind === "anywhere" ? "cualquier destino" : req.scope.kind === "europe" ? "Europa" : `el aeropuerto ${req.scope.iata}`;
+    req.scope.kind === "anywhere"
+      ? "cualquier destino"
+      : req.scope.kind === "europe"
+        ? "Europa"
+        : req.scope.kind === "named"
+          ? `«${req.scope.name}»`
+          : `el aeropuerto ${req.scope.iata}`;
   const stops = { direct: "solo vuelos directos", one: "máximo 1 escala", any: "escalas indiferentes" }[req.stops];
   return [
     `Busca ${req.count} propuestas de viaje de grupo saliendo de ${req.origin} hacia ${scope}.`,
+    req.nearbyAirports
+      ? `También vale salir de otro aeropuerto a unas 2 horas de ${req.origin} por carretera o tren si el vuelo sale mejor; pon el aeropuerto real de salida en outbound.from y el de llegada de vuelta en inbound.to, y menciónalo en los contras.`
+      : `Sal siempre de ${req.origin}.`,
+    ...(req.scope.kind === "named"
+      ? [
+          `Es una idea de ${req.scope.by ?? "alguien del grupo"}${req.scope.note ? `, que dice: «${req.scope.note}»` : ""}. Si es una región o isla, elige el aeropuerto que mejor le sirva; si no hay forma razonable de ir, omite la propuesta.`,
+        ]
+      : []),
+    ...(req.exclude?.length ? [`Ya tenemos propuestas para: ${req.exclude.join(", ")}. Busca destinos distintos a esos.`] : []),
     `Salida el ${req.dateFrom} (±${req.flexDays} días), ${req.nights} noches, ${req.partySize} personas.`,
-    `Tope de ${(req.maxPriceCents / 100).toFixed(0)} € por persona en total. ${stops}.`,
+    req.maxPriceCents === null
+      ? `Sin tope de precio, pero busca buena relación calidad-precio. ${stops}.`
+      : `Tope de ${(req.maxPriceCents / 100).toFixed(0)} € por persona en total. ${stops}.`,
     req.estimateStays
       ? "Estima dos opciones de alojamiento para todo el grupo (precio por noche, grupo entero) y marca una como recomendada."
       : "No incluyas alojamiento (stays vacío).",

@@ -15,6 +15,7 @@ const req: SearchRequest = {
   stops: "direct",
   estimateStays: true,
   suggestThings: true,
+  nearbyAirports: false,
   count: 12,
 };
 
@@ -33,6 +34,10 @@ describe("claude research provider", () => {
 
     expect(args).toContain("--json-schema");
     expect(args[args.indexOf("--json-schema") + 1]).toBe(JSON.stringify(outputSchema));
+    // Web search and fetch only, pre-approved: without this, headless runs are
+    // denied every search and come back with no proposals.
+    expect(args[args.indexOf("--tools") + 1]).toBe("WebSearch,WebFetch");
+    expect(args[args.indexOf("--allowedTools") + 1]).toBe("WebSearch,WebFetch");
     expect(out).toHaveLength(1);
     expect(out[0]!.proposal.provenance).toEqual({ kind: "claude", sources });
     expect(out[0]!.proposal.id).toBe("lis-1");
@@ -61,5 +66,30 @@ describe("claude research provider", () => {
     expect(prompt).toContain("MAD hacia Europa");
     expect(prompt).toContain("solo vuelos directos");
     expect(prompt).toContain("420 €");
+    expect(prompt).toContain("Sal siempre de MAD");
+  });
+
+  it("asks for no price cap, or nearby airports, when chosen", () => {
+    const prompt = buildPrompt({ ...req, maxPriceCents: null, nearbyAirports: true });
+    expect(prompt).toContain("Sin tope de precio");
+    expect(prompt).not.toContain("€ por persona en total");
+    expect(prompt).toContain("otro aeropuerto a unas 2 horas de MAD");
+  });
+
+  it("names what's already proposed so a new search looks elsewhere", () => {
+    expect(buildPrompt(req)).not.toContain("Ya tenemos");
+    expect(buildPrompt({ ...req, exclude: ["Lisboa (LIS)", "Oporto (OPO)"] })).toContain("Ya tenemos propuestas para: Lisboa (LIS), Oporto (OPO)");
+  });
+});
+
+describe("the schema handed to `claude --json-schema`", () => {
+  it("is draft-07, which the command's validator accepts", async () => {
+    const { Ajv } = await import("ajv");
+    expect(outputSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    // Ajv's default meta-schema is draft-07, like the CLI's; 2020-12 fails here
+    // with the same "no schema with key or ref" error the organiser saw.
+    const validate = new Ajv({ strict: false }).compile(outputSchema);
+    expect(validate({ proposals: [] })).toBe(true);
+    expect(validate({ proposals: [{ place: {} }] })).toBe(false);
   });
 });

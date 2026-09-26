@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, addDaysIso, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { GroupSettings, Photo, Plan, addDaysIso, baseStay, slugify, type Proposal, type VoteState } from "@wanderlot/core";
 import type { FlightProvider, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -37,10 +37,14 @@ const GenerateBody = z.object({
     z.object({ kind: z.literal("anywhere") }),
     z.object({ kind: z.literal("europe") }),
     z.object({ kind: z.literal("place"), iata: z.string().regex(/^[A-Z]{3}$/) }),
+    z.object({ kind: z.literal("named"), name: z.string().trim().min(1).max(80) }),
   ]),
+  // Research a friend's suggestion (scope "named"): credited and marked done.
+  suggestionId: z.string().min(1).max(80).optional(),
   stops: z.enum(["direct", "one", "any"]),
   estimateStays: z.boolean(),
   suggestThings: z.boolean(),
+  nearbyAirports: z.boolean().default(false),
   count: z.number().int().min(1).max(24).default(12),
 });
 
@@ -61,7 +65,7 @@ const NewPlan = z.object({
   nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1).max(30),
-  maxPriceCents: z.number().int().positive(),
+  maxPriceCents: z.number().int().positive().nullable(),
   participants: z.array(z.string().min(1)).max(100).default([]),
 });
 
@@ -165,8 +169,16 @@ export function createPanel({
     const body = GenerateBody.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid request", issues: body.error.issues }, 400);
     const { plan } = entry;
+    // A friend's idea: research exactly that place, crediting them.
+    const { suggestionId, ...options } = body.data;
+    const idea = suggestionId ? (await site.suggestions(plan.id)).find((x) => x.id === suggestionId) : undefined;
+    if (suggestionId && !idea) return c.json({ error: "esa idea ya no está" }, 404);
     const req: SearchRequest = {
-      ...body.data,
+      ...options,
+      ...(idea
+        ? { scope: { kind: "named" as const, name: idea.place, by: idea.member.name, ...(idea.note ? { note: idea.note } : {}) } }
+        : // What's already on the list, so a new search looks elsewhere.
+          { exclude: [...new Set(entry.proposals.map((p) => `${p.place.city} (${p.place.iata})`))] }),
       planId: plan.id,
       origin: plan.origin,
       dateFrom: plan.dateFrom,
@@ -183,11 +195,19 @@ export function createPanel({
       return c.json({ error: (e as Error).message }, 409);
     }
 
+    let researched: string | undefined;
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
       try {
         for await (const { proposal: p, notes } of source) {
-          const proposal: Proposal = { ...p, review: "pending" };
+          // A new search adds to the list and never replaces a proposal the
+          // organiser may already have approved: each gets an unused id.
+          const taken = new Set(store.get(plan.id)!.proposals.map((x) => x.id));
+          const base = p.id.replace(/-\d+$/, "") || "propuesta";
+          let id = base;
+          for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+          const proposal: Proposal = { ...p, id, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) };
+          if (idea && !researched) researched = id;
           store.update(plan.id, (e) => {
             // Research's notes seed Comparativa; the organiser's edits win.
             const prev = e!.editorial[proposal.id] ?? {};
@@ -210,11 +230,24 @@ export function createPanel({
           });
           await s.writeln(JSON.stringify({ proposal }));
         }
+        // Mark the idea done, pointing at what came of it. Best effort: the
+        // proposals are saved either way.
+        if (idea && researched) await site.setSuggestion(plan.id, idea.id, "researched", researched).catch(() => {});
         await s.writeln(JSON.stringify({ done: true }));
       } catch (err) {
         await s.writeln(JSON.stringify({ error: (err as Error).message }));
       }
     });
+  });
+
+  // Ideas friends sent from the site for this trip.
+  app.get("/api/plans/:planId/suggestions", async (c) => c.json(await site.suggestions(c.req.param("planId"))));
+
+  app.put("/api/plans/:planId/suggestions/:id", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z.object({ status: z.enum(["new", "researched", "dismissed"]) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status}" }, 400);
+    return c.json(await site.setSuggestion(planId, id, body.data.status));
   });
 
   // Revisar y aprobar.
@@ -267,6 +300,38 @@ export function createPanel({
     if (!q) return c.json({ error: "expected ?q=" }, 400);
     const count = Math.min(Math.max(Number(c.req.query("count")) || 12, 1), 30);
     return c.json(await searchAll(photos, q, count, c.req.raw.signal));
+  });
+
+  // The organiser checked the real prices (the airline, the booking site) and
+  // types them in. Counts as checked from now, like an API check, and goes
+  // stale the same way (SPEC §3).
+  app.post("/api/plans/:planId/proposals/:id/prices", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z
+      .object({
+        outboundCents: z.number().int().min(0).max(10_000_000),
+        inboundCents: z.number().int().min(0).max(10_000_000),
+        stayNightlyCents: z.number().int().min(0).max(10_000_000).optional(),
+      })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {outboundCents, inboundCents, stayNightlyCents?}" }, 400);
+    const proposal = store.get(planId)?.proposals.find((p) => p.id === id);
+    if (!proposal) return c.json({ error: "not found" }, 404);
+    const { outboundCents, inboundCents, stayNightlyCents } = body.data;
+    const stay = baseStay(proposal.stays);
+    const updated: Proposal = {
+      ...proposal,
+      outbound: { ...proposal.outbound, priceCents: outboundCents },
+      inbound: { ...proposal.inbound, priceCents: inboundCents },
+      stays: proposal.stays.map((s) => (s === stay && stayNightlyCents !== undefined ? { ...s, nightlyCents: stayNightlyCents } : s)),
+      provenance: {
+        kind: "organiser",
+        checkedAt: now().toISOString(),
+        sources: proposal.provenance.kind === "api" ? [] : proposal.provenance.sources,
+      },
+    };
+    store.update(planId, (e) => ({ entry: { ...e!, proposals: e!.proposals.map((p) => (p.id === id ? updated : p)) }, result: null }));
+    return c.json(updated);
   });
 
   // Comparativa: pros/cons, weather, photos, the inVote checkbox.

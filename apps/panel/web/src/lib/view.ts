@@ -31,7 +31,7 @@ export function trustOf(p: Proposal, now: Date): Trust {
 }
 
 export function trustText(p: Proposal, now: Date): string {
-  return trustLabel(trustState(p.provenance, now));
+  return trustLabel(trustState(p.provenance, now), p.provenance.kind);
 }
 
 export function total(p: Proposal, plan: Plan): number {
@@ -56,7 +56,7 @@ export function generatedLine(p: Proposal, plan: Plan): string {
 
 // "… · 174 € ida y vuelta", or a warning when Claude wrote the price.
 export function flightLine(p: Proposal): string {
-  const price = p.provenance.kind === "api" ? `${euros(flightPriceCents(p))} ida y vuelta` : "precio sin confirmar";
+  const price = p.provenance.kind !== "claude" ? `${euros(flightPriceCents(p))} ida y vuelta` : "precio sin confirmar";
   return `${flightSummary(p)} · ${price}`;
 }
 
@@ -70,6 +70,7 @@ export function stayLine(p: Proposal, plan: Plan): string {
 // "Duffel · 24 sep 2026" or "Claude · 3 fuentes"
 export function sourceLine(p: Proposal): string {
   if (p.provenance.kind === "api") return `${PROVIDER_LABEL[p.provenance.provider]} · ${mediumDate(p.provenance.checkedAt)}`;
+  if (p.provenance.kind === "organiser") return `Comprobado a mano · ${mediumDate(p.provenance.checkedAt)}`;
   const n = p.provenance.sources.length;
   return `Claude · ${n} ${n === 1 ? "fuente" : "fuentes"}`;
 }

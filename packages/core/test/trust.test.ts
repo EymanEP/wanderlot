@@ -21,6 +21,13 @@ describe("trust", () => {
       "Verificado hace 5 h",
     );
   });
+
+  it("a price checked by hand counts like an API check, and says who checked", () => {
+    const p = { kind: "organiser" as const, checkedAt: hoursAgo(2), sources: [] };
+    expect(trustState(p, now).kind).toBe("verified");
+    expect(trustLabel(trustState(p, now), "organiser")).toBe("Comprobado hace 2 h");
+    expect(trustState({ ...p, checkedAt: hoursAgo(73) }, now).kind).toBe("stale");
+  });
 });
 
 describe("effectiveStatus", () => {

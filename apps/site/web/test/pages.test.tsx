@@ -11,6 +11,15 @@ import { SourceProvider } from "../src/data/store.tsx";
 
 afterEach(cleanup);
 
+// jsdom has <dialog> but not its modal methods.
+HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+  this.open = true;
+};
+HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+  this.open = false;
+  this.dispatchEvent(new Event("close"));
+};
+
 function renderAt(path: string, closed = false, signedIn = true) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -41,6 +50,27 @@ describe("Plan", () => {
     await user.click(await screen.findByRole("button", { name: "Escapada" }));
     const cards = within(screen.getByRole("region", { name: "Destinos" })).getAllByRole("article");
     expect(cards.map((c) => c.querySelector("h2")!.textContent)).toEqual(["Marrakech"]);
+  });
+});
+
+describe("Proponer un destino", () => {
+  it("sends an idea to the organiser and shows what's been suggested", async () => {
+    const user = userEvent.setup();
+    renderAt("/p/noviembre-2026");
+    await user.click(await screen.findByRole("button", { name: "Proponer un destino" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    expect(await dialog.findByText("Oporto")).toBeTruthy();
+    expect((dialog.getByRole("button", { name: "Enviar idea" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.type(dialog.getByLabelText("Destino"), "Azores");
+    await user.type(dialog.getByLabelText("Por qué (opcional)"), "Naturaleza a lo bestia");
+    await user.click(dialog.getByRole("button", { name: "Enviar idea" }));
+    expect(await screen.findByText("Idea enviada. Eyman la verá en el panel.")).toBeTruthy();
+  });
+
+  it("isn't offered once the vote has closed", async () => {
+    renderAt("/p/noviembre-2026", true);
+    await screen.findByRole("heading", { level: 1, name: "Noviembre 2026" });
+    expect(screen.queryByRole("button", { name: "Proponer un destino" })).toBeNull();
   });
 });
 

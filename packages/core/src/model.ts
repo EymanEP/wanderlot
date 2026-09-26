@@ -44,12 +44,20 @@ export type Source = z.infer<typeof Source>;
 export const FlightProviderName = z.enum(["duffel", "amadeus", "kiwi"]);
 export type FlightProviderName = z.infer<typeof FlightProviderName>;
 
-// Exactly two kinds. Staleness is derived from checkedAt, never stored (§3).
+// Where a proposal's prices come from (SPEC §3): a flight API, the organiser
+// checking the real prices by hand, or Claude's web research. Staleness is
+// derived from checkedAt, never stored.
 export const Provenance = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("api"),
     provider: FlightProviderName,
     checkedAt: isoDateTime,
+  }),
+  z.object({
+    kind: z.literal("organiser"),
+    checkedAt: isoDateTime,
+    // Research's links, kept for reference.
+    sources: z.array(Source).default([]),
   }),
   z.object({
     kind: z.literal("claude"),
@@ -104,6 +112,8 @@ export const Proposal = z.object({
   todo: z.array(Thing),
   see: z.array(Thing),
   provenance: Provenance,
+  // The friend whose idea it was, when researched from a suggestion.
+  suggestedBy: z.string().min(1).max(60).optional(),
   review: z.enum(["pending", "approved", "discarded"]),
 });
 export type Proposal = z.infer<typeof Proposal>;
@@ -129,7 +139,8 @@ export const Plan = z.object({
   nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1),
-  maxPriceCents: cents,
+  // Per person, flights and stay; null means no limit.
+  maxPriceCents: cents.nullable(),
   status: PlanStatus,
   voteDeadline: isoDateTime.optional(),
   winnerDestinationId: id.optional(),
@@ -203,3 +214,16 @@ export type PlanSummary = z.infer<typeof PlanSummary>;
 
 // A comment as members see it.
 export type CommentView = Comment & { likes: number; likedByMe: boolean };
+
+// A destination a friend suggested for a trip (SPEC §4): what the site lists
+// and the panel researches.
+export interface SuggestionView {
+  id: string;
+  place: string;
+  note: string | null;
+  createdAt: string;
+  status: "new" | "researched" | "dismissed";
+  member: { id: string; name: string };
+  // The proposal researched from it, once there is one.
+  proposalId: string | null;
+}

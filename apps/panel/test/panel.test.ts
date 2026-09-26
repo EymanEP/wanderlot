@@ -3,7 +3,7 @@ import type { Proposal } from "@wanderlot/core";
 import { createPanel } from "../src/app.ts";
 import { siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
-import type { FlightProvider, ResearchProvider } from "../src/providers/types.ts";
+import type { FlightProvider, ResearchProvider, SearchRequest } from "../src/providers/types.ts";
 import type { PhotoSource } from "../src/providers/photos.ts";
 import { createApp } from "../../site/src/app.ts";
 import { SqliteStore } from "../../site/src/sqlite.ts";
@@ -21,6 +21,7 @@ const claudeSources = { kind: "claude" as const, sources: [{ label: "x", url: "h
 let clock: Date;
 let panel: ReturnType<typeof createPanel>;
 let picked: string[] = [];
+let lastRequest: SearchRequest | undefined;
 let site: ReturnType<typeof createApp>;
 
 const call = async (path: string, method = "GET", body?: unknown) => {
@@ -40,8 +41,10 @@ beforeEach(async () => {
   clock = new Date("2026-10-10T12:00:00Z");
   site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: SITE }, now: () => clock });
 
+  lastRequest = undefined;
   const research: ResearchProvider = {
-    async *research() {
+    async *research(req) {
+      lastRequest = req;
       yield {
         proposal: strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })),
         notes: { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoSubjects: ["Alfama Lisboa"] },
@@ -106,6 +109,14 @@ describe("panel → site", () => {
     expect(lines.map((l) => l.proposal?.id ?? "done")).toEqual(["lis", "nap", "edi", "done"]);
     const { data } = await json(`/api/plans/${PLAN}`);
     expect(data.proposals.every((p: Proposal) => p.review === "pending")).toBe(true);
+    // A second search adds to the list with fresh ids, keeping decisions, and
+    // tells research what's already there.
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    const again = (await json(`/api/plans/${PLAN}`)).data;
+    expect(again.proposals.map((p: Proposal) => p.id)).toEqual(["lis", "nap", "edi", "lis-2", "nap-2", "edi-2"]);
+    expect(again.proposals.find((p: Proposal) => p.id === "lis").review).toBe("approved");
+    expect(lastRequest?.exclude).toEqual(["Lisboa (LIS)", "Nápoles (NAP)", "Edimburgo (EDI)"]);
     // Research's notes seed Comparativa and the photo picker.
     expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
   });
@@ -126,6 +137,14 @@ describe("panel → site", () => {
     const first = await json(`/api/plans/${PLAN}/publish`, "POST", {});
     expect(first.status).toBe(409);
     expect(first.data.warnings.map((w: any) => w.destinationId)).toEqual(["lis", "nap"]);
+
+    // Prices checked by hand: bad input refused; saved ones count as checked.
+    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: -1, inboundCents: 0 })).status).toBe(400);
+    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { outboundCents: 6100, inboundCents: 5200, stayNightlyCents: 21000 });
+    expect(checked.data.outbound.priceCents).toBe(6100);
+    expect(checked.data.inbound.priceCents).toBe(5200);
+    expect(checked.data.provenance).toEqual({ kind: "organiser", checkedAt: clock.toISOString(), sources: claudeSources.sources });
+    expect((await json(`/api/plans/${PLAN}/publish`, "POST", {})).data.warnings.map((w: any) => w.destinationId)).toEqual(["lis"]);
 
     // Verifying Lisbon turns it green; Edinburgh has no match and stays amber.
     const v = await json(`/api/plans/${PLAN}/proposals/lis/verify`, "POST");
@@ -238,6 +257,8 @@ describe("panel → site", () => {
 describe("plans and settings", () => {
   it("creates draft plans with unique ids and newest first", async () => {
     const input = { name: "Semana Santa 2027", origin: "MAD", dateFrom: "2027-03-23", nights: 5, flexDays: 1, partySize: 6, maxPriceCents: 45000 };
+    // No price limit is allowed.
+    expect((await json("/api/plans", "POST", { ...input, name: "Sin tope", maxPriceCents: null })).data.maxPriceCents).toBeNull();
     const a = await json("/api/plans", "POST", input);
     expect(a.status).toBe(201);
     expect(a.data).toMatchObject({ id: "semana-santa-2027", dateTo: "2027-03-28", status: "draft" });
@@ -257,6 +278,50 @@ describe("plans and settings", () => {
     expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
     const status = (await json("/api/status")).data;
     expect(status.site).toEqual({ url: SITE, reachable: true });
+  });
+
+  it("researches a friend's idea by name, credits them and marks it done", async () => {
+    // Publish, put Ana on the trip, and let her join and suggest a place.
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
+    await json("/api/members", "PUT", FRIENDS);
+    await json(`/api/plans/${PLAN}/participants`, "PUT", ["ana"]);
+    const { url } = (await json("/api/members/ana/invite", "POST")).data;
+    const joined = await site.request(`/api/invites/${url.split("/i/")[1]}/pin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pin: "480193" }),
+    });
+    const cookie = joined.headers.get("set-cookie")!.split(";")[0]!;
+    await site.request(`/api/plans/${PLAN}/suggestions`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ place: "Azores", note: "Naturaleza a lo bestia" }),
+    });
+
+    const ideas = (await json(`/api/plans/${PLAN}/suggestions`)).data;
+    expect(ideas.map((i: any) => [i.place, i.member.name, i.status])).toEqual([["Azores", "ana", "new"]]);
+
+    await call(`/api/plans/${PLAN}/generate`, "POST", {
+      source: "claude",
+      scope: { kind: "anywhere" },
+      stops: "any",
+      estimateStays: true,
+      suggestThings: true,
+      count: 1,
+      suggestionId: ideas[0].id,
+    });
+    expect(lastRequest?.scope).toEqual({ kind: "named", name: "Azores", by: "ana", note: "Naturaleza a lo bestia" });
+    const { data } = await json(`/api/plans/${PLAN}`);
+    const credited = data.proposals.filter((p: Proposal) => p.suggestedBy === "ana");
+    expect(credited.length).toBeGreaterThan(0);
+    const after = (await json(`/api/plans/${PLAN}/suggestions`)).data;
+    expect(after[0]).toMatchObject({ status: "researched", proposalId: credited[0].id });
+
+    // Dismissing one hides it from the to-do list.
+    expect((await json(`/api/plans/${PLAN}/suggestions/${ideas[0].id}`, "PUT", { status: "dismissed" })).data[0].status).toBe("dismissed");
+    expect((await json(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "anywhere" }, stops: "any", estimateStays: true, suggestThings: true, suggestionId: "nope" })).status).toBe(404);
   });
 
   it("searches photos and counts a download only when a new one is kept", async () => {

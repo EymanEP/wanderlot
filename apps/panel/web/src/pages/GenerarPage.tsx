@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { addDaysIso } from "@wanderlot/core";
+import { useEffect, useState } from "react";
+import { addDaysIso, type SuggestionView } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
+import { IdeasCard } from "../components/IdeasCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { ProposalRow, ProposalRowLoading } from "../components/ProposalRow.tsx";
 import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
@@ -10,13 +11,51 @@ const STOPS_LABEL = { direct: "solo directos", one: "máximo 1 escala", any: "co
 const COUNT = 12;
 
 export function GenerarPage() {
-  const { state, now, startGeneration, stopGeneration, verify, savePlan } = usePanel();
+  const { state, now, startGeneration, stopGeneration, verify, savePlan, suggestions, dismissSuggestion } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
   const initial = searchFromPlan(plan);
   const running = generation?.running ?? false;
   const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
+
+  // Friends' ideas from the site: reloaded when a search ends, since
+  // researching one marks it done.
+  const [ideas, setIdeas] = useState<SuggestionView[]>([]);
+  useEffect(() => {
+    if (running) return;
+    let live = true;
+    suggestions().then(
+      (list) => live && setIdeas(list),
+      () => live && setIdeas([]),
+    );
+    return () => {
+      live = false;
+    };
+    // Not on `suggestions` itself: it's a new function on every panel change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.id, running]);
+
+  const research = (idea: SuggestionView) => {
+    startGeneration({
+      source: "claude",
+      scope: { kind: "anywhere" },
+      stops: "any",
+      estimateStays: true,
+      suggestThings: true,
+      nearbyAirports: false,
+      count: 1,
+      suggestionId: idea.id,
+    });
+    toast(`Investigando ${idea.place}, la idea de ${idea.member.name}`);
+  };
+  const dismiss = async (idea: SuggestionView) => {
+    try {
+      setIdeas(await dismissSuggestion(idea.id));
+    } catch (e) {
+      toast(`No se pudo: ${(e as Error).message}`);
+    }
+  };
 
   const onSubmit = async (v: SearchValues) => {
     if (!v.start || !v.end) return toast("Elige en el calendario el día de salida y el de vuelta");
@@ -30,7 +69,7 @@ export function GenerarPage() {
         nights: nightsBetween(v.start, v.end),
         flexDays: v.flexDays,
         partySize: v.people,
-        maxPriceCents: v.maxPrice * 100,
+        maxPriceCents: v.maxPrice === null ? null : v.maxPrice * 100,
       });
     } catch (e) {
       return toast(`No se pudo guardar el plan: ${(e as Error).message}`);
@@ -42,6 +81,7 @@ export function GenerarPage() {
       stops: v.stops,
       estimateStays: v.estimateStays,
       suggestThings: v.suggestThings,
+      nearbyAirports: v.nearbyAirports,
       count: COUNT,
     });
   };
@@ -51,7 +91,7 @@ export function GenerarPage() {
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
           {/* Keyed so switching plans resets the form to the new plan. */}
-          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
         </div>
 
         <section aria-labelledby="resultados" className="flex min-w-0 flex-1 flex-col gap-[18px] bg-canvas p-4 sm:p-7">
@@ -79,6 +119,8 @@ export function GenerarPage() {
               ) : null}
             </div>
           </div>
+
+          <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 
           {generation?.error && <Notice>La búsqueda se cortó: {generation.error}</Notice>}
           {status?.research === "none" && (

@@ -138,6 +138,34 @@ describe("trips", () => {
     expect(((await (await admin("/plans/verano/vote")).json()) as any).partySize).toBe(2);
   });
 
+  it("takes destination ideas from the trip's people, and the panel sees and marks them", async () => {
+    const sent = await as("bea", "/verano/suggestions", "POST", { place: "Oporto", note: "  Vuelos baratos y se come de lujo  " });
+    expect(sent.status).toBe(201);
+    await as("ana", "/verano/suggestions", "POST", { place: "Azores" });
+    const list = (await (await as("ana", "/verano/suggestions")).json()) as any[];
+    expect(list.map((x) => [x.place, x.member.name, x.note, x.status])).toEqual([
+      ["Oporto", "Bea", "Vuelos baratos y se come de lujo", "new"],
+      ["Azores", "Ana María", null, "new"],
+    ]);
+    // Not on the trip: not there, as with everything else about it.
+    expect((await as("carlos", "/verano/suggestions", "POST", { place: "Roma" })).status).toBe(404);
+    expect((await as("bea", "/verano/suggestions", "POST", { place: " " })).status).toBe(400);
+
+    const [oporto] = (await (await admin("/plans/verano/suggestions")).json()) as any[];
+    const marked = (await (await admin(`/plans/verano/suggestions/${oporto.id}`, "PUT", { status: "researched", proposalId: "opo" })).json()) as any[];
+    expect(marked[0]).toMatchObject({ status: "researched", proposalId: "opo" });
+    expect((await admin("/plans/verano/suggestions/nope", "PUT", { status: "dismissed" })).status).toBe(404);
+  });
+
+  it("caps waiting ideas per person, and stops taking them once the vote closes", async () => {
+    for (let i = 0; i < 5; i++) expect((await as("ana", "/verano/suggestions", "POST", { place: `Sitio ${i}` })).status).toBe(201);
+    expect((await as("ana", "/verano/suggestions", "POST", { place: "Uno más" })).status).toBe(409);
+    await admin("/plans/verano/open-vote", "POST", { deadline: "2026-10-20T20:00:00Z" });
+    await as("ana", "/verano/ballot", "PUT", { ranking: ["lis", "nap"] });
+    await as("bea", "/verano/ballot", "PUT", { ranking: ["nap", "lis"] });
+    expect((await as("bea", "/verano/suggestions", "POST", { place: "Oporto" })).status).toBe(409);
+  });
+
   it("only takes people who exist", async () => {
     expect((await admin("/plans/verano/members", "PUT", ["ana", "nobody"])).status).toBe(400);
     expect(await (await admin("/plans/verano/members")).json()).toEqual(["ana", "bea"]);

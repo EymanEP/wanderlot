@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { addDaysIso, airportCity } from "@wanderlot/core";
-import { Button, Card, Field, Notice, PageHeader, Range, TextInput, nightsBetween, type DateRange } from "@wanderlot/ui";
+import { Button, Card, Field, Notice, PageHeader, TextInput, nightsBetween, type DateRange } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { originCode } from "../components/SearchForm.tsx";
 import { TripDates, type FlexDays } from "../components/TripDates.tsx";
 import { WhoGoes } from "../components/WhoGoes.tsx";
+import { BudgetField } from "../components/BudgetField.tsx";
 import { usePanel } from "../data/store.tsx";
 
 // A new trip window (SPEC §1): what the searches in Generar will look for.
@@ -25,7 +26,7 @@ export function NewPlanPage() {
   useEffect(() => {
     if (going === null && state.members.length) setGoing(state.members.map((m) => m.id));
   }, [going, state.members]);
-  const [maxPrice, setMaxPrice] = useState(400);
+  const [maxPrice, setMaxPrice] = useState<number | null>(400);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +37,7 @@ export function NewPlanPage() {
     setBusy(true);
     setError(null);
     try {
-      await createPlan({ name: name.trim(), origin: originCode(origin, origin0), dateFrom: start, nights: nightsBetween(start, end), flexDays, partySize: Math.max(1, (going ?? []).length), participants: going ?? [], maxPriceCents: maxPrice * 100 });
+      await createPlan({ name: name.trim(), origin: originCode(origin, origin0), dateFrom: start, nights: nightsBetween(start, end), flexDays, partySize: Math.max(1, (going ?? []).length), participants: going ?? [], maxPriceCents: maxPrice === null ? null : maxPrice * 100 });
       navigate("/generar");
     } catch (err) {
       setError((err as Error).message);
@@ -57,9 +58,7 @@ export function NewPlanPage() {
           </Field>
           <TripDates value={dates} onChange={setDates} flexDays={flexDays} onFlexChange={setFlexDays} min={addDaysIso(today, 1)} />
           <WhoGoes people={state.members} value={going ?? []} onChange={setGoing} />
-          <Field label="Tope por persona" aside={`${maxPrice} €`}>
-            {({ inputId }) => <Range id={inputId} min={80} max={1500} step={10} value={maxPrice} onChange={(e) => setMaxPrice(Number(e.target.value))} />}
-          </Field>
+          <BudgetField value={maxPrice} onChange={setMaxPrice} max={1500} />
           {error && <Notice role="alert">{error}</Notice>}
           <Button type="submit" variant="primary" size="lg" disabled={busy || !name.trim() || !dates.end}>
             {busy ? "Creando…" : "Crear el plan"}

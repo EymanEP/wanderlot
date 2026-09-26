@@ -37,7 +37,7 @@ The organising unit: one named trip window.
 | `nights` | 1–30: the days between the start and end picked on the calendar |
 | `flexDays` | 0, 1 or 2 |
 | `partySize` | 6 |
-| `maxPriceCents` | ceiling per person |
+| `maxPriceCents` | ceiling per person, flights and stay; `null` for no limit |
 | `status` | `draft` → `voting` → `closed` (see §4) |
 | `voteDeadline` | set when voting opens |
 | `winnerDestinationId` | set when closed |
@@ -122,16 +122,18 @@ Threads are one level deep: a reply's parent must be a top-level comment.
 
 ## 3. Trust model
 
-Every figure on the site traces to where it came from. Provenance has exactly
-two kinds:
+Every figure on the site traces to where it came from. Provenance has three
+kinds:
 
 | kind | badge | meaning |
 |---|---|---|
 | `api` | green **Verificado con la API** | price and schedule returned by a flight API; carries `provider` and `checkedAt` |
+| `organiser` | green **Comprobado a mano** | the organiser checked the real prices (airline, booking site) and typed them in Revisar; carries `checkedAt`, and research's `sources` for reference |
 | `claude` | amber **Lo escribió Claude** | produced by Claude from web research; carries `sources`, not yet checked |
 
 **Staleness.** Prices move, so a verification has a shelf life. A verified
-proposal whose `checkedAt` is older than **72 hours** is *stale*. Staleness is
+proposal (by API or by hand) whose `checkedAt` is older than **72 hours** is
+*stale*. Staleness is
 derived, not a third provenance kind:
 
 - On the site, a verified badge always shows its age: "Verificado hace 3 días".
@@ -143,7 +145,13 @@ derived, not a third provenance kind:
 "Verificar con la API" on a `claude` proposal searches the same route and dates
 on the configured flight provider. If it finds a matching itinerary, provenance
 becomes `api`. If not, the proposal keeps its `claude` badge and the panel says
-why.
+why. Without a flight API, "poner precios reales" on any proposal lets the
+organiser type the checked prices (each flight per person, the recommended stay
+per night); provenance becomes `organiser`.
+
+A new search in Generar adds to a trip's proposals and never replaces them:
+research is told which destinations are already there, and each new proposal
+gets an unused id.
 
 Every destination page has a "De dónde salen los números" card listing the
 provider (or sources) and the check date.
@@ -191,6 +199,20 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
   points, first places, and each member's ranking.
 - Each member sees their own ballot at all times ("Tu 1.ª opción" on Plan cards).
   They never see the group tally before the close.
+
+---
+
+### Ideas from the group
+- While a trip's vote isn't closed, anyone on it can **propose a destination**
+  from the site ("Proponer un destino"): a place in their own words and,
+  optionally, why. Everyone on the trip sees what has been suggested, so
+  nobody proposes the same place twice. Each person can have up to 5 waiting.
+- The organiser sees them in the panel's Generar, under "Ideas del grupo":
+  **Investigar** researches that place (one proposal, the same checks as any
+  other) and credits it ("Idea de Marta", in the panel and on the site);
+  **Descartar** drops it from the list.
+- A researched idea still goes through Revisar and publishing like any
+  proposal; after the first ballot, new destinations can't join the vote.
 
 ---
 
@@ -345,7 +367,7 @@ configures only the ones they have. The panel works with none of the paid ones.
 
 | provider | how | cost to the hoster |
 |---|---|---|
-| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema …` | their Claude subscription, no API bill |
+| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema <draft-07 schema> --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (only web search and fetch, pre-approved, since a headless run can't ask) | their Claude subscription, no API bill |
 | `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
 
 Other providers can implement the same interface later. Whatever the provider,
@@ -397,6 +419,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
 | `POST` | `/api/plans/:planId/comments` | member | `{ destinationId, body, parentId? }` |
 | `PUT` | `/api/plans/:planId/comments/:commentId/like` | member | `{ on }` |
+| `GET` / `POST` | `/api/plans/:planId/suggestions` | member | ideas for the trip / `{ place, note? }`; `409` once closed or with 5 waiting |
+| `GET` | `/api/admin/plans/:planId/suggestions` | panel | the trip's ideas with who suggested them |
+| `PUT` | `/api/admin/plans/:planId/suggestions/:id` | panel | `{ status: new \| researched \| dismissed, proposalId? }` |
 | `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
@@ -427,7 +452,9 @@ it). Calls that touch the site go through the admin API above.
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
 | `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
-| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}` |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}`; with `suggestionId`, researches that friend's idea by name and credits them |
+| `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
+| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ outboundCents, inboundCents, stayNightlyCents? }` |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
 | `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |

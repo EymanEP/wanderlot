@@ -4,16 +4,22 @@ import type { FlightLeg, FlightProviderName, Proposal, Source } from "@wanderlot
 export interface SearchRequest {
   planId: string;
   origin: string;
-  scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "place"; iata: string };
+  // "named": a place a friend suggested, in their words ("Oporto", "Azores").
+  scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "place"; iata: string } | { kind: "named"; name: string; note?: string; by?: string };
   dateFrom: string;
   nights: number;
   flexDays: number;
   partySize: number;
-  maxPriceCents: number;
+  // null: no limit.
+  maxPriceCents: number | null;
   stops: "direct" | "one" | "any";
   estimateStays: boolean;
   suggestThings: boolean;
+  // Also consider airports within about two hours of the origin.
+  nearbyAirports: boolean;
   count: number;
+  // Destinations already proposed for this trip: look for others.
+  exclude?: string[];
 }
 
 export interface Itinerary {

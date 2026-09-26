@@ -83,7 +83,7 @@ export function DestinoPage() {
         {trust === "unverified" ? (
           <StatTile label="Datos de vuelo" value="Los escribió Claude" tone="claude" />
         ) : (
-          <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
+          <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : d.provenance.kind === "organiser" ? "Comprobados a mano" : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
         )}
       </section>
 
