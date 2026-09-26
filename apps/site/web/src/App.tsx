@@ -7,6 +7,7 @@ import { useAuth } from "./data/auth.tsx";
 import { currentPlan, usePlans } from "./data/store.tsx";
 import { ComentariosPage } from "./pages/ComentariosPage.tsx";
 import { InvitePage } from "./pages/InvitePage.tsx";
+import { NewPinPage } from "./pages/NewPinPage.tsx";
 import { SignInPage } from "./pages/SignInPage.tsx";
 import { DestinoPage } from "./pages/DestinoPage.tsx";
 import { PlanPage } from "./pages/PlanPage.tsx";
@@ -51,6 +52,7 @@ export function App() {
         <Route index element={<RequireSession><Home /></RequireSession>} />
         <Route path="/entrar" element={<SignInPage />} />
         <Route path="/i/:token" element={<InvitePage />} />
+        <Route path="/nuevo-pin" element={<RequireSession><NewPinPage /></RequireSession>} />
         <Route path="/p/:planId" element={<RequireSession><SiteShell /></RequireSession>}>
           <Route index element={<PlanPage />} />
           <Route path="destinos/:destinationId" element={<DestinoPage />} />
