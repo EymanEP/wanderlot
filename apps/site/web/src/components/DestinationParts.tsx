@@ -1,7 +1,8 @@
 // The building blocks of a destination page.
+import { useState } from "react";
 import { Link } from "react-router";
-import { euros, eurosGrouped, localTime, shortDate, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
-import { Button, Card, Heading, LockIcon, Photo, Text, buttonClasses, cn, useToast } from "@wanderlot/ui";
+import { euros, eurosGrouped, localTime, shortDate, standardImageUrl, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
+import { Button, Card, Dialog, Heading, LockIcon, Photo, Text, buttonClasses, cn } from "@wanderlot/ui";
 
 export interface MosaicProps {
   city: string;
@@ -29,39 +30,58 @@ function Credit({ photo }: { photo: PhotoData }) {
   );
 }
 
+// The hero and up to four more on a wide screen (two rows of two beside it),
+// the hero and two below it on a phone. The last tile opens every photo.
 export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
-  const toast = useToast();
+  const [open, setOpen] = useState(false);
   const [hero, ...rest] = photos;
-  const tiles = [0, 1, 2].map((i) => ({ photo: rest[i], label: landmarks[i] ?? city }));
+  const all = photos.length > 0 && (
+    <Button size="sm" className="shadow-chip" onClick={() => setOpen(true)}>
+      {photos.length === 1 ? "Ver la foto" : `Ver las ${photos.length} fotos`}
+    </Button>
+  );
+  const tile = (i: number, className: string, withButton: boolean) => {
+    const photo = rest[i];
+    return (
+      <Photo
+        key={i}
+        label={photo ? undefined : (landmarks[i] ?? city)}
+        src={photo ? standardImageUrl(photo.url) : undefined}
+        alt={photo?.alt}
+        labelPosition="center"
+        className={cn("rounded-xl p-3", className)}
+        bottom={withButton ? all || undefined : photo ? <Credit photo={photo} /> : undefined}
+      />
+    );
+  };
   return (
-    <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
-      <Photo
-        label={hero ? undefined : `Foto de ${city}`}
-        src={hero?.url}
-        alt={hero?.alt}
-        className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1"
-        bottom={hero ? <Credit photo={hero} /> : undefined}
-      />
-      {tiles.map((t, i) => (
+    <>
+      <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
         <Photo
-          key={i}
-          label={t.photo ? undefined : t.label}
-          src={t.photo?.url}
-          alt={t.photo?.alt}
-          labelPosition="center"
-          className={cn("rounded-xl", i > 0 && "max-md:hidden", i === 2 && "hidden")}
-          bottom={t.photo ? <Credit photo={t.photo} /> : undefined}
+          label={hero ? undefined : `Foto de ${city}`}
+          src={hero ? standardImageUrl(hero.url) : undefined}
+          alt={hero?.alt}
+          className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1"
+          bottom={hero ? <Credit photo={hero} /> : undefined}
         />
-      ))}
-      <Photo
-        className="rounded-xl p-3"
-        bottom={
-          <Button size="sm" className="shadow-chip" onClick={() => toast(photos.length ? `${photos.length} fotos de ${city}` : "Las fotos llegarán cuando se elijan")}>
-            {photos.length ? `Ver las ${photos.length} fotos` : "Sin fotos todavía"}
-          </Button>
-        }
-      />
-    </section>
+        {tile(0, "", false)}
+        {/* Second tile: holds the button on a phone, a photo on a wide screen. */}
+        {tile(1, "md:hidden", true)}
+        {tile(1, "max-md:hidden", false)}
+        {tile(2, "max-md:hidden", false)}
+        {tile(3, "max-md:hidden", true)}
+      </section>
+      <Dialog open={open} title={`Fotos de ${city}`} wide onClose={() => setOpen(false)} actions={<Button onClick={() => setOpen(false)}>Cerrar</Button>}>
+        <ul aria-label={`Fotos de ${city}`} className="m-0 grid max-h-[65vh] list-none grid-cols-1 gap-4 overflow-y-auto p-0 sm:grid-cols-2">
+          {photos.map((p) => (
+            <li key={p.url} className="flex flex-col gap-1.5">
+              <Photo src={standardImageUrl(p.url)} alt={p.alt} label={p.alt} labelPosition="center" className="aspect-[4/3] rounded-xl" bottom={<Credit photo={p} />} />
+              {p.alt && <span className="text-[13px] text-muted">{p.alt}</span>}
+            </li>
+          ))}
+        </ul>
+      </Dialog>
+    </>
   );
 }
 

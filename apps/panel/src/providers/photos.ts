@@ -1,7 +1,7 @@
 // Photo search for the picker in Revisar (SPEC §6). Every result is a real
 // photo from one of three sources, linked rather than copied, with the credit
 // its licence asks for. Claude only suggests what to search for.
-import type { Photo } from "@wanderlot/core";
+import { standardImageUrl, type Photo } from "@wanderlot/core";
 
 export type PhotoSourceName = Photo["source"];
 
@@ -35,7 +35,8 @@ const plain = (html: string | undefined) =>
 // Licences that let a friends' site show the photo with a credit.
 const REUSABLE = /^(cc0|public domain|pd|cc by(-sa)? [0-9.]+|cc by(-sa)?)/i;
 
-// Wikimedia Commons: no key needed. Asks for a 1600px rendition.
+// Wikimedia Commons: no key needed. Asks for a 1280px rendition, one of the
+// widths Wikimedia lets other sites load (see standardImageUrl).
 export function wikimedia(fetcher: Fetch = fetch): PhotoSource {
   return {
     name: "wikimedia",
@@ -50,7 +51,7 @@ export function wikimedia(fetcher: Fetch = fetch): PhotoSource {
         gsrlimit: String(Math.min(count * 2, 40)),
         prop: "imageinfo",
         iiprop: "url|size|extmetadata",
-        iiurlwidth: "1600",
+        iiurlwidth: "1280",
         origin: "*",
       });
       const data = await getJson(fetcher, `https://commons.wikimedia.org/w/api.php?${params}`, {}, signal);
@@ -64,7 +65,7 @@ export function wikimedia(fetcher: Fetch = fetch): PhotoSource {
           if (!info?.thumburl || !REUSABLE.test(license)) return [];
           return [
             {
-              url: info.thumburl,
+              url: standardImageUrl(info.thumburl),
               width: info.thumbwidth,
               height: info.thumbheight,
               source: "wikimedia",

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { euros } from "@wanderlot/core";
+import { euros, standardImageUrl } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
@@ -40,7 +40,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
     >
       <Photo
         label={`Foto de ${p.place.city}`}
-        src={photos[0]?.url}
+        src={photos[0] ? standardImageUrl(photos[0].url) : undefined}
         alt={photos[0]?.alt}
         className="h-[180px] sm:h-[214px]"
         bottom={

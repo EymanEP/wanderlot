@@ -345,6 +345,12 @@ Each photo stores:
   author, authorUrl, license, sourceUrl, alt, downloadLocation? }
 ```
 
+Wikimedia serves other sites only its standard thumbnail widths (…, 960, 1280,
+1920, …) and rejects the rest. The panel asks for 1280px, and every screen
+moves a saved thumbnail to the largest standard width that fits
+(`standardImageUrl`), so photos saved at another width still load. A photo that
+fails to load anyway shows its grey placeholder, never a broken image.
+
 Copying files into our own storage (Cloudflare R2's free tier would hold
 them) is not part of v1. It becomes worth doing if linked Wikimedia images
 start disappearing; Unsplash photos must stay linked either way.
