@@ -65,6 +65,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             </Heading>
             <span className="text-sm text-muted">{p.place.country}</span>
             {approved && <Badge tone="accent-solid">Aprobada</Badge>}
+            {p.suggestedBy && <Badge tone="neutral">Idea de {p.suggestedBy}</Badge>}
             {discarded && <Badge tone="muted">Descartada</Badge>}
           </div>
           <span className="shrink-0 text-[15px]">

@@ -37,7 +37,10 @@ const GenerateBody = z.object({
     z.object({ kind: z.literal("anywhere") }),
     z.object({ kind: z.literal("europe") }),
     z.object({ kind: z.literal("place"), iata: z.string().regex(/^[A-Z]{3}$/) }),
+    z.object({ kind: z.literal("named"), name: z.string().trim().min(1).max(80) }),
   ]),
+  // Research a friend's suggestion (scope "named"): credited and marked done.
+  suggestionId: z.string().min(1).max(80).optional(),
   stops: z.enum(["direct", "one", "any"]),
   estimateStays: z.boolean(),
   suggestThings: z.boolean(),
@@ -166,10 +169,16 @@ export function createPanel({
     const body = GenerateBody.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "invalid request", issues: body.error.issues }, 400);
     const { plan } = entry;
+    // A friend's idea: research exactly that place, crediting them.
+    const { suggestionId, ...options } = body.data;
+    const idea = suggestionId ? (await site.suggestions(plan.id)).find((x) => x.id === suggestionId) : undefined;
+    if (suggestionId && !idea) return c.json({ error: "esa idea ya no está" }, 404);
     const req: SearchRequest = {
-      ...body.data,
-      // What's already on the list, so a new search looks elsewhere.
-      exclude: [...new Set(entry.proposals.map((p) => `${p.place.city} (${p.place.iata})`))],
+      ...options,
+      ...(idea
+        ? { scope: { kind: "named" as const, name: idea.place, by: idea.member.name, ...(idea.note ? { note: idea.note } : {}) } }
+        : // What's already on the list, so a new search looks elsewhere.
+          { exclude: [...new Set(entry.proposals.map((p) => `${p.place.city} (${p.place.iata})`))] }),
       planId: plan.id,
       origin: plan.origin,
       dateFrom: plan.dateFrom,
@@ -186,6 +195,7 @@ export function createPanel({
       return c.json({ error: (e as Error).message }, 409);
     }
 
+    let researched: string | undefined;
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
       try {
@@ -196,7 +206,8 @@ export function createPanel({
           const base = p.id.replace(/-\d+$/, "") || "propuesta";
           let id = base;
           for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
-          const proposal: Proposal = { ...p, id, review: "pending" };
+          const proposal: Proposal = { ...p, id, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) };
+          if (idea && !researched) researched = id;
           store.update(plan.id, (e) => {
             // Research's notes seed Comparativa; the organiser's edits win.
             const prev = e!.editorial[proposal.id] ?? {};
@@ -219,11 +230,24 @@ export function createPanel({
           });
           await s.writeln(JSON.stringify({ proposal }));
         }
+        // Mark the idea done, pointing at what came of it. Best effort: the
+        // proposals are saved either way.
+        if (idea && researched) await site.setSuggestion(plan.id, idea.id, "researched", researched).catch(() => {});
         await s.writeln(JSON.stringify({ done: true }));
       } catch (err) {
         await s.writeln(JSON.stringify({ error: (err as Error).message }));
       }
     });
+  });
+
+  // Ideas friends sent from the site for this trip.
+  app.get("/api/plans/:planId/suggestions", async (c) => c.json(await site.suggestions(c.req.param("planId"))));
+
+  app.put("/api/plans/:planId/suggestions/:id", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z.object({ status: z.enum(["new", "researched", "dismissed"]) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status}" }, 400);
+    return c.json(await site.setSuggestion(planId, id, body.data.status));
   });
 
   // Revisar y aprobar.

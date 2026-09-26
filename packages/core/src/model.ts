@@ -112,6 +112,8 @@ export const Proposal = z.object({
   todo: z.array(Thing),
   see: z.array(Thing),
   provenance: Provenance,
+  // The friend whose idea it was, when researched from a suggestion.
+  suggestedBy: z.string().min(1).max(60).optional(),
   review: z.enum(["pending", "approved", "discarded"]),
 });
 export type Proposal = z.infer<typeof Proposal>;
@@ -212,3 +214,16 @@ export type PlanSummary = z.infer<typeof PlanSummary>;
 
 // A comment as members see it.
 export type CommentView = Comment & { likes: number; likedByMe: boolean };
+
+// A destination a friend suggested for a trip (SPEC §4): what the site lists
+// and the panel researches.
+export interface SuggestionView {
+  id: string;
+  place: string;
+  note: string | null;
+  createdAt: string;
+  status: "new" | "researched" | "dismissed";
+  member: { id: string; name: string };
+  // The proposal researched from it, once there is one.
+  proposalId: string | null;
+}

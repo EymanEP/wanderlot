@@ -1,7 +1,7 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
 import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
-import type { Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan } from "./store.ts";
+import type { Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
 
 export type Row = Record<string, unknown>;
 export type Value = string | number | null;
@@ -101,6 +101,39 @@ export class SqlStore implements SiteStore {
 
   async planIdsFor(memberId: string): Promise<string[]> {
     return (await this.all("select plan_id from plan_members where member_id = ?", memberId)).map((r) => r.plan_id as string);
+  }
+
+  // --- suggestions ---------------------------------------------------------
+
+  async addSuggestion(s: Suggestion) {
+    await this.run(
+      "insert into suggestions (id, plan_id, member_id, place, note, created_at, status, proposal_id) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      s.id,
+      s.planId,
+      s.memberId,
+      s.place,
+      s.note,
+      s.createdAt,
+      s.status,
+      s.proposalId,
+    );
+  }
+
+  async suggestions(planId: string): Promise<Suggestion[]> {
+    return (await this.all("select * from suggestions where plan_id = ? order by created_at, id", planId)).map((r) => ({
+      id: r.id as string,
+      planId: r.plan_id as string,
+      memberId: r.member_id as string,
+      place: r.place as string,
+      note: (r.note as string | null) ?? null,
+      createdAt: r.created_at as string,
+      status: r.status as Suggestion["status"],
+      proposalId: (r.proposal_id as string | null) ?? null,
+    }));
+  }
+
+  async setSuggestionStatus(id: string, status: Suggestion["status"], proposalId: string | null) {
+    await this.run("update suggestions set status = ?, proposal_id = coalesce(?, proposal_id) where id = ?", status, proposalId, id);
   }
 
   // --- PINs ----------------------------------------------------------------

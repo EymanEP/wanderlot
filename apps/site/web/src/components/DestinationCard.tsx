@@ -63,6 +63,7 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
         </div>
         <span className="text-sm text-muted">{placeLine(d)}</span>
         <span className="text-sm text-muted">{stayLine(d, plan)}</span>
+        {d.suggestedBy && <span className="text-[13px] font-semibold text-accent-strong">Idea de {d.suggestedBy}</span>}
         <span className="pt-[3px] text-[15px]">
           <strong className="font-bold tabular-nums">{euros(d.totalPerPersonCents)}</strong> por persona
         </span>

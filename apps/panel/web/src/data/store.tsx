@@ -1,7 +1,7 @@
 // The panel's state. <PanelProvider> loads everything through a backend (the
 // local server, or the mocks) and screens read and change it with usePanel().
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal } from "@wanderlot/core";
+import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, PhotoResults, Review, SearchOptions, Status, VoteView } from "./backend.ts";
 
@@ -54,6 +54,8 @@ export interface PanelApi {
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
   setPrices: (id: string, prices: CheckedPrices) => Promise<void>;
+  suggestions: () => Promise<SuggestionView[]>;
+  dismissSuggestion: (id: string) => Promise<SuggestionView[]>;
   publish: () => Promise<number>;
   openVote: (deadline: string) => Promise<string>;
   vote: () => Promise<VoteView>;
@@ -256,6 +258,8 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         backend.editorial(pid, id, change).catch(() => loadPlan(pid));
       },
       searchPhotos: (q) => backend.searchPhotos(q),
+      suggestions: () => backend.suggestions(need()),
+      dismissSuggestion: (id) => backend.setSuggestion(need(), id, "dismissed"),
       async setPrices(id, prices) {
         const updated = await backend.setPrices(need(), id, prices);
         patch((s) => ({ proposals: s.proposals.map((p) => (p.id === id ? updated : p)) }));

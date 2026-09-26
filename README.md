@@ -84,14 +84,14 @@ Screens:
 | app | route | screen |
 |---|---|---|
 | panel | `/planes/nuevo` | create a plan: name, dates, origin, people, budget |
-| panel | `/generar` | search form + proposals arriving |
-| panel | `/revisar` | approve, discard, verify, publish |
+| panel | `/generar` | search form, proposals arriving, and the group's destination ideas to research |
+| panel | `/revisar` | approve, discard, verify or type in checked prices, photos, publish |
 | panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
 | panel | `/votacion` | live count and each person's ballot, reminder, close early, tie-break, result message |
 | panel | `/personas` | group name, who goes on the selected trip, who can get in: invites, PINs, closing sessions, removing access |
 | site | `/entrar` | sign in with name and PIN (or a passkey) |
 | site | `/i/:token` | accept a one-time invite by choosing a PIN (or creating a passkey) |
-| site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans |
+| site | `/p/noviembre-2026` | plan: destinations, recent comments, other plans, propose a destination |
 | site | `/p/noviembre-2026/destinos/nap` | destination detail and comments |
 | site | `/p/noviembre-2026/votacion` | rank three; scoreboard hidden until close |
 | site | `/p/noviembre-2026/comentarios` | every comment, by destination |

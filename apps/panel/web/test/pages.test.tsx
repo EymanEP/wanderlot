@@ -45,6 +45,23 @@ describe("Generar", () => {
     expect(screen.getAllByRole("article")).toHaveLength(12);
   });
 
+  it("researches a friend's idea and credits them", async () => {
+    const user = userEvent.setup();
+    renderAt("/generar");
+    const ideas = await screen.findByRole("region", { name: "Ideas del grupo" });
+    expect(within(ideas).getByText("2 por investigar")).toBeTruthy();
+    const azores = within(ideas).getByRole("listitem", { name: "Azores" });
+    expect(within(azores).getByText(/idea de Iván/)).toBeTruthy();
+
+    await user.click(within(within(ideas).getByRole("listitem", { name: "Oporto" })).getByRole("button", { name: "Descartar" }));
+    expect(await within(ideas).findByText("1 por investigar")).toBeTruthy();
+    expect(within(ideas).queryByRole("listitem", { name: "Oporto" })).toBeNull();
+
+    await user.click(within(azores).getByRole("button", { name: "Investigar" }));
+    expect(await within(azores).findByText("Investigada")).toBeTruthy();
+    expect(screen.getAllByText("Idea de Iván").length).toBeGreaterThan(0);
+  });
+
   it("picks the stay with two clicks on the calendar", async () => {
     const user = userEvent.setup();
     renderAt("/generar");

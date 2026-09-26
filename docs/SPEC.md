@@ -202,6 +202,20 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 
 ---
 
+### Ideas from the group
+- While a trip's vote isn't closed, anyone on it can **propose a destination**
+  from the site ("Proponer un destino"): a place in their own words and,
+  optionally, why. Everyone on the trip sees what has been suggested, so
+  nobody proposes the same place twice. Each person can have up to 5 waiting.
+- The organiser sees them in the panel's Generar, under "Ideas del grupo":
+  **Investigar** researches that place (one proposal, the same checks as any
+  other) and credits it ("Idea de Marta", in the panel and on the site);
+  **Descartar** drops it from the list.
+- A researched idea still goes through Revisar and publishing like any
+  proposal; after the first ballot, new destinations can't join the vote.
+
+---
+
 ## 5. Identity on the site
 
 A small, known group, no passwords to remember beyond a short PIN. The
@@ -405,6 +419,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
 | `POST` | `/api/plans/:planId/comments` | member | `{ destinationId, body, parentId? }` |
 | `PUT` | `/api/plans/:planId/comments/:commentId/like` | member | `{ on }` |
+| `GET` / `POST` | `/api/plans/:planId/suggestions` | member | ideas for the trip / `{ place, note? }`; `409` once closed or with 5 waiting |
+| `GET` | `/api/admin/plans/:planId/suggestions` | panel | the trip's ideas with who suggested them |
+| `PUT` | `/api/admin/plans/:planId/suggestions/:id` | panel | `{ status: new \| researched \| dismissed, proposalId? }` |
 | `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
@@ -435,7 +452,9 @@ it). Calls that touch the site go through the admin API above.
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
 | `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
-| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}` |
+| `POST` | `/api/plans/:planId/generate` | research; streams NDJSON `{proposal}` … `{done}` or `{error}`; with `suggestionId`, researches that friend's idea by name and credits them |
+| `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
+| `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ outboundCents, inboundCents, stayNightlyCents? }` |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
 | `PATCH` | `/api/plans/:planId/proposals/:id/editorial` | pros, cons, weather, photos, `inVote` |

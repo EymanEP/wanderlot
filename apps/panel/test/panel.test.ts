@@ -280,6 +280,50 @@ describe("plans and settings", () => {
     expect(status.site).toEqual({ url: SITE, reachable: true });
   });
 
+  it("researches a friend's idea by name, credits them and marks it done", async () => {
+    // Publish, put Ana on the trip, and let her join and suggest a place.
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
+    await json("/api/members", "PUT", FRIENDS);
+    await json(`/api/plans/${PLAN}/participants`, "PUT", ["ana"]);
+    const { url } = (await json("/api/members/ana/invite", "POST")).data;
+    const joined = await site.request(`/api/invites/${url.split("/i/")[1]}/pin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pin: "480193" }),
+    });
+    const cookie = joined.headers.get("set-cookie")!.split(";")[0]!;
+    await site.request(`/api/plans/${PLAN}/suggestions`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ place: "Azores", note: "Naturaleza a lo bestia" }),
+    });
+
+    const ideas = (await json(`/api/plans/${PLAN}/suggestions`)).data;
+    expect(ideas.map((i: any) => [i.place, i.member.name, i.status])).toEqual([["Azores", "ana", "new"]]);
+
+    await call(`/api/plans/${PLAN}/generate`, "POST", {
+      source: "claude",
+      scope: { kind: "anywhere" },
+      stops: "any",
+      estimateStays: true,
+      suggestThings: true,
+      count: 1,
+      suggestionId: ideas[0].id,
+    });
+    expect(lastRequest?.scope).toEqual({ kind: "named", name: "Azores", by: "ana", note: "Naturaleza a lo bestia" });
+    const { data } = await json(`/api/plans/${PLAN}`);
+    const credited = data.proposals.filter((p: Proposal) => p.suggestedBy === "ana");
+    expect(credited.length).toBeGreaterThan(0);
+    const after = (await json(`/api/plans/${PLAN}/suggestions`)).data;
+    expect(after[0]).toMatchObject({ status: "researched", proposalId: credited[0].id });
+
+    // Dismissing one hides it from the to-do list.
+    expect((await json(`/api/plans/${PLAN}/suggestions/${ideas[0].id}`, "PUT", { status: "dismissed" })).data[0].status).toBe("dismissed");
+    expect((await json(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "anywhere" }, stops: "any", estimateStays: true, suggestThings: true, suggestionId: "nope" })).status).toBe(404);
+  });
+
   it("searches photos and counts a download only when a new one is kept", async () => {
     expect((await call("/api/photos")).status).toBe(400);
     const { data } = await json("/api/photos?q=Alfama");

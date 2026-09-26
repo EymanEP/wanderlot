@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { addDaysIso } from "@wanderlot/core";
+import { useEffect, useState } from "react";
+import { addDaysIso, type SuggestionView } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
+import { IdeasCard } from "../components/IdeasCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { ProposalRow, ProposalRowLoading } from "../components/ProposalRow.tsx";
 import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
@@ -10,13 +11,51 @@ const STOPS_LABEL = { direct: "solo directos", one: "máximo 1 escala", any: "co
 const COUNT = 12;
 
 export function GenerarPage() {
-  const { state, now, startGeneration, stopGeneration, verify, savePlan } = usePanel();
+  const { state, now, startGeneration, stopGeneration, verify, savePlan, suggestions, dismissSuggestion } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
   const initial = searchFromPlan(plan);
   const running = generation?.running ?? false;
   const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
+
+  // Friends' ideas from the site: reloaded when a search ends, since
+  // researching one marks it done.
+  const [ideas, setIdeas] = useState<SuggestionView[]>([]);
+  useEffect(() => {
+    if (running) return;
+    let live = true;
+    suggestions().then(
+      (list) => live && setIdeas(list),
+      () => live && setIdeas([]),
+    );
+    return () => {
+      live = false;
+    };
+    // Not on `suggestions` itself: it's a new function on every panel change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.id, running]);
+
+  const research = (idea: SuggestionView) => {
+    startGeneration({
+      source: "claude",
+      scope: { kind: "anywhere" },
+      stops: "any",
+      estimateStays: true,
+      suggestThings: true,
+      nearbyAirports: false,
+      count: 1,
+      suggestionId: idea.id,
+    });
+    toast(`Investigando ${idea.place}, la idea de ${idea.member.name}`);
+  };
+  const dismiss = async (idea: SuggestionView) => {
+    try {
+      setIdeas(await dismissSuggestion(idea.id));
+    } catch (e) {
+      toast(`No se pudo: ${(e as Error).message}`);
+    }
+  };
 
   const onSubmit = async (v: SearchValues) => {
     if (!v.start || !v.end) return toast("Elige en el calendario el día de salida y el de vuelta");
@@ -80,6 +119,8 @@ export function GenerarPage() {
               ) : null}
             </div>
           </div>
+
+          <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 
           {generation?.error && <Notice>La búsqueda se cortó: {generation.error}</Notice>}
           {status?.research === "none" && (

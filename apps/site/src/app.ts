@@ -23,6 +23,7 @@ import {
   validateRanking,
   type CommentView,
   type Member,
+  type SuggestionView,
   type VoteState,
   type PlanSummary,
 } from "@wanderlot/core";
@@ -95,6 +96,8 @@ export function pinProblem(pin: string): string | null {
 }
 
 export const PIN_MAX_TRIES = 5;
+// Unresearched ideas one person can have waiting on a trip.
+export const MAX_OPEN_SUGGESTIONS = 5;
 export const PIN_LOCK_MS = 15 * 60_000;
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
@@ -156,6 +159,19 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     // Sliding expiry, written at most once a day to spare the database.
     if (now().getTime() - Date.parse(session.lastSeenAt) > DAY) await store.touchSession(hash, iso(), iso(SESSION_TTL_MS));
     return store.member(session.memberId);
+  }
+
+  async function suggestionViews(planId: string): Promise<SuggestionView[]> {
+    const names = new Map((await store.members()).map((m) => [m.id, m.name]));
+    return (await store.suggestions(planId)).map((s) => ({
+      id: s.id,
+      place: s.place,
+      note: s.note,
+      createdAt: s.createdAt,
+      status: s.status,
+      member: { id: s.memberId, name: names.get(s.memberId) ?? "Alguien" },
+      proposalId: s.proposalId,
+    }));
   }
 
   // Reads the plan and closes the vote if everyone has voted or the deadline
@@ -463,6 +479,20 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json(await voteState(planId));
   });
 
+  // Destinations friends suggested, for the panel to research or dismiss.
+  admin.get("/plans/:planId/suggestions", async (c) => c.json(await suggestionViews(c.req.param("planId"))));
+
+  admin.put("/plans/:planId/suggestions/:id", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z
+      .object({ status: z.enum(["new", "researched", "dismissed"]), proposalId: z.string().min(1).max(80).optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status, proposalId?}" }, 400);
+    if (!(await store.suggestions(planId)).some((s) => s.id === id)) return c.json({ error: "not found" }, 404);
+    await store.setSuggestionStatus(id, body.data.status, body.data.proposalId ?? null);
+    return c.json(await suggestionViews(planId));
+  });
+
   // Who is on this trip (SPEC §5): only they see it, vote and comment.
   admin.put("/plans/:planId/members", async (c) => {
     const body = z.array(z.string().min(1)).max(100).safeParse(await c.req.json().catch(() => null));
@@ -634,6 +664,35 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       winnerId: plan.winnerDestinationId ?? result.winnerId,
       ballots: plan.ballots.map((b) => ({ memberId: b.memberId, name: names.get(b.memberId), ranking: b.ranking })),
     });
+  });
+
+  // Ideas for where to go: everyone on the trip sees them, so nobody suggests
+  // the same place twice; the organiser researches them from the panel.
+  api.get("/:planId/suggestions", async (c) => c.json(await suggestionViews(c.req.param("planId"))));
+
+  api.post("/:planId/suggestions", async (c) => {
+    const planId = c.req.param("planId");
+    const plan = await settle(planId);
+    if (!plan) return c.json({ error: "not found" }, 404);
+    if (plan.status === "closed") return c.json({ error: "la votación ya se cerró" }, 409);
+    const body = z
+      .object({ place: z.string().trim().min(1).max(80), note: z.string().trim().max(500).optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "Escribe el destino (hasta 80 letras) y, si quieres, por qué" }, 400);
+    const me = c.get("member").id;
+    const mine = (await store.suggestions(planId)).filter((s) => s.memberId === me && s.status === "new");
+    if (mine.length >= MAX_OPEN_SUGGESTIONS) return c.json({ error: `Ya tienes ${MAX_OPEN_SUGGESTIONS} ideas pendientes en este viaje` }, 409);
+    await store.addSuggestion({
+      id: randomToken(12),
+      planId,
+      memberId: me,
+      place: body.data.place,
+      note: body.data.note || null,
+      createdAt: iso(),
+      status: "new",
+      proposalId: null,
+    });
+    return c.json(await suggestionViews(planId), 201);
   });
 
   // All of a plan's comments with likes, newest first. ?destinationId= narrows

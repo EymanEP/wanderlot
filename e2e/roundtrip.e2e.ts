@@ -141,6 +141,20 @@ try {
   await org.getByRole("listitem", { name: "Ana" }).getByText("Dentro").waitFor();
   console.log("✓ panel: Ana is inside");
 
+  // 6b. Ana suggests a destination; the organiser researches it from Generar.
+  await ana.getByRole("button", { name: "Proponer un destino" }).click();
+  await ana.getByLabel("Destino", { exact: true }).fill("Azores");
+  await ana.getByLabel("Por qué (opcional)").fill("Naturaleza a lo bestia");
+  await ana.getByRole("button", { name: "Enviar idea" }).click();
+  await ana.getByText("Idea enviada. Eyman la verá en el panel.").waitFor();
+  await org.getByRole("link", { name: "Generar" }).first().click();
+  const idea = org.getByRole("listitem", { name: "Azores" });
+  await idea.getByText("«Naturaleza a lo bestia»").waitFor();
+  await idea.getByRole("button", { name: "Investigar" }).click();
+  await idea.getByText("Investigada").waitFor();
+  await org.getByText("Idea de Ana").first().waitFor();
+  console.log("✓ site → panel: Ana's idea researched and credited");
+
   // 7. Ana votes on her phone; the organiser follows it and closes early.
   await ana.getByRole("link", { name: "Repartir mis puntos" }).click();
   for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();

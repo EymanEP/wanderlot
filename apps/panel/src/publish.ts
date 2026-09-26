@@ -1,6 +1,6 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
-import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings, type VoteState } from "@wanderlot/core";
+import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
 import type { PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
@@ -59,6 +59,8 @@ export interface SiteClient {
   publish(s: Snapshot): Promise<void>;
   openVote(planId: string, deadline: string): Promise<void>;
   setPlanMembers(planId: string, memberIds: string[]): Promise<void>;
+  suggestions(planId: string): Promise<SuggestionView[]>;
+  setSuggestion(planId: string, id: string, status: SuggestionView["status"], proposalId?: string): Promise<SuggestionView[]>;
   vote(planId: string): Promise<VoteState>;
   closeVote(planId: string): Promise<VoteState>;
   pickWinner(planId: string, destinationId: string): Promise<VoteState>;
@@ -96,6 +98,9 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     putSettings: (s) => call<GroupSettings>("/settings", "PUT", s),
     publish: async (s) => void (await call(`/plans/${s.plan.id}`, "PUT", s)),
     openVote: async (planId, deadline) => void (await call(`/plans/${planId}/open-vote`, "POST", { deadline })),
+    suggestions: (planId) => call<SuggestionView[]>(`/plans/${planId}/suggestions`, "GET"),
+    setSuggestion: (planId, id, status, proposalId) =>
+      call<SuggestionView[]>(`/plans/${planId}/suggestions/${encodeURIComponent(id)}`, "PUT", { status, ...(proposalId ? { proposalId } : {}) }),
     setPlanMembers: async (planId, ids) => void (await call(`/plans/${planId}/members`, "PUT", ids)),
     vote: (planId) => call<VoteState>(`/plans/${planId}/vote`, "GET"),
     closeVote: (planId) => call<VoteState>(`/plans/${planId}/close`, "POST"),

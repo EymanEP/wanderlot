@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { airportCity, longDate, shortDate, type Category } from "@wanderlot/core";
 import {
   BeachIcon,
+  Button,
   CityIcon,
   Chip,
   EmptyState,
@@ -21,6 +22,7 @@ import {
   cn,
 } from "@wanderlot/ui";
 import { CommentCard } from "../components/CommentCard.tsx";
+import { SuggestDialog } from "../components/SuggestDialog.tsx";
 import { DestinationCard } from "../components/DestinationCard.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
@@ -43,6 +45,7 @@ export function PlanPage() {
   const { plan, destinations, myRanking, voted, comments, members, now, result, closed } = site;
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [onlyDirect, setOnlyDirect] = useState(false);
   const [under400, setUnder400] = useState(false);
   const base = `/p/${planId}`;
@@ -93,6 +96,11 @@ export function PlanPage() {
                 </>
               )}
             </div>
+            {!closed && (
+              <Button size="lg" onClick={() => setSuggesting(true)}>
+                Proponer un destino
+              </Button>
+            )}
             {!draft && destinations.length > 0 && (
               <Link to={`${base}/votacion`} className={buttonClasses({ variant: "primary", size: "lg" })}>
                 {closed ? "Ver el recuento" : myRanking.length ? "Cambiar mi reparto" : "Repartir mis puntos"}
@@ -174,6 +182,8 @@ export function PlanPage() {
         </div>
       </section>
       )}
+
+      <SuggestDialog open={suggesting} planId={plan.id} organiser={group.organiserName} onClose={() => setSuggesting(false)} />
 
       <Footer>
         <div className="flex flex-wrap items-center gap-3.5">

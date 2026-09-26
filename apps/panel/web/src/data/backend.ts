@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { GroupSettings, Photo, Plan, Proposal, VoteState } from "@wanderlot/core";
+import type { GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -38,6 +38,8 @@ export interface PlanEntry {
 export interface SearchOptions {
   source: "api" | "claude";
   scope: { kind: "anywhere" } | { kind: "europe" } | { kind: "place"; iata: string };
+  // Research one friend's idea (the server searches that place by name).
+  suggestionId?: string;
   stops: "direct" | "one" | "any";
   estimateStays: boolean;
   suggestThings: boolean;
@@ -86,6 +88,8 @@ export interface PanelBackend {
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
   setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
+  suggestions(planId: string): Promise<SuggestionView[]>;
+  setSuggestion(planId: string, id: string, status: SuggestionView["status"]): Promise<SuggestionView[]>;
   searchPhotos(query: string): Promise<PhotoResults>;
   publish(planId: string): Promise<{ published: number }>;
   openVote(planId: string, deadline: string): Promise<{ message: string }>;
@@ -165,6 +169,8 @@ export const httpBackend: PanelBackend = {
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
+  suggestions: (planId) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions`),
+  setSuggestion: (planId, id, status) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions/${enc(id)}`, "PUT", { status }),
   searchPhotos: (q) => call<PhotoResults>(`/api/photos?q=${enc(q)}`),
   // The screens confirm unverified prices themselves before calling this.
   publish: (planId) => call<{ published: number }>(`/api/plans/${enc(planId)}/publish`, "POST", { confirm: true }),

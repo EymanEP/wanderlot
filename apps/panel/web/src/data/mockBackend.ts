@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, baseStay, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type VoteState } from "@wanderlot/core";
+import { addDaysIso, baseStay, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
@@ -79,6 +79,11 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const a = mockAccess.find((x) => x.memberId === m.id)!;
     return { id: m.id, name: m.name, ...a, pin: a.passkeys[0] ? { setAt: a.passkeys[0].createdAt, locked: false } : null };
   });
+  // Two friends' ideas waiting in Generar.
+  let ideas: SuggestionView[] = [
+    { id: "s1", place: "Oporto", note: "Vuelos baratos y se come de lujo", createdAt: "2026-09-23T18:10:00Z", status: "new", member: { id: "marta", name: "Marta" }, proposalId: null },
+    { id: "s2", place: "Azores", note: "Naturaleza a lo bestia, y en noviembre no hay nadie", createdAt: "2026-09-24T09:30:00Z", status: "new", member: { id: "ivan", name: "Iván" }, proposalId: null },
+  ];
   // Who goes on each trip: everyone on the design's plans.
   const participants = new Map<string, string[]>(mockPlans.map((p) => [p.id, mockMembers.map((m) => m.id)]));
   const entry = (id: string) => {
@@ -167,7 +172,23 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       entries.set(p.id, { ...entry(p.id), plan: p });
       return p;
     },
-    async generate(planId, _opts, onProposal, signal) {
+    async generate(planId, opts, onProposal, signal) {
+      // A friend's idea: one proposal for that place, credited to them.
+      const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;
+      if (idea) {
+        await wait(tickMs * 2, signal);
+        const known = mockProposals.find((p) => p.place.city.toLowerCase() === idea.place.toLowerCase());
+        const base = known ?? { ...mockProposals[0]!, place: { city: idea.place, country: "", iata: idea.place.slice(0, 3).toUpperCase() } };
+        const taken = new Set(entry(planId).proposals.map((p) => p.id));
+        let id = base.place.iata.toLowerCase();
+        for (let n = 2; taken.has(id); n++) id = `${base.place.iata.toLowerCase()}-${n}`;
+        const fresh: Proposal = { ...base, id, planId, review: "pending", suggestedBy: idea.member.name };
+        const cur = entry(planId);
+        entries.set(planId, { ...cur, proposals: [...cur.proposals, fresh] });
+        ideas = ideas.map((i) => (i.id === idea.id ? { ...i, status: "researched", proposalId: id } : i));
+        onProposal(fresh);
+        return;
+      }
       // Re-runs the canvas's twelve, one per tick.
       const e = entry(planId);
       const pool = planId === "noviembre-2026" ? ARRIVAL.map((id) => mockProposals.find((p) => p.id === id)!) : [];
@@ -179,6 +200,11 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
         entries.set(planId, { ...cur, proposals: [...cur.proposals.filter((x) => x.id !== p.id), fresh] });
         onProposal(fresh);
       }
+    },
+    suggestions: async () => ideas,
+    async setSuggestion(_planId, id, status) {
+      ideas = ideas.map((i) => (i.id === id ? { ...i, status } : i));
+      return ideas;
     },
     review: async (planId, id, review) => patchProposal(planId, id, (p) => ({ ...p, review })),
     async verify(planId, id) {

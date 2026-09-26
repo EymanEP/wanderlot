@@ -8,6 +8,7 @@ import {
   type Destination,
   type Plan,
   type PlanSummary,
+  type SuggestionView,
   type TallyResult,
 } from "@wanderlot/core";
 import {
@@ -45,6 +46,9 @@ export interface SiteSource {
   saveBallot(planId: string, ranking: string[]): Promise<void>;
   addComment(planId: string, destinationId: string, body: string, parentId?: string): Promise<CommentView>;
   like(planId: string, commentId: string, on: boolean): Promise<{ likes: number; likedByMe: boolean }>;
+  // Ideas for where to go, from anyone on the trip.
+  suggestions(planId: string): Promise<SuggestionView[]>;
+  suggest(planId: string, place: string, note: string): Promise<SuggestionView[]>;
 }
 
 // Something the person should see, in their words.
@@ -85,12 +89,29 @@ export const httpSource: SiteSource = {
     }),
   like: (planId, commentId, on) =>
     request(`/api/plans/${encodeURIComponent(planId)}/comments/${encodeURIComponent(commentId)}/like`, { method: "PUT", body: JSON.stringify({ on }) }),
+  suggestions: (planId) => request<SuggestionView[]>(`/api/plans/${encodeURIComponent(planId)}/suggestions`),
+  suggest: (planId, place, note) =>
+    request<SuggestionView[]>(`/api/plans/${encodeURIComponent(planId)}/suggestions`, {
+      method: "POST",
+      body: JSON.stringify({ place, ...(note.trim() ? { note } : {}) }),
+    }),
 };
 
 // The mocks, played by the API's rules. `closed` previews the site after the vote.
 export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteSource {
   let ballots: Ballot[] = closed ? [...mockBallots, ...lateBallots] : [...mockBallots];
   let comments: CommentView[] = mockComments.map((c) => ({ ...c, likedByMe: false }));
+  let suggestions: SuggestionView[] = [
+    {
+      id: "s0",
+      place: "Oporto",
+      note: "Vuelos baratos y se come de lujo",
+      createdAt: "2026-09-23T18:10:00Z",
+      status: "new",
+      member: { id: "marta", name: "Marta" },
+      proposalId: null,
+    },
+  ];
   const plan: Plan = closed ? { ...mockPlan, status: "closed", winnerDestinationId: "nap" } : mockPlan;
   const inVote = mockDestinations.filter((d) => d.inVote);
   const tallied = () =>
@@ -158,6 +179,15 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
       comments = comments.map((c) => (c.id === commentId && c.likedByMe !== on ? { ...c, likedByMe: on, likes: c.likes + (on ? 1 : -1) } : c));
       const c = comments.find((x) => x.id === commentId)!;
       return { likes: c.likes, likedByMe: c.likedByMe };
+    },
+    suggestions: async () => suggestions,
+    async suggest(_planId, place, note) {
+      if (!place.trim()) throw new SourceError("Escribe el destino");
+      suggestions = [
+        ...suggestions,
+        { id: `s${suggestions.length + 1}`, place: place.trim(), note: note.trim() || null, createdAt: MOCK_NOW.toISOString(), status: "new", member: { id: ME.id, name: ME.name }, proposalId: null },
+      ];
+      return suggestions;
     },
   };
 }
