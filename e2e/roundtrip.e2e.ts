@@ -148,6 +148,9 @@ try {
   await ana.getByText("Reparto guardado").waitFor();
   await org.getByRole("link", { name: "Votación" }).first().click();
   await org.getByText("1 de 2").waitFor();
+  // The organiser sees her ballot and the running count before anyone else.
+  await org.getByRole("table", { name: "Recuento provisional" }).waitFor();
+  assert.match((await org.getByRole("listitem", { name: "Ana" }).textContent())!, /1\. \S+ · 2\. \S+ · 3\. /);
   await org.getByRole("button", { name: "Cerrar ya" }).click();
   await org.getByRole("button", { name: "Cerrar con 1 voto" }).click();
   await org.getByText("Ganó").waitFor();

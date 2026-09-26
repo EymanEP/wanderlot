@@ -87,7 +87,7 @@ Screens:
 | panel | `/generar` | search form + proposals arriving |
 | panel | `/revisar` | approve, discard, verify, publish |
 | panel | `/comparativa` | side-by-side, editable pros/cons, in-vote checkbox |
-| panel | `/votacion` | who has voted, reminder, close early, tie-break, result message |
+| panel | `/votacion` | live count and each person's ballot, reminder, close early, tie-break, result message |
 | panel | `/personas` | group name, who goes on the selected trip, who can get in: invites, PINs, closing sessions, removing access |
 | site | `/entrar` | sign in with name and PIN (or a passkey) |
 | site | `/i/:token` | accept a one-time invite by choosing a PIN (or creating a passkey) |

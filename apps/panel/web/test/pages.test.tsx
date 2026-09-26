@@ -158,6 +158,13 @@ describe("Votación", () => {
     await user.click(screen.getByRole("link", { name: /Votación abierta/ }));
 
     expect(await screen.findByText("4 de 6")).toBeTruthy();
+    // The organiser sees the running count and each ballot while it's open.
+    const provisional = screen.getByRole("table", { name: "Recuento provisional" });
+    const first = within(provisional).getAllByRole("row")[1]!;
+    expect(within(first).getByText("Marrakech")).toBeTruthy();
+    expect(within(first).getByText("8")).toBeTruthy();
+    expect(within(screen.getByRole("listitem", { name: "Marta" })).getByText(/1\. Nápoles · 2\. Lisboa · 3\. Marrakech/)).toBeTruthy();
+    expect(within(screen.getByRole("listitem", { name: "Laura" })).getByText("Pendiente")).toBeTruthy();
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("4");
     await user.click(screen.getByRole("button", { name: "Recordar a quien falta" }));
     const reminder = (await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement;

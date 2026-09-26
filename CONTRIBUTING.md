@@ -78,8 +78,8 @@ it describes, update it in the same pull request.
 - **Photos.** They come only from Unsplash, Pexels and Wikimedia Commons,
   with credits. Claude suggests what to search for; it never supplies image
   URLs (SPEC §6).
-- **The vote.** Nobody sees the count, the organiser included, until it
-  closes (SPEC §4).
+- **The vote.** Friends don't see the count or anyone's ballot until it
+  closes; only the organiser follows it live, in the panel (SPEC §4).
 - **Who sees what.** A friend sees only the trips they're on (SPEC §5).
 - **Security.** Sign-in is one-time invites plus a PIN (or a passkey), with
   lockout (SPEC §5); the site sends a strict CSP, and the panel only answers

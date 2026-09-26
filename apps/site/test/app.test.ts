@@ -317,10 +317,26 @@ describe("with everyone signed in", () => {
       expect(((await (await as("ana", `/${PLAN}/results`)).json()) as any).winnerId).toBe("opo");
     });
 
-    it("shows the organiser who voted, and the count only once closed", async () => {
+    it("shows the organiser the count and every ballot live, but not the friends", async () => {
       await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "lis", "nap"] });
+      clock = new Date(clock.getTime() + 60_000);
+      await as("bea", `/${PLAN}/ballot`, "PUT", { ranking: ["lis", "opo", "nap"] });
       const open = (await (await admin(`/plans/${PLAN}/vote`, "GET")).json()) as any;
-      expect(open).toEqual({ status: "voting", voteDeadline: "2026-10-20T20:00:00Z", partySize: 6, voted: ["ana"], result: null });
+      expect(open).toMatchObject({ status: "voting", voteDeadline: "2026-10-20T20:00:00Z", partySize: 6, result: null });
+      expect(open.voted.sort()).toEqual(["ana", "bea"]);
+      // Most recent first.
+      expect(open.ballots.map((b: any) => [b.memberId, b.ranking])).toEqual([
+        ["bea", ["lis", "opo", "nap"]],
+        ["ana", ["opo", "lis", "nap"]],
+      ]);
+      expect(open.tally.rows.map((r: any) => [r.id, r.points])).toEqual([
+        ["lis", 5],
+        ["opo", 5],
+        ["nap", 2],
+      ]);
+      // The friends still can't see it.
+      expect((await as("ana", `/${PLAN}/results`)).status).toBe(403);
+      expect(JSON.stringify(await (await as("carlos", `/${PLAN}`)).json())).not.toMatch(/ranking":\["/);
     });
 
     it("closes early on the organiser's word, not before anyone votes", async () => {

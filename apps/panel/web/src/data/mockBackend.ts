@@ -96,19 +96,18 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const { plan, proposals, editorial } = entry(planId);
     const ballots = ballotsFor(planId);
     const inVote = proposals.filter((p) => p.review === "approved" && editorial[p.id]?.inVote !== false);
-    const counted =
-      plan.status === "closed"
-        ? tally(
-            inVote.map((p) => ({ id: p.id, totalPerPersonCents: p.outbound.priceCents + p.inbound.priceCents })),
-            ballots.map((b) => b.ranking).filter((r) => r.every((id) => inVote.some((p) => p.id === id))),
-          )
-        : null;
+    const counted = tally(
+      inVote.map((p) => ({ id: p.id, totalPerPersonCents: p.outbound.priceCents + p.inbound.priceCents })),
+      ballots.map((b) => b.ranking).filter((r) => r.every((id) => inVote.some((p) => p.id === id))),
+    );
     const state: VoteState = {
       status: plan.status,
       voteDeadline: plan.voteDeadline ?? null,
       partySize: plan.partySize,
       voted: ballots.map((b) => b.memberId),
-      result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
+      tally: counted,
+      ballots: [...ballots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ memberId, ranking, updatedAt }) => ({ memberId, ranking, updatedAt })),
+      result: plan.status === "closed" ? { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId } : null,
     };
     const going = participants.get(planId) ?? [];
     const people = members.filter((m) => going.includes(m.id)).map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));

@@ -178,8 +178,11 @@ screen; the site then shows it as the winner. There is no hidden fourth rule.
 draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline passes──▶ closed
 ```
 - While `voting`, a member may change their ballot any number of times.
-- **The scoreboard is hidden while `voting`.** Visible to everyone at all times:
-  who has voted and who hasn't (names only, never rankings).
+- **The scoreboard is hidden from friends while `voting`.** Visible to everyone
+  at all times: who has voted and who hasn't (names only, never rankings).
+- The organiser follows the vote live in the panel's Votación screen: the
+  running count and what each person has voted. (If the organiser also
+  votes, they can see others' ballots first; it's their group.)
 - The vote closes the moment the sixth ballot arrives or the deadline passes,
   whichever is first. ("Sixth" means the group's `partySize`.) Closing is checked on every read, so no cron is needed.
 - The organiser can also close it early from the panel's Votación screen
@@ -397,7 +400,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
-| `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted: [memberId], result }`; `result` only once closed |
+| `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted, tally, ballots, result }`: the live count and every ballot for the organiser; `result` once closed |
 | `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
 | `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`; only among those tied for first |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |

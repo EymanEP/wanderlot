@@ -413,18 +413,23 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ ok: true });
   });
 
-  // The vote as the organiser follows it: who has voted, and the count once
-  // closed. Winner is the organiser's pick when first place was tied.
+  // The vote as the organiser follows it: who has voted, what each ballot
+  // says and the running count, live (friends see the count only once it
+  // closes). Winner is the organiser's pick when first place was tied.
   async function voteState(planId: string): Promise<VoteState | undefined> {
     const plan = await settle(planId);
     if (!plan) return undefined;
-    const counted = plan.status === "closed" ? tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking)) : null;
+    const tally = tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking));
     return {
       status: plan.status,
       voteDeadline: plan.voteDeadline ?? null,
       partySize: plan.partySize,
       voted: plan.ballots.map((b) => b.memberId),
-      result: counted && { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId },
+      tally,
+      ballots: [...plan.ballots]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .map((b) => ({ memberId: b.memberId, ranking: b.ranking, updatedAt: b.updatedAt })),
+      result: plan.status === "closed" ? { ...tally, winnerId: plan.winnerDestinationId ?? tally.winnerId } : null,
     };
   }
 
