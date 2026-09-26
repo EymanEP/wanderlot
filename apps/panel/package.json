@@ -23,5 +23,8 @@
     "react-router": "^7.18.4",
     "zod": "^4.6.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  }
 }

@@ -41,6 +41,7 @@ export interface SearchOptions {
   stops: "direct" | "one" | "any";
   estimateStays: boolean;
   suggestThings: boolean;
+  nearbyAirports: boolean;
   count: number;
 }
 

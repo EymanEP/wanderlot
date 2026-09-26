@@ -238,6 +238,8 @@ describe("panel → site", () => {
 describe("plans and settings", () => {
   it("creates draft plans with unique ids and newest first", async () => {
     const input = { name: "Semana Santa 2027", origin: "MAD", dateFrom: "2027-03-23", nights: 5, flexDays: 1, partySize: 6, maxPriceCents: 45000 };
+    // No price limit is allowed.
+    expect((await json("/api/plans", "POST", { ...input, name: "Sin tope", maxPriceCents: null })).data.maxPriceCents).toBeNull();
     const a = await json("/api/plans", "POST", input);
     expect(a.status).toBe(201);
     expect(a.data).toMatchObject({ id: "semana-santa-2027", dateTo: "2027-03-28", status: "draft" });

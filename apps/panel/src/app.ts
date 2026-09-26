@@ -41,6 +41,7 @@ const GenerateBody = z.object({
   stops: z.enum(["direct", "one", "any"]),
   estimateStays: z.boolean(),
   suggestThings: z.boolean(),
+  nearbyAirports: z.boolean().default(false),
   count: z.number().int().min(1).max(24).default(12),
 });
 
@@ -61,7 +62,7 @@ const NewPlan = z.object({
   nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1).max(30),
-  maxPriceCents: z.number().int().positive(),
+  maxPriceCents: z.number().int().positive().nullable(),
   participants: z.array(z.string().min(1)).max(100).default([]),
 });
 

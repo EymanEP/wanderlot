@@ -15,6 +15,7 @@ const req: SearchRequest = {
   stops: "direct",
   estimateStays: true,
   suggestThings: true,
+  nearbyAirports: false,
   count: 3,
 };
 const { id: _i, planId: _p, review: _r, provenance: _v, ...lisbon } = proposal("lis", "Lisboa", "LIS");

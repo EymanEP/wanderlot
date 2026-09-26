@@ -6,6 +6,8 @@ import type { ResearchProvider } from "./types.ts";
 
 export { buildPrompt, outputSchema };
 
+export const RESEARCH_TOOLS = "WebSearch,WebFetch";
+
 export type Runner = (args: string[], signal?: AbortSignal) => Promise<string>;
 
 const runClaude: Runner = (args, signal) =>
@@ -23,7 +25,20 @@ export function claudeProvider(run: Runner = runClaude): ResearchProvider {
   return {
     async *research(req, signal) {
       const raw = await run(
-        ["-p", buildPrompt(req), "--output-format", "json", "--json-schema", JSON.stringify(outputSchema)],
+        [
+          "-p",
+          buildPrompt(req),
+          "--output-format",
+          "json",
+          "--json-schema",
+          JSON.stringify(outputSchema),
+          // Headless runs can't ask permission, so research gets exactly these
+          // two tools, pre-approved, and nothing else: no shell, no files.
+          "--tools",
+          RESEARCH_TOOLS,
+          "--allowedTools",
+          RESEARCH_TOOLS,
+        ],
         signal,
       );
       const envelope = JSON.parse(raw) as { structured_output?: unknown; result?: unknown };

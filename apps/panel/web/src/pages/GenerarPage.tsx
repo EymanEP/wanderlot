@@ -30,7 +30,7 @@ export function GenerarPage() {
         nights: nightsBetween(v.start, v.end),
         flexDays: v.flexDays,
         partySize: v.people,
-        maxPriceCents: v.maxPrice * 100,
+        maxPriceCents: v.maxPrice === null ? null : v.maxPrice * 100,
       });
     } catch (e) {
       return toast(`No se pudo guardar el plan: ${(e as Error).message}`);
@@ -42,6 +42,7 @@ export function GenerarPage() {
       stops: v.stops,
       estimateStays: v.estimateStays,
       suggestThings: v.suggestThings,
+      nearbyAirports: v.nearbyAirports,
       count: COUNT,
     });
   };

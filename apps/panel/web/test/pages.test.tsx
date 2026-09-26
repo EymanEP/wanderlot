@@ -238,8 +238,17 @@ describe("Nuevo plan", () => {
     expect(screen.getByText("6 personas")).toBeTruthy();
     await user.click(screen.getByRole("checkbox", { name: "Diego" }));
     expect(screen.getByText("5 personas")).toBeTruthy();
+    // No price limit for this one.
+    await user.click(screen.getByRole("checkbox", { name: "Sin límite de precio" }));
+    expect(screen.getByText("Sin límite")).toBeTruthy();
+    expect((screen.getByLabelText("Tope por persona") as HTMLInputElement).disabled).toBe(true);
     await user.click(screen.getByRole("button", { name: "Crear el plan" }));
     expect(await screen.findByText(/Todavía no hay propuestas para Puente de diciembre/)).toBeTruthy();
+    // Generar carries it over, and the people come from who goes, not a counter.
+    expect(screen.getByText("Sin límite")).toBeTruthy();
+    expect(screen.getByText("en este viaje", { exact: false }).textContent).toBe("5 personas en este viaje");
+    expect(screen.queryByRole("button", { name: "Añadir una persona" })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "También aeropuertos cercanos" })).toBeTruthy();
     expect(screen.getAllByText(/4 noches · 5 personas/).length).toBeGreaterThan(0);
 
     // Personas shows who goes on it, and changes it.

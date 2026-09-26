@@ -129,7 +129,8 @@ export const Plan = z.object({
   nights: z.number().int().min(1).max(30),
   flexDays: z.union([z.literal(0), z.literal(1), z.literal(2)]),
   partySize: z.number().int().min(1),
-  maxPriceCents: cents,
+  // Per person, flights and stay; null means no limit.
+  maxPriceCents: cents.nullable(),
   status: PlanStatus,
   voteDeadline: isoDateTime.optional(),
   winnerDestinationId: id.optional(),

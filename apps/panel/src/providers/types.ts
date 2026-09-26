@@ -9,10 +9,13 @@ export interface SearchRequest {
   nights: number;
   flexDays: number;
   partySize: number;
-  maxPriceCents: number;
+  // null: no limit.
+  maxPriceCents: number | null;
   stops: "direct" | "one" | "any";
   estimateStays: boolean;
   suggestThings: boolean;
+  // Also consider airports within about two hours of the origin.
+  nearbyAirports: boolean;
   count: number;
 }
 

@@ -37,7 +37,7 @@ The organising unit: one named trip window.
 | `nights` | 1–30: the days between the start and end picked on the calendar |
 | `flexDays` | 0, 1 or 2 |
 | `partySize` | 6 |
-| `maxPriceCents` | ceiling per person |
+| `maxPriceCents` | ceiling per person, flights and stay; `null` for no limit |
 | `status` | `draft` → `voting` → `closed` (see §4) |
 | `voteDeadline` | set when voting opens |
 | `winnerDestinationId` | set when closed |
@@ -345,7 +345,7 @@ configures only the ones they have. The panel works with none of the paid ones.
 
 | provider | how | cost to the hoster |
 |---|---|---|
-| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema …` | their Claude subscription, no API bill |
+| `claude-cli` (default) | the local `claude` binary: `claude -p --output-format json --json-schema <draft-07 schema> --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (only web search and fetch, pre-approved, since a headless run can't ask) | their Claude subscription, no API bill |
 | `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
 
 Other providers can implement the same interface later. Whatever the provider,

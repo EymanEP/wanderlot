@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { airportCity, type Plan } from "@wanderlot/core";
+import { Link } from "react-router";
+import { BudgetField } from "./BudgetField.tsx";
 import { TripDates, datesSummary, type FlexDays } from "./TripDates.tsx";
 import {
   Button,
@@ -8,10 +10,8 @@ import {
   Fieldset,
   Heading,
   RadioCard,
-  Range,
   SearchIcon,
   Select,
-  Stepper,
   Text,
   TextInput,
 } from "@wanderlot/ui";
@@ -29,8 +29,12 @@ export interface SearchValues {
   // null while the organiser is between the two clicks.
   end: string | null;
   flexDays: FlexDays;
+  // Who goes is chosen in Personas; shown here, not edited.
   people: number;
-  maxPrice: number;
+  // Euros per person; null means no limit.
+  maxPrice: number | null;
+  // Also look at airports within reach of the origin.
+  nearbyAirports: boolean;
   stops: Stops;
   estimateStays: boolean;
   suggestThings: boolean;
@@ -48,7 +52,8 @@ export function searchFromPlan(plan: Plan): SearchValues {
     end: plan.dateTo,
     flexDays: plan.flexDays,
     people: plan.partySize,
-    maxPrice: Math.round(plan.maxPriceCents / 100),
+    maxPrice: plan.maxPriceCents === null ? null : Math.round(plan.maxPriceCents / 100),
+    nearbyAirports: false,
     stops: "direct",
     estimateStays: true,
     suggestThings: true,
@@ -95,8 +100,8 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Field label="Origen" className="flex-1">
-          {({ inputId }) => <TextInput id={inputId} value={v.origin} onChange={(e) => set("origin", e.target.value)} />}
+        <Field label="Salimos desde" className="flex-1">
+          {({ inputId }) => <TextInput id={inputId} placeholder="Madrid · MAD" value={v.origin} onChange={(e) => set("origin", e.target.value)} />}
         </Field>
         <Field label="Destino" className="flex-1">
           {({ inputId, labelId }) => (
@@ -128,13 +133,16 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
         min={v.start && v.start < min ? v.start : min}
       />
 
-      <Field label="Personas">
-        {() => <Stepper value={v.people} onChange={(n) => set("people", n)} min={1} max={12} unit="viajamos" decrementLabel="Quitar una persona" incrementLabel="Añadir una persona" />}
-      </Field>
+      <p className="m-0 flex flex-wrap items-baseline justify-between gap-2 text-sm">
+        <span>
+          <strong className="font-bold">{v.people}</strong> {v.people === 1 ? "persona" : "personas"} en este viaje
+        </span>
+        <Link to="/personas" className="text-[13px] font-semibold">
+          Cambiar quién va
+        </Link>
+      </p>
 
-      <Field label="Tope por persona" aside={`${v.maxPrice} €`}>
-        {({ inputId }) => <Range id={inputId} min={80} max={900} step={10} value={v.maxPrice} onChange={(e) => set("maxPrice", Number(e.target.value))} />}
-      </Field>
+      <BudgetField value={v.maxPrice} onChange={(m) => set("maxPrice", m)} max={1500} />
 
       <Fieldset legend="Filtros">
         <div className="flex flex-wrap gap-2">
@@ -151,6 +159,13 @@ export function SearchForm({ initial, onSubmit, count = 12, running, flightsConn
         <div className="flex flex-wrap gap-2">
           <ChoiceChip type="checkbox" label="Estimar alojamiento" checked={v.estimateStays} onChange={(e) => set("estimateStays", e.target.checked)} />
           <ChoiceChip type="checkbox" label="Qué hacer y ver" checked={v.suggestThings} onChange={(e) => set("suggestThings", e.target.checked)} />
+          <ChoiceChip
+            type="checkbox"
+            label="También aeropuertos cercanos"
+            title="Salir de otro aeropuerto a unas 2 horas si sale más barato o hay mejores vuelos"
+            checked={v.nearbyAirports}
+            onChange={(e) => set("nearbyAirports", e.target.checked)}
+          />
         </div>
       </Fieldset>
 
