@@ -150,9 +150,9 @@ describe("panel → site", () => {
     expect(first.data.warnings.map((w: any) => w.destinationId)).toEqual(["lis", "nap"]);
 
     // Prices checked by hand: bad input refused; saved ones count as checked.
-    // They come as group totals, as booking sites show them: 6 people, 7 nights.
-    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightsCents: -1 })).status).toBe(400);
-    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightsCents: 67800, stayCents: 147000 });
+    // As booking sites show them: one person's flight, the whole stay (7 nights).
+    expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: -1 })).status).toBe(400);
+    const checked = await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 11300, stayCents: 147000 });
     expect(checked.data.outbound.priceCents + checked.data.inbound.priceCents).toBe(11300);
     const stay = baseStay(checked.data.stays);
     expect(stay?.nightlyCents).toBe(21000);

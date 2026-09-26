@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyGroupTotals, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, slugify, type Proposal, type VoteState } from "@wanderlot/core";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -330,23 +330,23 @@ export function createPanel({
   });
 
   // The organiser checked the real prices (the airline, the booking site) and
-  // types them in as those sites show them: group totals for the flights there
-  // and back and for the whole stay. Counts as checked from now, like an API
+  // types them in as those sites show them: one person's flights there and
+  // back, and the whole stay for the group. Counts as checked from now, like an API
   // check, and goes stale the same way (SPEC §3).
   app.post("/api/plans/:planId/proposals/:id/prices", async (c) => {
     const { planId, id } = c.req.param();
     const body = z
       .object({
-        flightsCents: z.number().int().min(0).max(100_000_000),
+        flightCents: z.number().int().min(0).max(10_000_000),
         stayCents: z.number().int().min(0).max(100_000_000).optional(),
       })
       .safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {flightsCents, stayCents?}: group totals in cents" }, 400);
+    if (!body.success) return c.json({ error: "expected {flightCents, stayCents?}: one person's flights there and back, and the whole stay, in cents" }, 400);
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
     const updated: Proposal = {
-      ...applyGroupTotals(proposal, body.data, entry.plan.nights, entry.plan.partySize),
+      ...applyCheckedPrices(proposal, body.data, entry.plan.nights),
       provenance: {
         kind: "organiser",
         checkedAt: now().toISOString(),

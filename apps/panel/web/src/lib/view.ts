@@ -5,7 +5,6 @@ import {
   flightPriceCents,
   mediumDate,
   eurosGrouped,
-  groupFlightsCents,
   stayGroupCents,
   stayShareCents,
   thingsCount,
@@ -41,8 +40,6 @@ export function total(p: Proposal, plan: Plan): number {
   return totalPerPersonCents(p, plan.nights, plan.partySize);
 }
 
-const people = (n: number) => `${n} ${n === 1 ? "persona" : "personas"}`;
-
 // "1 428 € las 7 noches (238 €/persona)": the whole stay, as Airbnb shows it,
 // and each person's share.
 export function stayPrice(p: Proposal, plan: Plan): string | null {
@@ -52,9 +49,9 @@ export function stayPrice(p: Proposal, plan: Plan): string | null {
   return `${eurosGrouped(group)} ${plan.nights === 1 ? "la noche" : `las ${plan.nights} noches`} (${euros(share)}/persona)`;
 }
 
-// "1 044 € ida y vuelta, 6 personas (174 €/persona)"
-export function flightsPrice(p: Proposal, plan: Plan): string {
-  return `${eurosGrouped(groupFlightsCents(p, plan.partySize))} ida y vuelta, ${people(plan.partySize)} (${euros(flightPriceCents(p))}/persona)`;
+// "174 € ida y vuelta por persona"
+export function flightsPrice(p: Proposal): string {
+  return `${euros(flightPriceCents(p))} ida y vuelta por persona`;
 }
 
 // "Directo · 1 h 20 m · TAP Air Portugal"
@@ -68,10 +65,10 @@ export function generatedLine(p: Proposal, plan: Plan): string {
   return stay === null ? flightSummary(p) : `${flightSummary(p)} · alojamiento ≈ ${eurosGrouped(stay)} en total`;
 }
 
-// "Vuelos: 1 044 € ida y vuelta, 6 personas (174 €/persona) · Directo · …";
-// "≈" while the price is Claude's.
-export function flightLine(p: Proposal, plan: Plan): string {
-  return `Vuelos: ${p.provenance.kind === "claude" ? "≈ " : ""}${flightsPrice(p, plan)} · ${flightSummary(p)}`;
+// "Vuelos: 174 € ida y vuelta por persona · Directo · …"; "≈" while the
+// price is Claude's.
+export function flightLine(p: Proposal): string {
+  return `Vuelos: ${p.provenance.kind === "claude" ? "≈ " : ""}${flightsPrice(p)} · ${flightSummary(p)}`;
 }
 
 // "Alojamiento: 1 428 € las 7 noches (238 €/persona) · Piso entero · Alfama"

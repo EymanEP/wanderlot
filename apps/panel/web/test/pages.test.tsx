@@ -141,18 +141,19 @@ describe("Revisar · precios", () => {
     expect(within(card).getByText("Lo escribió Claude")).toBeTruthy();
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
 
-    // Group totals, as the airline and Airbnb show them: 6 people, 7 nights.
+    // As the airline and Airbnb show them: one person's flight; the whole stay
+    // for 6 people, 7 nights.
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
-    const flights = dialog.getByLabelText("Vuelos, ida y vuelta · € en total") as HTMLInputElement;
+    const flights = dialog.getByLabelText("Vuelo, ida y vuelta · € por persona") as HTMLInputElement;
     const stay = dialog.getByLabelText("Alojamiento · € en total") as HTMLInputElement;
-    expect(flights.value).toBe("864");
+    expect(flights.value).toBe("144");
     expect(stay.value).toBe("924");
     await user.clear(flights);
     await user.type(flights, "abc");
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await dialog.findByText(/Escribe cada precio en euros/)).toBeTruthy();
     await user.clear(flights);
-    await user.type(flights, "1.200");
+    await user.type(flights, "200");
     await user.clear(stay);
     await user.type(stay, "840,60");
     // Each person's share, worked out as it's typed.
@@ -167,7 +168,7 @@ describe("Revisar · precios", () => {
     expect(within(after).getByText("Comprobado a mano")).toBeTruthy();
     expect(within(after).getByText(/Comprobado a mano · /)).toBeTruthy();
     expect(within(after).getByRole("button", { name: "cambiar precios" })).toBeTruthy();
-    expect(within(after).getByText(/^Vuelos: 1\s?200 € ida y vuelta, 6 personas \(200 €\/persona\)/)).toBeTruthy();
+    expect(within(after).getByText(/^Vuelos: 200 € ida y vuelta por persona/)).toBeTruthy();
     expect(within(after).getByText(/^Alojamiento: 841 € las 7 noches \(140 €\/persona\)/)).toBeTruthy();
   });
 });
