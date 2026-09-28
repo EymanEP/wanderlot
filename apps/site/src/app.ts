@@ -15,6 +15,11 @@ import {
 } from "@simplewebauthn/server";
 import {
   DEFAULT_SETTINGS,
+  DateAnswer,
+  DateWindows,
+  answeredAll,
+  nightsOf,
+  type DatesView,
   SITE_API_VERSION,
   GroupSettings,
   Snapshot,
@@ -208,6 +213,16 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       return { ...(await store.getPlan(planId))!, ballots, participants, partySize };
     }
     return { ...plan, ballots, participants, partySize };
+  }
+
+  // The date vote with the answers of whoever is on the trip now (ROADMAP 2.1).
+  async function datesView(planId: string): Promise<DatesView | null> {
+    const poll = await store.datePoll(planId);
+    if (!poll) return null;
+    const going = new Set(await store.planMembers(planId));
+    const responses = (await store.dateResponses(planId)).filter((r) => going.has(r.memberId));
+    const { updatedAt: _at, ...rest } = poll;
+    return { ...rest, responses };
   }
 
   // --- pages -----------------------------------------------------------------
@@ -557,6 +572,47 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
 
   admin.get("/plans/:planId/members", async (c) => c.json(await store.planMembers(c.req.param("planId"))));
 
+  // --- dates (ROADMAP 2.1) ---
+
+  admin.get("/plans/:planId/dates", async (c) => {
+    const planId = c.req.param("planId");
+    if (!(await store.getPlan(planId))) return c.json({ error: "not found" }, 404);
+    return c.json(await datesView(planId));
+  });
+
+  // Proposes the windows, or changes them: answers to windows that stay are
+  // kept. Proposing again after choosing reopens the vote.
+  admin.put("/plans/:planId/dates", async (c) => {
+    const planId = c.req.param("planId");
+    if (!(await store.getPlan(planId))) return c.json({ error: "not found" }, 404);
+    const body = z
+      .object({ options: DateWindows, deadline: z.iso.datetime({ offset: true }).nullable().optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {options, deadline?}" }, 400);
+    await store.putDatePoll(planId, { options: body.data.options, deadline: body.data.deadline ?? null, status: "open", chosenOptionId: null, updatedAt: iso() });
+    return c.json(await datesView(planId));
+  });
+
+  // Chooses a window: the vote closes and the trip takes its dates.
+  admin.post("/plans/:planId/dates/choose", async (c) => {
+    const planId = c.req.param("planId");
+    const plan = await store.getPlan(planId);
+    const poll = await store.datePoll(planId);
+    if (!plan || !poll) return c.json({ error: "not found" }, 404);
+    const body = z.object({ optionId: z.string() }).safeParse(await c.req.json().catch(() => null));
+    const option = body.success ? poll.options.find((o) => o.id === body.data.optionId) : undefined;
+    if (!option) return c.json({ error: "esas fechas no están entre las propuestas" }, 400);
+    await store.putDatePoll(planId, { ...poll, status: "closed", chosenOptionId: option.id, updatedAt: iso() });
+    const { dateFrom, dateTo } = option;
+    await store.upsertSnapshot({ ...plan.snapshot, plan: { ...plan.snapshot.plan, dateFrom, dateTo, nights: nightsOf(option) } });
+    return c.json(await datesView(planId));
+  });
+
+  admin.delete("/plans/:planId/dates", async (c) => {
+    await store.deleteDatePoll(c.req.param("planId"));
+    return c.json({ ok: true });
+  });
+
   admin.get("/version", (c) => c.json({ api: SITE_API_VERSION }));
 
   // Everything the group made here, as one JSON file: the trips as published,
@@ -588,6 +644,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
             likes: likes.filter((l) => l.commentId === cm.id).map(({ memberId, createdAt }) => ({ memberId, createdAt })),
           })),
           suggestions: suggestions.map(({ planId: _plan, ...s }) => s),
+          dates: await datesView(p.id),
         };
       }),
     );
@@ -701,6 +758,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       const settled = (await settle(p.id))!;
       const winner = settled.snapshot.destinations.find((d) => d.id === settled.winnerDestinationId);
       const { plan } = settled.snapshot;
+      const dates = await datesView(p.id);
       list.push({
         id: p.id,
         name: plan.name,
@@ -712,6 +770,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         destinations: settled.snapshot.destinations.length,
         voteDeadline: settled.voteDeadline ?? null,
         votedByMe: settled.ballots.some((b) => b.memberId === me),
+        ...(dates ? { datesOpen: dates.status === "open", datesAnsweredByMe: answeredAll(dates, me) } : {}),
       });
     }
     return c.json(list);
@@ -742,7 +801,26 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       myBallot: mine ? { ranking: mine.ranking, updatedAt: mine.updatedAt } : null,
       // Who has voted is always visible; what they voted is not (SPEC §4).
       participation: (await store.members()).filter((m) => plan.participants.includes(m.id)).map((m) => ({ ...m, voted: voted.has(m.id) })),
+      // Everyone on the trip sees who can go when.
+      dates: await datesView(plan.snapshot.plan.id),
     });
+  });
+
+  // Your answers to the date vote: one for every window, and a note.
+  api.put("/:planId/dates", async (c) => {
+    const planId = c.req.param("planId");
+    const poll = await store.datePoll(planId);
+    if (!poll) return c.json({ error: "este viaje no tiene votación de fechas" }, 404);
+    if (poll.status !== "open") return c.json({ error: "las fechas ya están decididas" }, 409);
+    const body = z
+      .object({ answers: z.record(z.string(), DateAnswer), note: z.string().trim().max(300).optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {answers, note?}" }, 400);
+    const ids = poll.options.map((o) => o.id);
+    const given = Object.keys(body.data.answers);
+    if (given.length !== ids.length || !ids.every((id) => body.data.answers[id])) return c.json({ error: "Responde a todas las fechas" }, 400);
+    await store.putDateResponse(planId, c.get("member").id, body.data.answers, body.data.note || null, iso());
+    return c.json(await datesView(planId));
   });
 
   api.put("/:planId/ballot", async (c) => {

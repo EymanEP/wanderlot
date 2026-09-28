@@ -2,8 +2,11 @@
 // follow the API's rules, so screens behave the same on either: while a vote
 // is open you see who has voted and your own ballot, never anyone else's.
 import {
+  answeredAll,
   tally,
   type Ballot,
+  type DateAnswer,
+  type DatesView,
   type CommentView,
   type Destination,
   type Plan,
@@ -12,8 +15,10 @@ import {
   type TallyResult,
 } from "@wanderlot/core";
 import {
+  DATES_PLAN_ID,
   MOCK_NOW,
   ME,
+  dates as mockDates,
   ballots as mockBallots,
   comments as mockComments,
   destinations as mockDestinations,
@@ -30,6 +35,8 @@ export interface PlanView {
   me: { id: string; name: string };
   myBallot: { ranking: string[]; updatedAt: string } | null;
   participation: { id: string; name: string; voted: boolean }[];
+  // The date vote (ROADMAP 2.1); older sites leave it out.
+  dates?: DatesView | null;
 }
 
 export interface Results extends TallyResult {
@@ -53,6 +60,8 @@ export interface SiteSource {
   // Ideas for where to go, from anyone on the trip.
   suggestions(planId: string): Promise<SuggestionView[]>;
   suggest(planId: string, place: string, note: string): Promise<SuggestionView[]>;
+  // Your answers to the date vote, one per window.
+  saveDates(planId: string, answers: Record<string, DateAnswer>, note: string): Promise<DatesView>;
 }
 
 // Something the person should see, in their words.
@@ -99,6 +108,11 @@ export const httpSource: SiteSource = {
       method: "POST",
       body: JSON.stringify({ place, ...(note.trim() ? { note } : {}) }),
     }),
+  saveDates: (planId, answers, note) =>
+    request<DatesView>(`/api/plans/${encodeURIComponent(planId)}/dates`, {
+      method: "PUT",
+      body: JSON.stringify({ answers, ...(note.trim() ? { note: note.trim() } : {}) }),
+    }),
 };
 
 // The mocks, played by the API's rules. `closed` previews the site after the vote.
@@ -117,6 +131,7 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
     },
   ];
   const plan: Plan = closed ? { ...mockPlan, status: "closed", winnerDestinationId: "nap" } : mockPlan;
+  let dates: DatesView = mockDates;
   const inVote = mockDestinations.filter((d) => d.inVote);
   const tallied = () =>
     tally(
@@ -138,6 +153,7 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         destinations: p.id === plan.id ? mockDestinations.length : 0,
         voteDeadline: p.id === plan.id ? (plan.voteDeadline ?? null) : null,
         votedByMe: p.id === plan.id && ballots.some((b) => b.memberId === ME.id),
+        ...(p.id === DATES_PLAN_ID ? { datesOpen: dates.status === "open", datesAnsweredByMe: answeredAll(dates, ME.id) } : {}),
       }));
     },
     async plan(planId) {
@@ -152,6 +168,7 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         me: { id: ME.id, name: ME.name },
         myBallot: mine ? { ranking: mine.ranking, updatedAt: mine.updatedAt } : null,
         participation: mockMembers.map((m) => ({ id: m.id, name: m.name, voted: isMain && ballots.some((b) => b.memberId === m.id) })),
+        dates: planId === DATES_PLAN_ID ? dates : null,
       };
     },
     async results(planId) {
@@ -188,6 +205,14 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
       return { likes: c.likes, likedByMe: c.likedByMe };
     },
     suggestions: async () => suggestions,
+    async saveDates(planId, answers, note) {
+      if (planId !== DATES_PLAN_ID) throw new SourceError("este viaje no tiene votación de fechas");
+      if (dates.status !== "open") throw new SourceError("las fechas ya están decididas");
+      if (!dates.options.every((o) => answers[o.id])) throw new SourceError("Responde a todas las fechas");
+      const mine = { memberId: ME.id, answers, note: note.trim() || null, updatedAt: MOCK_NOW.toISOString() };
+      dates = { ...dates, responses: [...dates.responses.filter((r) => r.memberId !== ME.id), mine] };
+      return dates;
+    },
     async suggest(_planId, place, note) {
       if (!place.trim()) throw new SourceError("Escribe el destino");
       suggestions = [

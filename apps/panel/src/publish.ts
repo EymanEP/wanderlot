@@ -1,7 +1,7 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
 import { createHash } from "node:crypto";
-import { Snapshot, totalPerPersonCents, trustState, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { Snapshot, totalPerPersonCents, trustState, type DatesView, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
 import type { PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
@@ -22,6 +22,13 @@ export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
     });
   const { status: _s, winnerDestinationId: _w, ...planFields } = plan;
   return Snapshot.parse({ plan: planFields, destinations, publishedAt: now.toISOString() });
+}
+
+// The trip with no destinations: what the site needs to run a date vote
+// before anything has been researched or approved.
+export function shellSnapshot(entry: PlanEntry, now: Date): Snapshot {
+  const { status: _s, winnerDestinationId: _w, ...planFields } = entry.plan;
+  return Snapshot.parse({ plan: planFields, destinations: [], publishedAt: now.toISOString() });
 }
 
 // What a publish would send, minus its timestamp: equal fingerprints mean
@@ -84,6 +91,11 @@ export interface SiteClient {
   revoke(memberId: string): Promise<void>;
   // Everything the group made on the site, one trip or all (SPEC §9).
   exportData(planId?: string): Promise<unknown>;
+  // The date vote (ROADMAP 2.1); null when the trip has none.
+  dates(planId: string): Promise<DatesView | null>;
+  putDates(planId: string, options: { dateFrom: string; dateTo: string }[], deadline: string | null): Promise<DatesView>;
+  chooseDates(planId: string, optionId: string): Promise<DatesView>;
+  deleteDates(planId: string): Promise<void>;
 }
 
 // The site said no; the panel passes its answer on.
@@ -133,6 +145,10 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     invite: (id) => call<{ token: string; expiresAt: string }>(`/members/${id}/invite`, "POST"),
     closeSessions: async (id) => void (await call(`/members/${id}/sessions`, "DELETE")),
     revoke: async (id) => void (await call(`/members/${id}/revoke`, "POST")),
+    dates: (planId) => call<DatesView | null>(`/plans/${planId}/dates`, "GET"),
+    putDates: (planId, options, deadline) => call<DatesView>(`/plans/${planId}/dates`, "PUT", { options, deadline }),
+    chooseDates: (planId, optionId) => call<DatesView>(`/plans/${planId}/dates/choose`, "POST", { optionId }),
+    deleteDates: async (planId) => void (await call(`/plans/${planId}/dates`, "DELETE")),
     exportData: (planId) => call<unknown>(`/export${planId ? `?plan=${encodeURIComponent(planId)}` : ""}`, "GET"),
   };
 }

@@ -5,6 +5,7 @@ import {
   totalPerPersonCents,
   type Ballot,
   type Comment,
+  type DatesView,
   type Destination,
   type Photo,
   type Plan,
@@ -486,3 +487,27 @@ export const access: MockAccess[] = [
     sessions: [],
   },
 ];
+
+// --- dates (ROADMAP 2.1) ----------------------------------------------------
+
+// Semana Santa 2027 has no destinations yet: first, when. Three answered;
+// Eyman (the viewer) hasn't.
+export const DATES_PLAN_ID = "semana-santa-2027";
+const EASTER = "2027-03-24_2027-03-28";
+const EASTER_LATE = "2027-03-25_2027-03-29";
+const AFTER = "2027-04-01_2027-04-05";
+export const dates: DatesView = {
+  status: "open",
+  options: [
+    { id: EASTER, dateFrom: "2027-03-24", dateTo: "2027-03-28" },
+    { id: EASTER_LATE, dateFrom: "2027-03-25", dateTo: "2027-03-29" },
+    { id: AFTER, dateFrom: "2027-04-01", dateTo: "2027-04-05" },
+  ],
+  deadline: "2026-10-15T21:59:00Z",
+  chosenOptionId: null,
+  responses: [
+    { memberId: "marta", answers: { [EASTER]: "yes", [EASTER_LATE]: "yes", [AFTER]: "no" }, note: "El lunes de Pascua trabajo", updatedAt: "2026-09-23T09:02:00Z" },
+    { memberId: "ivan", answers: { [EASTER]: "yes", [EASTER_LATE]: "maybe", [AFTER]: "yes" }, note: null, updatedAt: "2026-09-24T21:40:00Z" },
+    { memberId: "ruben", answers: { [EASTER]: "maybe", [EASTER_LATE]: "yes", [AFTER]: "yes" }, note: "Tengo que pedirlo antes del 15", updatedAt: "2026-09-25T06:05:00Z" },
+  ],
+};

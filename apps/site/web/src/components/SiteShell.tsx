@@ -7,14 +7,20 @@ import { useAuth } from "../data/auth.tsx";
 import { PlanProvider, useSite } from "../data/store.tsx";
 import { PageErrorBoundary } from "./PageErrorBoundary.tsx";
 
+// Fechas shows only on trips with a date vote: first while it's open, last
+// once the dates are decided.
 function useNav() {
   const { planId } = useParams();
+  const { dates } = useSite();
   const base = `/p/${planId}`;
-  return [
+  const nav = [
     { to: base, label: "Destinos", end: true },
     { to: `${base}/votacion`, label: "Votación", end: false },
     { to: `${base}/comentarios`, label: "Comentarios", end: false },
   ];
+  if (!dates) return nav;
+  const fechas = { to: `${base}/fechas`, label: "Fechas", end: false };
+  return dates.status === "open" ? [fechas, ...nav] : [...nav, fechas];
 }
 
 // Loads the plan in the address, then draws the chrome around its pages.
@@ -29,7 +35,7 @@ export function SiteShell() {
 
 // Header on wide screens; a bottom tab bar on phones, where the group votes.
 function Chrome() {
-  const { plan, me } = useSite();
+  const { plan, me, dates } = useSite();
   const { group } = useAuth();
   const nav = useNav();
   const { pathname } = useLocation();
@@ -50,7 +56,7 @@ function Chrome() {
             <Brand size="lg" sub={group.groupName} />
           </Link>
         }
-        center={<InfoPill items={[plan.name, rangeLabel(plan.dateFrom, plan.dateTo), `${plan.partySize} personas`]} />}
+        center={<InfoPill items={[plan.name, dates?.status === "open" ? "Fechas por decidir" : rangeLabel(plan.dateFrom, plan.dateTo), `${plan.partySize} personas`]} />}
         nav={
           <nav aria-label="Secciones" className="hidden items-center gap-6 md:flex">
             {nav.map((n) => (
@@ -69,7 +75,7 @@ function Chrome() {
       </div>
       <nav
         aria-label="Secciones"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className={cn("fixed inset-x-0 bottom-0 z-30 grid border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden", nav.length === 4 ? "grid-cols-4" : "grid-cols-3")}
       >
         {nav.map((n) => (
           <NavLink

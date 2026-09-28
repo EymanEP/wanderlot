@@ -9,6 +9,7 @@ const PREVIEW_SITE_URL = import.meta.env.VITE_SITE_URL as string | undefined;
 
 const NAV = [
   { to: "/", label: "Viajes" },
+  { to: "/fechas", label: "Fechas" },
   { to: "/generar", label: "Generar" },
   { to: "/revisar", label: "Revisar" },
   { to: "/comparativa", label: "Comparativa" },

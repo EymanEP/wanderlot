@@ -1,7 +1,7 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
-import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
-import type { Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
+import type { Ballot, Comment, DateAnswer, DateResponse, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { DatePoll, Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
 
 export type Row = Record<string, unknown>;
 export type Value = string | number | null;
@@ -67,6 +67,7 @@ export class SqlStore implements SiteStore {
     await this.run("delete from ballots where plan_id = ?", planId);
     await this.run("delete from suggestions where plan_id = ?", planId);
     await this.run("delete from plan_members where plan_id = ?", planId);
+    await this.deleteDatePoll(planId);
     return (await this.run("delete from plans where id = ?", planId)) > 0;
   }
 
@@ -368,6 +369,60 @@ export class SqlStore implements SiteStore {
       planId,
     );
     return new Map(rows.map((r) => [r.id as string, { count: Number(r.n), mine: Number(r.mine) > 0 }]));
+  }
+
+  // --- dates ---------------------------------------------------------------
+
+  async datePoll(planId: string): Promise<DatePoll | undefined> {
+    const r = await this.get("select * from date_polls where plan_id = ?", planId);
+    if (!r) return undefined;
+    return {
+      options: JSON.parse(r.options as string) as DatePoll["options"],
+      deadline: (r.deadline as string | null) ?? null,
+      status: r.status as DatePoll["status"],
+      chosenOptionId: (r.chosen_option_id as string | null) ?? null,
+      updatedAt: r.updated_at as string,
+    };
+  }
+
+  async putDatePoll(planId: string, p: DatePoll) {
+    await this.run(
+      `insert into date_polls (plan_id, options, deadline, status, chosen_option_id, updated_at) values (?, ?, ?, ?, ?, ?)
+       on conflict(plan_id) do update set options = excluded.options, deadline = excluded.deadline, status = excluded.status,
+         chosen_option_id = excluded.chosen_option_id, updated_at = excluded.updated_at`,
+      planId,
+      JSON.stringify(p.options),
+      p.deadline,
+      p.status,
+      p.chosenOptionId,
+      p.updatedAt,
+    );
+  }
+
+  async deleteDatePoll(planId: string) {
+    await this.run("delete from date_answers where plan_id = ?", planId);
+    await this.run("delete from date_polls where plan_id = ?", planId);
+  }
+
+  async dateResponses(planId: string): Promise<DateResponse[]> {
+    return (await this.all("select * from date_answers where plan_id = ? order by updated_at, rowid", planId)).map((r) => ({
+      memberId: r.member_id as string,
+      answers: JSON.parse(r.answers as string) as Record<string, DateAnswer>,
+      note: (r.note as string | null) ?? null,
+      updatedAt: r.updated_at as string,
+    }));
+  }
+
+  async putDateResponse(planId: string, memberId: string, answers: Record<string, DateAnswer>, note: string | null, at: string) {
+    await this.run(
+      `insert into date_answers (plan_id, member_id, answers, note, updated_at) values (?, ?, ?, ?, ?)
+       on conflict(plan_id, member_id) do update set answers = excluded.answers, note = excluded.note, updated_at = excluded.updated_at`,
+      planId,
+      memberId,
+      JSON.stringify(answers),
+      note,
+      at,
+    );
   }
 
   async commentLikes(planId: string) {

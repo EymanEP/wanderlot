@@ -3,15 +3,15 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, markForOtherDates, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { DateWindows, FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
 
-import { SiteError, buildSnapshot, publishWarnings, snapshotFingerprint, type SiteClient } from "./publish.ts";
+import { SiteError, buildSnapshot, publishWarnings, shellSnapshot, snapshotFingerprint, type MemberStatus, type SiteClient } from "./publish.ts";
 import type { PanelStore } from "./store.ts";
-import { inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage } from "./announce.ts";
+import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage, type PendingInvite } from "./announce.ts";
 
 // What this computer can do, found at startup (SPEC §8).
 export interface PanelStatus {
@@ -642,8 +642,12 @@ export function createPanel({
       result: null,
     }));
 
-    // Whoever on the trip hasn't joined gets a working invite: their unused
-    // one, or a fresh one.
+    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, await pendingInvites(members)) });
+  });
+
+  // Whoever on the trip hasn't joined gets a working invite: their unused
+  // one, or a fresh one.
+  async function pendingInvites(members: MemberStatus[]): Promise<PendingInvite[]> {
     const pending = [];
     for (const m of members.filter((x) => x.passkeys.length === 0 && !x.pin)) {
       let local = m.invite?.status === "valid" ? store.invite(m.id) : undefined;
@@ -653,7 +657,94 @@ export function createPanel({
       }
       pending.push({ name: m.name, url: inviteUrl(siteUrl, local.token) });
     }
-    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, pending) });
+    return pending;
+  }
+
+  // --- Fechas (ROADMAP 2.1) -------------------------------------------------
+
+  const OLD_SITE_DATES =
+    "Tu sitio tiene una versión anterior al panel y no sabe votar fechas. Actualízalo con npm run deploy:site y vuelve a probar.";
+
+  // The date vote as Fechas shows it: the site's view, the trip's people, and
+  // the messages for the group chat.
+  async function datesPage(planId: string, dates: DatesView | null) {
+    const entry = store.get(planId)!;
+    const going = new Set(entry.participants ?? []);
+    const people = (await site.members()).filter((m) => going.has(m.id)).map((m) => ({ id: m.id, name: m.name }));
+    const missing = dates ? people.filter((p) => !answeredAll(dates, p.id)).map((p) => p.name) : [];
+    const chosen = dates?.options.find((o) => o.id === dates.chosenOptionId);
+    return {
+      dates,
+      people,
+      reminder: dates?.status === "open" && missing.length ? datesReminderMessage(entry.plan, siteUrl, missing) : null,
+      announcement: chosen ? datesChosenMessage(entry.plan, chosen, siteUrl) : null,
+    };
+  }
+
+  app.get("/api/plans/:planId/dates", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    if ((await site.version()) < 8) return c.json({ error: OLD_SITE_DATES }, 409);
+    let dates: DatesView | null = null;
+    try {
+      dates = await site.dates(planId);
+    } catch (e) {
+      // Not on the site yet: no date vote either.
+      if (!(e instanceof SiteError && e.status === 404)) throw e;
+    }
+    return c.json(await datesPage(planId, dates));
+  });
+
+  // Proposes the windows (or changes them) and returns the message for the
+  // group. A trip that isn't on the site yet goes up without destinations.
+  app.put("/api/plans/:planId/dates", async (c) => {
+    const entry = entryOr404(c.req.param("planId"));
+    if (!entry) return c.json({ error: "not found" }, 404);
+    const body = z
+      .object({ options: DateWindows, deadline: z.iso.datetime({ offset: true }).nullable().optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {options, deadline?}" }, 400);
+    const going = new Set(entry.participants ?? []);
+    const members = (await site.members()).filter((m) => going.has(m.id));
+    if (members.length === 0) return c.json({ error: "elige quién va al viaje (en Personas) antes de proponer fechas" }, 409);
+    if ((await site.version()) < 8) return c.json({ error: OLD_SITE_DATES }, 409);
+    const windows = body.data.options.map(({ dateFrom, dateTo }) => ({ dateFrom, dateTo }));
+    const deadline = body.data.deadline ?? null;
+    let dates: DatesView;
+    try {
+      dates = await site.putDates(entry.plan.id, windows, deadline);
+    } catch (e) {
+      if (!(e instanceof SiteError && e.status === 404)) throw e;
+      await site.publish(shellSnapshot(entry, now()));
+      dates = await site.putDates(entry.plan.id, windows, deadline);
+    }
+    await site.setPlanMembers(entry.plan.id, [...going]);
+    const message = datesOpenedMessage(entry.plan, dates.options, deadline, siteUrl, await pendingInvites(members));
+    return c.json({ ...(await datesPage(entry.plan.id, dates)), message });
+  });
+
+  // "Elegir estas fechas": the trip takes them, here and on the site, and
+  // prices checked for other dates are flagged (ROADMAP 1.4).
+  app.post("/api/plans/:planId/dates/choose", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const body = z.object({ optionId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {optionId}" }, 400);
+    const dates = await site.chooseDates(planId, body.data.optionId);
+    const option = dates.options.find((o) => o.id === dates.chosenOptionId)!;
+    store.update(planId, (e) => {
+      const moved = e!.plan.dateFrom !== option.dateFrom || e!.plan.dateTo !== option.dateTo;
+      const plan = { ...e!.plan, dateFrom: option.dateFrom, dateTo: option.dateTo, nights: nightsOf(option) };
+      return { entry: { ...e!, plan, proposals: moved ? e!.proposals.map(markForOtherDates) : e!.proposals }, result: null };
+    });
+    return c.json({ ...(await datesPage(planId, dates)), plan: store.get(planId)!.plan });
+  });
+
+  app.delete("/api/plans/:planId/dates", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    await site.deleteDates(planId);
+    return c.json(await datesPage(planId, null));
   });
 
   return app;

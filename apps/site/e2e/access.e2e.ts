@@ -105,6 +105,25 @@ try {
   assert.equal((await page.request.get(`${ORIGIN}/api/plans/puente`)).status(), 404);
   console.log("✓ her trip only; voted, commented and liked in the UI");
 
+  // 2b. A date vote on the same database: proposed, answered in the UI,
+  // changed (keeping answers), chosen.
+  await admin("/plans/noviembre-2026/dates", "PUT", { options: [{ dateFrom: "2026-11-03", dateTo: "2026-11-07" }, { dateFrom: "2026-11-12", dateTo: "2026-11-16" }] });
+  await page.goto(`${ORIGIN}/p/noviembre-2026/fechas`);
+  await page.getByRole("heading", { level: 1, name: "¿Cuándo nos vamos?" }).waitFor();
+  const [first, second] = await page.getByRole("radiogroup").all();
+  await first!.getByLabel("Sí").check();
+  await second!.getByLabel("Si hace falta").check();
+  await page.getByRole("button", { name: "Responder" }).click();
+  await page.getByText("Respuesta guardada").waitFor();
+  await admin("/plans/noviembre-2026/dates", "PUT", { options: [{ dateFrom: "2026-11-03", dateTo: "2026-11-07" }, { dateFrom: "2026-11-20", dateTo: "2026-11-24" }] });
+  const kept = await admin("/plans/noviembre-2026/dates", "GET");
+  assert.deepEqual(kept.responses[0].answers, { "2026-11-03_2026-11-07": "yes", "2026-11-12_2026-11-16": "maybe" });
+  await admin("/plans/noviembre-2026/dates/choose", "POST", { optionId: "2026-11-03_2026-11-07" });
+  const chosen = await (await page.request.get(`${ORIGIN}/api/plans/noviembre-2026`)).json();
+  assert.equal(chosen.plan.dateFrom, "2026-11-03");
+  assert.equal(chosen.dates.status, "closed");
+  console.log("✓ dates: answered in the UI, kept across a change, chosen");
+
   // 3. The invite is spent.
   await page.goto(`${ORIGIN}/i/${token}`);
   await page.getByRole("heading", { name: "Esta invitación ya se usó" }).waitFor();

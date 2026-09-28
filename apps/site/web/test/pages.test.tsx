@@ -116,6 +116,51 @@ describe("Votación", () => {
   });
 });
 
+describe("Fechas", () => {
+  it("lists the trip first on Tus viajes and takes answers for every window", async () => {
+    const user = userEvent.setup();
+    renderAt("/");
+    const trip = await screen.findByRole("article", { name: "Semana Santa 2027" });
+    expect(within(trip).getByText("Te falta decir fechas")).toBeTruthy();
+    expect(within(trip).getByText(/^Fechas por decidir/)).toBeTruthy();
+    await user.click(trip);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "¿Cuándo nos vamos?" })).toBeTruthy();
+    // Fechas leads the trip's sections while it's open.
+    const nav = screen.getAllByRole("navigation", { name: "Secciones" })[0]!;
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["Fechas", "Destinos", "Votación", "Comentarios"]);
+    expect(screen.getByText("3 de 6 respuestas")).toBeTruthy();
+
+    // Who can go when, for everyone.
+    const who = screen.getByRole("listitem", { name: "24 – 28 mar" });
+    expect(within(who).getByText("2 sí · 1 si hace falta · 0 no")).toBeTruthy();
+    expect(within(who).getByText("Las mejores")).toBeTruthy();
+    expect(screen.getByText("«Tengo que pedirlo antes del 15»")).toBeTruthy();
+    expect(screen.getByText("Faltan Eyman, Laura y Diego.")).toBeTruthy();
+
+    const save = screen.getByRole("button", { name: "Responder" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    await user.click(within(screen.getByRole("radiogroup", { name: "24 – 28 mar" })).getByLabelText("Sí"));
+    await user.click(within(screen.getByRole("radiogroup", { name: "25 – 29 mar" })).getByLabelText("Si hace falta"));
+    expect(save.disabled).toBe(true);
+    await user.click(within(screen.getByRole("radiogroup", { name: "1 – 5 abr" })).getByLabelText("No"));
+    await user.type(screen.getByLabelText("Algo que haya que saber (opcional)"), "Mejor antes de Pascua");
+    await user.click(save);
+    expect(await screen.findByText("Respuesta guardada")).toBeTruthy();
+    expect(screen.getByText("4 de 6 respuestas")).toBeTruthy();
+    expect(within(screen.getByRole("listitem", { name: "24 – 28 mar" })).getByText("3 sí · 1 si hace falta · 0 no")).toBeTruthy();
+    expect(screen.getByText("Faltan Laura y Diego.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Guardar mi respuesta" })).toBeTruthy();
+  });
+
+  it("isn't there for a trip without a date vote", async () => {
+    renderAt("/p/noviembre-2026/fechas");
+    expect(await screen.findByText("Este viaje no tiene votación de fechas")).toBeTruthy();
+    const nav = screen.getAllByRole("navigation", { name: "Secciones" })[0]!;
+    expect(within(nav).queryByRole("link", { name: "Fechas" })).toBeNull();
+  });
+});
+
 describe("Destino", () => {
   it("adds a comment and a reply", async () => {
     const user = userEvent.setup();

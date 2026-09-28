@@ -168,6 +168,38 @@ try {
   await org.getByText("Idea de Ana").first().waitFor();
   console.log("✓ site → panel: Ana's idea researched and credited");
 
+  // 6c. When: the organiser proposes two date windows, Ana answers on her
+  // phone, and the organiser chooses one; the trip takes those dates.
+  await org.getByRole("link", { name: "Fechas" }).first().click();
+  await org.getByRole("heading", { name: "Elige unas fechas" }).waitFor();
+  await org.getByRole("button", { name: "Mes siguiente" }).click();
+  for (const [from, to] of [[3, 7], [17, 21]]) {
+    await org.getByRole("button", { name: day(from!), exact: true }).click();
+    await org.getByRole("button", { name: day(to!), exact: true }).click();
+    await org.getByRole("button", { name: "Añadir estas fechas" }).click();
+  }
+  await org.getByRole("button", { name: "Proponer fechas" }).click();
+  assert.match(await org.getByLabel("Mensaje para el grupo").inputValue(), new RegExp(`${SITE}/p/noviembre-2026/fechas`));
+  await org.getByRole("button", { name: "Cerrar" }).click();
+  await ana.goto(`${SITE}/p/noviembre-2026/fechas`);
+  await ana.getByRole("heading", { level: 1, name: "¿Cuándo nos vamos?" }).waitFor();
+  const [first, second] = await ana.getByRole("radiogroup").all();
+  await first!.getByLabel("Sí").check();
+  await second!.getByLabel("No").check();
+  await ana.getByRole("button", { name: "Responder" }).click();
+  await ana.getByText("Respuesta guardada").waitFor();
+  await org.getByRole("button", { name: "Actualizar" }).click();
+  const answers = org.getByRole("table", { name: "Quién puede cuándo" });
+  await answers.getByRole("row", { name: /^Ana/ }).getByText("Sí").waitFor();
+  await answers.getByRole("button", { name: /^Elegir / }).first().click();
+  await org.getByRole("button", { name: "Elegir estas fechas" }).click();
+  await org.getByText("Fechas elegidas", { exact: true }).waitFor();
+  await ana.reload();
+  await ana.getByRole("heading", { level: 1, name: "Fechas decididas" }).waitFor();
+  await ana.goto(`${SITE}/p/noviembre-2026`);
+  await ana.getByText(new RegExp(`^Del \\S+ ${3} al \\S+ ${7} · salida`)).waitFor();
+  console.log("✓ panel ↔ site: dates proposed, answered and chosen");
+
   // 7. Ana votes on her phone; the organiser follows it and closes early.
   await ana.getByRole("link", { name: "Repartir mis puntos" }).click();
   for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();

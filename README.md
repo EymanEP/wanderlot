@@ -195,7 +195,10 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
   (with keys) and publishes the chosen ones with their credits (SPEC §6).
 - The organiser follows the vote in the panel: who has voted, a reminder for
-  the rest, closing early, breaking a tie, and the result message.
+  the rest, closing early, breaking a tie, going somewhere other than the
+  winner, and the result message.
+- Dates can be agreed first: the organiser proposes a few windows, each friend
+  says yes, if need be or no, and the chosen one becomes the trip's dates.
 - Friends can install the site on their phone's home screen.
 - Prices: research's are labelled as written by Claude. The organiser checks
   the finalists by hand, typing the prices or having Claude read screenshots

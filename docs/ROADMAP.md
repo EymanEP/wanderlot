@@ -12,8 +12,8 @@ What this roadmap covers:
 - **The panel from anywhere:** hosting the panel, and other AI providers.
 - **Later:** big changes that wait.
 
-**Done:** the fixes (§1) and the export (2.5). Everything else is still a
-plan.
+**Done:** the fixes (§1), the export (2.5) and Cuándo (2.1). Everything
+else is still a plan.
 
 **Legend**
 
@@ -175,6 +175,20 @@ People need to know early so they can ask for days off.
 - Site: the "Fechas" tab, with answering and the who-can-when table, on phone
   and desktop.
 - Panel: proposing windows and following the answers.
+
+**Done** (site API 8, migration 0007), built from the existing design system
+instead of new designs:
+- Panel: a **Fechas** page (and a "Fechas" button on each trip in Viajes).
+  Windows are picked on the same calendar as a new trip; the answers show as a
+  people-by-windows table with the best windows marked, "Elegir" per window,
+  and messages for proposing, reminding and announcing.
+- Site: the **Fechas** tab, laid out like Votación: your answer per window on
+  the left, "Quién puede cuándo" on the right (below on phones). Tus viajes
+  shows "Te falta decir fechas" and "Fechas por decidir".
+- Tables: `date_polls` and `date_answers` (one row per person, with their
+  answers as JSON), rather than `date_options`.
+- A trip that isn't published yet goes up without destinations when dates are
+  proposed, so the group can answer first.
 
 ### 2.2 El viaje: the trip page · L · 🎨 · ⚙️
 
@@ -444,7 +458,8 @@ Not planned in detail yet. They wait until the flows above are in use.
 
 1. ~~**Fixes 1.1–1.6.** Small, and they close the gaps the first trip hit. 1.1
    and the export (2.5) change the site, so they go out in one deploy.~~ Done.
-2. **Cuándo (2.1).** The next trip needs dates agreed early. Design first.
+2. ~~**Cuándo (2.1).** The next trip needs dates agreed early. Design first.~~
+   Done, with the existing design system.
 3. **El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
    (2.4).** One design for the trip page, built together.
 4. **The panel from anywhere.**

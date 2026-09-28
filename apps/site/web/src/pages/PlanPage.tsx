@@ -42,7 +42,8 @@ export function PlanPage() {
   const site = useSite();
   const { planId } = useParams();
   const { group } = useAuth();
-  const { plan, destinations, myRanking, voted, comments, members, now, result, closed } = site;
+  const { plan, destinations, myRanking, voted, comments, members, now, result, closed, dates } = site;
+  const datesOpen = dates?.status === "open";
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -73,7 +74,7 @@ export function PlanPage() {
       <PageHeader
         size="display"
         title={plan.name}
-        subtitle={`Del ${weekday(from)} ${from.split(" ")[1]} al ${weekday(to)} ${to.split(" ")[1]} · salida desde ${airportCity(plan.origin)}${destinations.length ? ` · ${numberWord(destinations.length)} propuestas sobre la mesa` : ""}`}
+        subtitle={`${datesOpen ? "Fechas por decidir" : `Del ${weekday(from)} ${from.split(" ")[1]} al ${weekday(to)} ${to.split(" ")[1]}`} · salida desde ${airportCity(plan.origin)}${destinations.length ? ` · ${numberWord(destinations.length)} propuestas sobre la mesa` : ""}`}
         actions={
           <>
             <div className="flex flex-col gap-0.5 lg:items-end">
@@ -140,7 +141,16 @@ export function PlanPage() {
       )}
 
       {destinations.length === 0 ? (
-        <EmptyState title={closed && winnerId ? "Este plan ya se votó" : "Todavía no hay destinos"}>
+        <EmptyState
+          title={closed && winnerId ? "Este plan ya se votó" : "Todavía no hay destinos"}
+          action={
+            datesOpen ? (
+              <Link to={`${base}/fechas`} className={buttonClasses({ variant: "primary" })}>
+                Decir qué fechas me vienen bien
+              </Link>
+            ) : undefined
+          }
+        >
           {closed ? "La votación está cerrada." : `${group.organiserName} está preparando las propuestas. Os avisará cuando se abra la votación.`}
         </EmptyState>
       ) : ordered.length === 0 ? (

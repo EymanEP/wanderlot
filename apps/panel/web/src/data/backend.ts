@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { CheckedPrices, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
+import type { CheckedPrices, DatesView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -70,6 +70,21 @@ export interface VoteView extends VoteState {
 }
 
 export type { CheckedPrices };
+
+// The date vote as Fechas follows it (apps/panel/src/app.ts datesPage).
+export interface DatesPage {
+  // null: the trip has no date vote.
+  dates: DatesView | null;
+  people: { id: string; name: string }[];
+  // Ready-to-paste messages, when there's something to say.
+  reminder: string | null;
+  announcement: string | null;
+}
+
+export interface DateWindow {
+  dateFrom: string;
+  dateTo: string;
+}
 
 export interface ScreenshotImage {
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
@@ -144,6 +159,13 @@ export interface PanelBackend {
   revoke(memberId: string): Promise<void>;
   // The site's data as JSON: one trip, or everything.
   exportData(planId?: string): Promise<unknown>;
+  // Cuándo (ROADMAP 2.1).
+  dates(planId: string): Promise<DatesPage>;
+  // Proposes (or changes) the windows; returns the message for the group.
+  proposeDates(planId: string, windows: DateWindow[], deadline: string | null): Promise<DatesPage & { message: string }>;
+  // The trip takes these dates; prices checked for others are flagged.
+  chooseDates(planId: string, optionId: string): Promise<DatesPage & { plan: Plan }>;
+  cancelDates(planId: string): Promise<DatesPage>;
 }
 
 // Something to show the organiser, in their words.
@@ -232,5 +254,9 @@ export const httpBackend: PanelBackend = {
   invite: (id) => call<{ url: string; expiresAt: string }>(`/api/members/${enc(id)}/invite`, "POST"),
   closeSessions: async (id) => void (await call(`/api/members/${enc(id)}/sessions`, "DELETE")),
   revoke: async (id) => void (await call(`/api/members/${enc(id)}/revoke`, "POST")),
+  dates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`),
+  proposeDates: (planId, options, deadline) => call<DatesPage & { message: string }>(`/api/plans/${enc(planId)}/dates`, "PUT", { options, deadline }),
+  chooseDates: (planId, optionId) => call<DatesPage & { plan: Plan }>(`/api/plans/${enc(planId)}/dates/choose`, "POST", { optionId }),
+  cancelDates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`, "DELETE"),
   exportData: (planId) => call<unknown>(`/api/export${planId ? `?plan=${enc(planId)}` : ""}`),
 };

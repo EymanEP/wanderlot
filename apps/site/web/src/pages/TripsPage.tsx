@@ -7,6 +7,11 @@ import { person, usePlans } from "../data/store.tsx";
 
 // What a trip is waiting on, for this person.
 function stateOf(t: PlanSummary): { badge: string; tone: "accent" | "claude" | "neutral" | "muted"; line: string } {
+  if (t.datesOpen && (t.status !== "voting" || t.votedByMe)) {
+    return t.datesAnsweredByMe
+      ? { badge: "Fechas respondidas", tone: "accent", line: "Decidiendo las fechas" }
+      : { badge: "Te falta decir fechas", tone: "claude", line: "Decidiendo las fechas: di cuáles te vienen bien" };
+  }
   if (t.status === "voting") {
     const until = t.voteDeadline ? `Votación abierta hasta el ${deadlineLabel(t.voteDeadline)}` : "Votación abierta";
     return t.votedByMe ? { badge: "Ya has votado", tone: "accent", line: until } : { badge: "Te falta votar", tone: "claude", line: until };
@@ -16,7 +21,7 @@ function stateOf(t: PlanSummary): { badge: string; tone: "accent" | "claude" | "
 }
 
 // The trips order: what's being voted on first, then the rest as they come.
-const rank = (t: PlanSummary) => (t.status === "voting" ? 0 : t.status === "draft" ? 1 : 2);
+const rank = (t: PlanSummary) => (t.status === "voting" || t.datesOpen ? 0 : t.status === "draft" ? 1 : 2);
 
 // "/": every trip this person is on, to pick one.
 export function TripsPage() {
@@ -48,7 +53,7 @@ export function TripsPage() {
               const s = stateOf(t);
               return (
                 <li key={t.id}>
-                  <Link to={`/p/${t.id}`} className="block h-full rounded-card text-ink no-underline hover:text-ink">
+                  <Link to={t.datesOpen && !t.datesAnsweredByMe ? `/p/${t.id}/fechas` : `/p/${t.id}`} className="block h-full rounded-card text-ink no-underline hover:text-ink">
                     <Card as="article" variant="raised" aria-label={t.name} className="flex h-full flex-col gap-2.5 transition-shadow hover:shadow-pop">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <Heading as="h2" size="subheading">
@@ -59,7 +64,7 @@ export function TripsPage() {
                         </Badge>
                       </div>
                       <span className="text-sm text-ink-2">
-                        {rangeLabel(t.dateFrom, t.dateTo)} · {t.partySize} {t.partySize === 1 ? "persona" : "personas"}
+                        {t.datesOpen ? "Fechas por decidir" : rangeLabel(t.dateFrom, t.dateTo)} · {t.partySize} {t.partySize === 1 ? "persona" : "personas"}
                         {t.destinations !== undefined ? ` · ${t.destinations} ${t.destinations === 1 ? "destino" : "destinos"}` : ""}
                       </span>
                       <span className="mt-auto text-sm text-muted">{s.line}</span>

@@ -237,6 +237,24 @@ draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline 
 - A researched idea still goes through Revisar and publishing like any
   proposal; after the first ballot, new destinations can't join the vote.
 
+### Dates (Cuándo)
+Optional, per trip, and independent of the destination vote: before it, after
+it or alongside.
+- The organiser proposes **2–5 date windows** in the panel's Fechas page, with
+  an optional "responder antes del" (informative: answering stays open until
+  the organiser chooses). A trip that isn't on the site yet goes up without
+  destinations, so the group can answer before anything is researched.
+- On the site, a **Fechas** tab (first while open, last once decided): for each
+  window **Sí**, **Si hace falta** or **No**, plus one optional note. Every
+  window must be answered. Everyone on the trip sees everyone's answers: it's
+  a Doodle, not a secret ballot, and nothing is ranked.
+- A window's id is its dates (`2026-11-03_2026-11-07`), so when the organiser
+  changes the windows, answers to the ones that stay are kept.
+- The panel shows who can go when and suggests the best windows (most yes,
+  then fewest no, then most "si hace falta"). **Elegir** closes the date vote
+  and gives the trip those dates, in the panel and in the site's snapshot;
+  prices checked for other dates are flagged (§3). Proposing again reopens it.
+
 ---
 
 ## 5. Identity on the site
@@ -389,6 +407,10 @@ group chat, each with an "Abrir WhatsApp" button:
   for anyone who hasn't signed up yet.
 - **Reminder** (while voting): names who hasn't voted, never what anyone voted.
 - **Result** (once closed and any tie broken): the winner and the site's address.
+- **Dates proposed:** the windows, the "responder antes del" if any, the link
+  to the Fechas tab and invites for anyone who hasn't signed up.
+- **Dates reminder:** who hasn't answered every window.
+- **Dates chosen:** the dates, so people can ask for the days off.
 
 The group chat is already where they are.
 
@@ -455,8 +477,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `POST` | `/api/session/verify` | anyone | starts a session |
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
-| `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe }` |
-| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation |
+| `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe, datesOpen?, datesAnsweredByMe? }` |
+| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation + `dates` (the date vote with everyone's answers, or `null`) |
+| `PUT` | `/api/plans/:planId/dates` | member | `{ answers: { optionId: yes \| maybe \| no }, note? }` for every window; `409` once the dates are chosen |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
 | `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
@@ -472,6 +495,8 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted, tally, ballots, result }`: the live count and every ballot for the organiser; `result` once closed |
 | `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
 | `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`, only among those tied for first; or `{ destinationId, override: true, note? }`, any destination in the vote once closed (choosing the vote's own winner clears the note). Results carry `winnerId` (where they're going), `voteWinnerId` and `decidedNote`. Site API version 7 |
+| `GET` / `PUT` / `DELETE` | `/api/admin/plans/:planId/dates` | panel | the date vote (§4 Dates): `DatesView` `{ status: open \| closed, options: [{ id, dateFrom, dateTo }], deadline, chosenOptionId, responses: [{ memberId, answers: { optionId: yes \| maybe \| no }, note, updatedAt }] }` or `null` / `{ options: [{ dateFrom, dateTo }] (2–5), deadline? }` proposes or changes the windows, keeping answers to the ones that stay, and reopens it / removes it. Site API version 8 |
+| `POST` | `/api/admin/plans/:planId/dates/choose` | panel | `{ optionId }`: closes the date vote and sets the snapshot's `dateFrom`, `dateTo` and `nights` |
 | `GET` | `/api/admin/export?plan=` | panel | everything the group made, one trip or all: `{ format: "wanderlot-export", version: 1, exportedAt, settings, members, trips }`, each trip its snapshot, status, winner, note, members, ballots, comments with likes and ideas. No PIN hashes, passkeys, sessions or invites. Site API version 7 |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |
 | `GET` / `PUT` | `/api/admin/plans/:planId/members` | panel | who is on the trip: `[memberId]` |
@@ -514,6 +539,8 @@ it). Calls that touch the site go through the admin API above.
 | `GET` | `/api/plans/:planId/vote` | who voted, reminder and result messages, the count once closed |
 | `POST` | `/api/plans/:planId/close` | close early |
 | `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie; `{ destinationId, override: true, note? }` to go somewhere other than the vote's winner (`409` on a site older than API version 7) |
+| `GET` / `PUT` / `DELETE` | `/api/plans/:planId/dates` | Fechas: `{ dates, people, reminder, announcement }` / `{ options, deadline? }` proposes or changes the windows (publishing the trip without destinations if it isn't on the site yet) and adds the group-chat `message` / removes the date vote. `409` without people on the trip, or on a site older than API version 8 |
+| `POST` | `/api/plans/:planId/dates/choose` | `{ optionId }`: the trip takes those dates here and on the site; checked prices are flagged `forOtherDates` |
 | `GET` | `/api/export?plan=` | the site's export (above), for Viajes to download; `409` on a site older than API version 7 |
 | `GET` / `PUT` | `/api/members` | people and their access / add or rename |
 | `POST` | `/api/members/:id/invite` | a fresh one-time invite link |

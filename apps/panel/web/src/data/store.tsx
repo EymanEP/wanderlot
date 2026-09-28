@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -81,6 +81,10 @@ export interface PanelApi {
   closeSessions: (memberId: string) => Promise<void>;
   revoke: (memberId: string) => Promise<void>;
   exportData: (planId?: string) => Promise<unknown>;
+  dates: () => Promise<DatesPage>;
+  proposeDates: (windows: DateWindow[], deadline: string | null) => Promise<DatesPage & { message: string }>;
+  chooseDates: (optionId: string) => Promise<DatesPage>;
+  cancelDates: () => Promise<DatesPage>;
 }
 
 const EMPTY_EDITORIAL: Editorial = { pros: [], cons: [], weather: "", inVote: true };
@@ -347,6 +351,22 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await loadMembers();
       },
       exportData: (id) => backend.exportData(id),
+      dates: () => backend.dates(need()),
+      async proposeDates(windows, deadline) {
+        const pid = need();
+        const page = await backend.proposeDates(pid, windows, deadline);
+        await loadMembers();
+        return page;
+      },
+      async chooseDates(optionId) {
+        const pid = need();
+        const page = await backend.chooseDates(pid, optionId);
+        // New dates: the plan and its flagged prices.
+        await loadPlan(pid);
+        patch((s) => ({ plans: s.plans.map((x) => (x.id === pid ? page.plan : x)) }));
+        return page;
+      },
+      cancelDates: () => backend.cancelDates(need()),
     };
   }, [state, backend, planId, patch, loadPlan, loadMembers, syncPlan]);
 

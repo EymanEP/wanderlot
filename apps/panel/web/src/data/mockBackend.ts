@@ -1,10 +1,12 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, applyCheckedPrices, markForOtherDates, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { DateWindows, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
+  DATES_PLAN_ID,
   MOCK_NOW,
   SITE_URL,
+  dates as mockDates,
   access as mockAccess,
   editorial as mockEditorial,
   ballots as mockBallots,
@@ -14,7 +16,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { MemberAccess, PanelBackend, PlanEntry, VoteView } from "./backend.ts";
+import type { DatesPage, MemberAccess, PanelBackend, PlanEntry, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -97,6 +99,23 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const e = entry(planId);
     const approved = e.proposals.filter((p) => p.review === "approved");
     return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null)]);
+  };
+  // Date votes on the site, per plan.
+  const datesBy = new Map<string, DatesView>([[DATES_PLAN_ID, mockDates]]);
+  const datesPage = (planId: string): DatesPage => {
+    const d = datesBy.get(planId) ?? null;
+    const going = participants.get(planId) ?? [];
+    const people = members.filter((m) => going.includes(m.id)).map((m) => ({ id: m.id, name: m.name }));
+    const missing = d ? people.filter((p) => !answeredAll(d, p.id)).map((p) => p.name) : [];
+    const chosen = d?.options.find((o) => o.id === d.chosenOptionId);
+    const { name } = entry(planId).plan;
+    const link = `${SITE_URL}/p/${planId}/fechas`;
+    return {
+      dates: d,
+      people,
+      reminder: d?.status === "open" && missing.length ? `${missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`} por decir qué fechas le vienen bien para ${name}. Es un minuto: ${link}` : null,
+      announcement: chosen ? `Fechas de ${name} decididas: ${rangeLabel(chosen.dateFrom, chosen.dateTo)}. Ya podéis pedir los días. ${link}` : null,
+    };
   };
   // A trip whose vote already ran was published when it opened.
   for (const e of entries.values()) if (e.plan.status !== "draft") published.set(e.plan.id, { at: MOCK_NOW.toISOString(), key: publishKey(e.plan.id) });
@@ -374,6 +393,38 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
         inviteUrl: null,
         invite: m?.invite?.status === "valid" ? { ...m.invite, status: "cancelled" } : (m?.invite ?? null),
       });
+    },
+    dates: async (planId) => datesPage(planId),
+    async proposeDates(planId, windows, deadline) {
+      const parsed = DateWindows.safeParse(windows);
+      if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Fechas no válidas");
+      if (!(participants.get(planId) ?? []).length) throw new Error("elige quién va al viaje (en Personas) antes de proponer fechas");
+      const before = datesBy.get(planId);
+      datesBy.set(planId, { status: "open", options: parsed.data, deadline, chosenOptionId: null, responses: before?.responses ?? [] });
+      const { name } = entry(planId).plan;
+      const labels = parsed.data.map((o) => rangeLabel(o.dateFrom, o.dateTo));
+      const message = [
+        `¿Cuándo nos vamos? (${name})`,
+        `Decid qué fechas os vienen bien: ${labels.slice(0, -1).join(", ")} o ${labels.at(-1)}. Para cada una: sí, si hace falta o no.`,
+        "",
+        `Entrad en ${SITE_URL}/p/${planId}/fechas`,
+      ].join("\n");
+      return { ...datesPage(planId), message };
+    },
+    async chooseDates(planId, optionId) {
+      const d = datesBy.get(planId);
+      const option = d?.options.find((o) => o.id === optionId);
+      if (!d || !option) throw new Error("esas fechas no están entre las propuestas");
+      datesBy.set(planId, { ...d, status: "closed", chosenOptionId: optionId });
+      const e = entry(planId);
+      const moved = e.plan.dateFrom !== option.dateFrom || e.plan.dateTo !== option.dateTo;
+      const plan = { ...e.plan, dateFrom: option.dateFrom, dateTo: option.dateTo, nights: nightsOf(option) };
+      entries.set(planId, { ...e, plan, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
+      return { ...datesPage(planId), plan };
+    },
+    async cancelDates(planId) {
+      datesBy.delete(planId);
+      return datesPage(planId);
     },
     async exportData(planId) {
       const trips = [...entries.values()].filter((e) => published.has(e.plan.id) && (!planId || e.plan.id === planId));

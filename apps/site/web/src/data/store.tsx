@@ -2,7 +2,7 @@
 // from (the real API or the mocks); <PlanProvider> loads one plan through it
 // and hands screens a ready view with useSite().
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { avatarTint, initials, type CommentView, type Destination, type Plan, type PlanSummary } from "@wanderlot/core";
+import { avatarTint, initials, type CommentView, type DateAnswer, type DatesView, type Destination, type Plan, type PlanSummary } from "@wanderlot/core";
 import { EmptyState, Main, Skeleton, buttonClasses } from "@wanderlot/ui";
 import type { Results, SiteSource } from "./source.ts";
 
@@ -67,6 +67,9 @@ export interface SiteApi {
   result: Results | null;
   closedBallots: Results["ballots"] | null;
   comments: CommentView[];
+  // The date vote, if this trip has one (ROADMAP 2.1).
+  dates: DatesView | null;
+  saveDates: (answers: Record<string, DateAnswer>, note: string) => Promise<void>;
   liked: string[];
   saved: string[];
   saveRanking: (ranking: string[]) => Promise<void>;
@@ -148,6 +151,11 @@ export function PlanProvider({ planId, children }: { planId: string; children: R
       closedBallots: results?.ballots ?? null,
       comments,
       liked: comments.filter((c) => c.likedByMe).map((c) => c.id),
+      dates: view.dates ?? null,
+      async saveDates(answers, note) {
+        const dates = await source.saveDates(view.plan.id, answers, note);
+        setData((d) => (d && typeof d === "object" && !(d instanceof Error) ? { ...d, view: { ...d.view, dates } } : d));
+      },
       saved,
       async saveRanking(ranking) {
         await source.saveBallot(view.plan.id, ranking);

@@ -4,6 +4,7 @@ import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
 import { PanelShell } from "./components/PanelShell.tsx";
 import { usePanel } from "./data/store.tsx";
 import { ComparativaPage } from "./pages/ComparativaPage.tsx";
+import { FechasPage } from "./pages/FechasPage.tsx";
 import { GenerarPage } from "./pages/GenerarPage.tsx";
 import { NewPlanPage } from "./pages/NewPlanPage.tsx";
 import { VotacionPage } from "./pages/VotacionPage.tsx";
@@ -58,6 +59,7 @@ export function App() {
   return (
     <Routes>
       <Route index element={<TripsPage />} />
+      <Route path="/fechas" element={<RequirePlan><FechasPage /></RequirePlan>} />
       <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
       <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
       <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
