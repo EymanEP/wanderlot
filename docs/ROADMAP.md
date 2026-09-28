@@ -1,0 +1,314 @@
+# Wanderlot roadmap
+
+What comes next, after the first real trip: a group used the site to choose
+between destinations, voted (Budapest won, Prague came second), then decided on
+Prague, and later moved the dates from the week of 16 November to 3–7
+November. Prices were close enough, but the organiser re-checked every
+finalist by hand on Google Flights and Airbnb.
+
+What this roadmap covers:
+- **Fixes:** things that got in the way on that trip.
+- **Features:** planned by user flow.
+- **Later:** big changes that wait.
+
+Nothing here is built yet.
+
+**Legend**
+
+- 🎨 **Design first.** A new page or a big change to an existing one. Draw the
+  screens in Claude Design before any code, so they follow the design system
+  and so we can see how big the change is.
+- **S / M / L:** rough size. S is a day or less, M a few days, L a week or more.
+- ⚙️ **Site update.** Changes the site's API (`SITE_API_VERSION`). The organiser
+  runs `npm run deploy:site`, and until then the panel says the site is out of
+  date.
+
+**Rules for every item.** Some groups already use the app, so every change must
+keep their data and habits working:
+
+- Database migrations only add things (new tables, new columns with defaults).
+  Nothing is renamed or dropped.
+- New features are optional per trip. A trip that doesn't use one looks and
+  works exactly as it does today.
+- The site shows a new section only when there's something in it.
+- Friends never have to do anything new to keep using what they already use:
+  sign in, vote, comment.
+
+---
+
+## 1. Fixes
+
+### 1.1 Choose a destination other than the vote's winner · S · ⚙️
+
+**Problem.** The vote picked Budapest; the group agreed on Prague. Today the
+organiser can only choose the winner among destinations that tied for first
+(`PUT /api/admin/plans/:id/winner` refuses anything else), so the site keeps
+announcing Budapest.
+
+**Plan.**
+- **Panel, Votación, once the vote is closed:** add "Ir a otro destino", which
+  lists the other destinations in the vote. Picking one asks to confirm and can
+  take an optional note, for example "Lo hablamos y preferimos Praga".
+- **Site:** the result stays honest. The vote's count is untouched and still
+  visible ("Ganó la votación: Budapest"), and the decision is shown on top
+  ("Vais a Praga", with the note).
+- **Data:**
+  - `winner_destination_id` becomes "where they're going".
+  - A new nullable `decided_note` column carries the note.
+  - The tally is always recomputed from the ballots, so the vote's own winner
+    needs no column.
+- **Endpoint:** the winner endpoint takes `{ destinationId, override: true,
+  note? }`. Without `override` it keeps today's tie-only rule.
+
+The panel change is small (a button and a dialog) and the site change is one
+banner, so no 🎨.
+
+### 1.2 Paste a screenshot instead of saving it · S
+
+In the price dialog, Ctrl/Cmd+V pastes an image from the clipboard straight
+into "Leer captura". A "Pegar captura" button next to "Leer captura" does the
+same where there's no keyboard.
+- A pasted image goes into the section that has focus. With neither focused,
+  the dialog asks "¿Vuelo o alojamiento?".
+- Same size and type checks as uploads.
+
+### 1.3 Remove the 6-digit PIN option · S
+
+Once the organiser has reset their own PIN with a new invite (the only 6-digit
+PIN in use), remove:
+- "Mi PIN tiene 6 números";
+- the 6-digit field length;
+- their tests.
+
+"Cambiar mi PIN" stays.
+
+### 1.4 Changing a trip's dates flags its checked prices · S
+
+**Problem.** The trip moved to 3–7 November, but prices checked for the week of
+the 16th still showed as "Comprobado a mano".
+
+**Plan.**
+- When a trip's dates change (Editar in Viajes, or Generar), every price
+  checked by hand or by an API is marked "de otras fechas": it shows as stale
+  until re-checked.
+- Flight times read from a screenshot are hidden again, since those flights
+  were for other days.
+- Stays keep their name and link.
+
+### 1.5 A "Ver en Google Flights" link on each proposal · S
+
+The organiser checks prices on Google Flights anyway. Each proposal gets a
+Google Flights search link with the origin, destination, dates and number of
+passengers filled in. Two clicks, then paste the screenshot (1.2).
+
+### 1.6 Docs match what's built · S
+
+- The README's "State" section still says every price shows as written by
+  Claude.
+- SPEC §10 lists plan creation as out of scope.
+
+Both are fixed alongside this roadmap.
+
+---
+
+## 2. Features, by user flow
+
+The work splits into three flows. Today there is one: **Dónde**. The other two
+sit before and after it, and each can be used on its own:
+
+1. **Cuándo (when).** Agree on dates, so everyone can ask for days off.
+2. **Dónde (where).** What exists today: research, check, publish, vote,
+   decide. Fix 1.1 completes it.
+3. **El viaje (the trip).** Once the destination is decided: real prices, how
+   to get there, a guide without spoilers, all on one page for the group.
+
+**Order:**
+- Cuándo is usually first, but it's optional: a trip can start with dates the
+  organiser already knows, as it does today.
+- Dónde can also run before Cuándo, as happened here: destination first,
+  dates moved later.
+- El viaje only opens once a destination is decided.
+
+### 2.1 Cuándo: a vote on dates · L · 🎨 · ⚙️
+
+**Why.** On the first trip the dates changed after the destination was chosen.
+People need to know early so they can ask for days off.
+
+**Flow.**
+1. **Organiser, in the panel:** "Proponer fechas" on a trip, in Viajes or when
+   creating it. They pick 2–5 date windows on the calendar they already use,
+   for example 3–7 Nov, 12–16 Nov and 20–24 Nov, and an optional deadline.
+2. **Friends, on the site:** a new "Fechas" tab, first in the trip's menu while
+   the dates are open. For each window they answer **Sí**, **Si hace falta**
+   or **No**, with an optional note ("tengo que pedirlo antes del 15"). It's
+   quick, like a Doodle, and it isn't ranked like the destination vote.
+3. **Everyone:** sees who can go when, in a table of people by windows. The
+   organiser sees it in the panel too.
+4. **Organiser:** "Elegir estas fechas" sets the trip's dates, closes the date
+   vote, and the tab shows the chosen dates. Prices checked for other dates
+   are flagged (fix 1.4).
+
+**Compatibility.**
+- A trip without a date vote has no "Fechas" tab.
+- New tables: `date_options` and `date_answers`. Existing tables are untouched.
+
+**Screens to design.**
+- Site: the "Fechas" tab, with answering and the who-can-when table, on phone
+  and desktop.
+- Panel: proposing windows and following the answers.
+
+### 2.2 El viaje: the trip page · L · 🎨 · ⚙️
+
+**Why.** After deciding, the group needs one place with the plan: where
+they're going, the flights, the stay, and what to look for there.
+
+**What it shows** (the site's trip page becomes this once a destination is
+decided; the vote result stays one tap away):
+- **Destination and dates**, and who's going.
+- **Flights and stay**, with the prices checked by hand:
+  - the flight times read from screenshots (as now);
+  - the stay's name, link, address and check-in time, if the organiser adds
+    them.
+- **Cómo llegar:** from home to the airport, and from the airport to the stay
+  (2.3).
+- **The guide**, written by Claude and reviewed by the organiser. It's a
+  starting push, not an itinerary:
+  - **Qué hacer:** a list, each item with an approximate price.
+  - **Qué comer**, and where it's typical to try it.
+  - **Sitios que ver.**
+  - **Antes de ir:** the country in a few lines (currency and cash, plugs,
+    tipping, a few phrases, safety, transport passes, what to watch out for).
+  - The tone doesn't spoil the trip: what to look for, not every detail. No
+    times, no day-by-day plan.
+- **Money:** each person's share of flights and stay (already worked out), and
+  a link to the group's **Tricount** if there is one (see 2.4).
+
+**Organiser flow, in the panel.**
+1. **Decide** the destination (1.1).
+2. **Check the prices.** If the flights or stay weren't checked by hand, the
+   panel asks for it first: open the price dialog, read or paste the
+   screenshots. The guide's own prices are Claude's estimates and are labelled
+   as such.
+3. **"Preparar el viaje"** runs Claude's research for the guide (and for 2.3).
+   The organiser edits the text, removes what doesn't fit, and adds the
+   address, check-in time and Tricount link.
+4. **Publish.** The site shows the trip page to the trip's people.
+
+**Compatibility.**
+- The page only exists for trips with a decided destination and a published
+  guide. Other trips are as today.
+- The guide is a new optional part of the published snapshot. Older snapshots
+  simply don't have it.
+
+**Screens to design.**
+- Site: the trip page on phone and desktop.
+- Panel: the "Preparar el viaje" editor.
+
+### 2.3 Cómo llegar: to the airport and from it · L · 🎨 (part of 2.2's screens) · ⚙️ (for phase 2)
+
+**Why.** The group lives in Logroño. Flying from Bilbao or Madrid means a car,
+bus or train first, and that time and money matter. At the other end, someone
+has to work out how to get from the airport to the stay.
+
+**Setting.** "Salimos desde" in the group's settings: the home town (Logroño),
+separate from the departure airport. Each group sets its own; nothing is
+specific to Logroño.
+
+**What research returns, per option:**
+- **Car:** kilometres and time, fuel per person for a given number of cars
+  (using an average consumption and the current fuel price), tolls, and
+  parking at the airport for the trip's days, with where to park.
+- **Bus and train:** operator, typical departures on the trip's days, time and
+  price per person, and where it stops relative to the terminal.
+- **At the destination, airport to stay:** metro, bus, train, taxi or shuttle,
+  with time and price, and which is best for a group with luggage.
+- **Sources** cited, as with research today. Timetables and fuel prices change,
+  so they're labelled as estimates to confirm.
+
+**Two phases.**
+- **Phase 1, in El viaje (2.2):** "Cómo llegar" is researched for the chosen
+  destination only and appears on the trip page. This covers the real need
+  with no changes to Dónde.
+- **Phase 2, in Dónde:** the cost of getting to each departure airport goes
+  into the comparison. "Madrid is 40 € cheaper to fly from but 35 € more to
+  reach" changes which option wins. This touches research, Comparativa and the
+  per-person total the group votes on, so it waits until phase 1 has been used
+  on a real trip.
+
+### 2.4 Money: link Tricount, don't rebuild it · S
+
+**Why not build it.** The group already splits costs in Tricount without
+problems. Rebuilding expense tracking is a lot of work for something that
+already works.
+
+**Instead:**
+- An optional "Enlace del Tricount" on the trip, shown on the trip page (2.2).
+- The per-person shares Wanderlot already knows (flight, stay) are listed
+  there, ready to enter in Tricount.
+
+### 2.5 Export the group's data · S–M
+
+**Where things live.** The shared data is in the site's database on
+Cloudflare:
+- members and who's on each trip;
+- published trips and their destinations;
+- ballots, results, comments, likes and ideas.
+
+The panel keeps a local file (`data/panel.json` on the organiser's computer)
+with:
+- proposals that were never published;
+- Comparativa notes and photo searches;
+- invite links;
+- what was last published.
+
+**Plan.**
+- **"Exportar" in the panel's Viajes page** downloads one JSON file with what's
+  on the site, for one trip or all of them:
+  - settings and members;
+  - published trips with their destinations and photos;
+  - ballots and results;
+  - comments with likes;
+  - ideas;
+  - who's on each trip.
+- **What it leaves out:** PIN hashes, passkeys, sessions and invite tokens, and
+  the panel's unpublished research.
+- **Site:** `GET /api/admin/export` behind the admin token. ⚙️
+- **Later, if wanted:** importing a file into a new site, and a backup of the
+  panel's file.
+
+---
+
+## 3. Later
+
+Not planned in detail yet. They wait until the flows above are in use.
+
+- **Other languages, English first.**
+  - Every UI string is Spanish today, in the components, the site and the
+    panel.
+  - Needs a message catalogue per language and a language setting for the
+    group, with Spanish as the default so nothing changes for current groups.
+  - Research prompts and the guide must also be written in the group's
+    language.
+- **Currency and locale.**
+  - Prices are euros everywhere (cents, `euros()` formatting).
+  - A group setting for its currency, with number and date formats to match.
+  - Research and screenshot reading must convert or refuse other currencies
+    consistently.
+  - Existing data stays in euros.
+- **Already out of scope in SPEC §10:**
+  - a hosted panel;
+  - email or push notifications;
+  - booking inside the app;
+  - several groups per deployment.
+
+---
+
+## Suggested order
+
+1. **Fixes 1.1–1.6.** Small, and they close the gaps the first trip hit. 1.1
+   and the export (2.5) change the site, so they go out in one deploy.
+2. **Cuándo (2.1).** The next trip needs dates agreed early. Design first.
+3. **El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
+   (2.4).** One design for the trip page, built together.
+4. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
+5. **Later:** languages and currency.

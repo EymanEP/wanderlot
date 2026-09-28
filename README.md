@@ -197,8 +197,12 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - The organiser follows the vote in the panel: who has voted, a reminder for
   the rest, closing early, breaking a tie, and the result message.
 - Friends can install the site on their phone's home screen.
-- The Duffel provider is a stub, so every price is labelled as written by
-  Claude until a flight API is connected.
+- Prices: research's are labelled as written by Claude. The organiser checks
+  the finalists by hand, typing the prices or having Claude read screenshots
+  of the flights and the stay. The site then shows only what was checked. The
+  Duffel flight API is still a stub.
+- It has been used for a real trip: a group chose its destination with it.
+  What's next, from that trip, is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Contributing
 
