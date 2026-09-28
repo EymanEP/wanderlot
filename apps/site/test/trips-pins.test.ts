@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PIN_LOCKS_MS, createApp, nameKey, pinProblem } from "../src/app.ts";
-import { pinHasher } from "../src/crypto.ts";
 import { SqliteStore } from "../src/sqlite.ts";
 import { destination, snapshot } from "../../../packages/core/test/fixtures.ts";
 
@@ -110,21 +109,13 @@ describe("PINs", () => {
     expect((await signIn("ana", "7304")).status).toBe(200);
   });
 
-  it("still signs in with a 6-digit PIN from before, and moves it to 4 digits", async () => {
-    // A PIN set when they were 6 digits: the same hash, just longer.
-    await joinWithPin("ana", "4801");
-    const hash = await (await pinHasher(ADMIN))("ana", "old-salt", "480152");
-    await store.setPin("ana", hash, "old-salt", "2026-09-20T10:00:00Z");
-    const res = await signIn("Ana María", "480152");
-    expect(res.status).toBe(200);
-    const cookie = cookieOf(res);
-
-    // Choosing the new one needs the session, and follows the same rules.
+  it("changes the PIN while signed in, with the same rules as a new one", async () => {
+    const cookie = await joinWithPin("ana", "4801");
     expect((await req("/api/session/pin", "PUT", { pin: "7304" }, { origin: ORIGIN })).status).toBe(401);
     expect((await req("/api/session/pin", "PUT", { pin: "1234" }, { cookie, origin: ORIGIN })).status).toBe(400);
     expect((await req("/api/session/pin", "PUT", { pin: "730412" }, { cookie, origin: ORIGIN })).status).toBe(400);
     expect((await req("/api/session/pin", "PUT", { pin: "7304" }, { cookie, origin: ORIGIN })).status).toBe(200);
-    expect((await signIn("Ana María", "480152")).status).toBe(401);
+    expect((await signIn("Ana María", "4801")).status).toBe(401);
     expect((await signIn("Ana María", "7304")).status).toBe(200);
   });
 

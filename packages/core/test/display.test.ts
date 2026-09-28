@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   daysUntil,
   standardImageUrl,
+  googleFlightsUrl,
   deadlineLabel,
   duration,
   euros,
@@ -81,5 +82,15 @@ describe("standardImageUrl", () => {
     expect(standardImageUrl(original)).toBe(original);
     const unsplash = "https://images.unsplash.com/photo-1?w=1600";
     expect(standardImageUrl(unsplash)).toBe(unsplash);
+  });
+});
+
+describe("googleFlightsUrl", () => {
+  it("searches the route and the trip's dates, in Spanish and euros", () => {
+    const url = new URL(googleFlightsUrl("MAD", "KRK", "2026-10-09", "2026-10-16"));
+    expect(url.origin + url.pathname).toBe("https://www.google.com/travel/flights");
+    expect(url.searchParams.get("hl")).toBe("es");
+    expect(url.searchParams.get("curr")).toBe("EUR");
+    expect(url.searchParams.get("q")).toBe("Flights from MAD to KRK on 2026-10-09 through 2026-10-16");
   });
 });

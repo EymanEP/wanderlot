@@ -47,7 +47,10 @@ export function stopsLabel(stops: number): string {
 // except when the organiser checked only the price by hand (research's guess
 // at the times would sit beside a real price).
 export function flightDetailsKnown(p: Pick<Proposal, "provenance">): boolean {
-  return p.provenance.kind !== "organiser" || p.provenance.flightDetails === true;
+  if (p.provenance.kind === "claude") return true;
+  // Checked for dates the trip no longer has: those were other flights.
+  if (p.provenance.forOtherDates) return false;
+  return p.provenance.kind === "api" || p.provenance.flightDetails === true;
 }
 
 // "Directo · 1 h 20 m"
@@ -206,4 +209,11 @@ export function standardImageUrl(url: string): string {
   if ((WIKIMEDIA_WIDTHS as readonly number[]).includes(width)) return url;
   const fit = [...WIKIMEDIA_WIDTHS].reverse().find((w) => w <= width) ?? WIKIMEDIA_WIDTHS[0];
   return `${m[1]}${fit}px-${m[3]}`;
+}
+
+// Google Flights, searched for this route and the trip's dates, round trip,
+// one person, in euros: where to check a price by hand.
+export function googleFlightsUrl(from: string, to: string, dateFrom: string, dateTo: string): string {
+  const q = `Flights from ${from} to ${to} on ${dateFrom} through ${dateTo}`;
+  return `https://www.google.com/travel/flights?hl=es&curr=EUR&q=${encodeURIComponent(q)}`;
 }

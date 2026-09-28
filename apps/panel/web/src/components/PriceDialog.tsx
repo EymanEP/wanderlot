@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { baseStay, euros, flightDetailsKnown, flightPriceCents, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
+import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
+import { baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
 import { Button, DataRow, Dialog, Field, Notice, TextInput } from "@wanderlot/ui";
 import type { CheckedPrices } from "../data/backend.ts";
 import type { Extracted, ExtractedLeg, ScreenshotImage } from "../data/backend.ts";
@@ -27,8 +27,8 @@ const toCents = (text: string): number | null => {
 const TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
 const MAX_BYTES = 5 * 1024 * 1024;
 
-function readImages(files: FileList): Promise<ScreenshotImage[]> {
-  const list = [...files].slice(0, 4);
+function readImages(files: File[]): Promise<ScreenshotImage[]> {
+  const list = files.slice(0, 4);
   for (const f of list) {
     if (!TYPES.includes(f.type as (typeof TYPES)[number])) return Promise.reject(new Error("Sube capturas en PNG, JPG, WebP o GIF"));
     if (f.size > MAX_BYTES) return Promise.reject(new Error("Cada captura tiene que pesar menos de 5 MB"));
@@ -49,8 +49,22 @@ function readImages(files: FileList): Promise<ScreenshotImage[]> {
 // "11:55 BIO → 14:05 AMS · mié 18 nov · KLM KL1524 · directo"
 const legLine = (l: ExtractedLeg) => `${localTime(l.departAt)} ${l.from} → ${localTime(l.arriveAt)} ${l.to} · ${shortDate(l.departAt)} · ${l.carrier} ${l.flightNumber} · ${stopsLabel(l.stops).toLowerCase()}`;
 
-// "Leer captura": a button that opens the file picker and hands the images over.
-function ScreenshotButton({ label, busy, onImages }: { label: string; busy: boolean; onImages: (files: FileList) => void }) {
+// Images on the clipboard, where the browser lets a page read them (Chrome,
+// Edge, Safari); elsewhere Ctrl/Cmd+V into the dialog does the same.
+const canReadClipboard = typeof navigator !== "undefined" && typeof navigator.clipboard?.read === "function";
+async function clipboardImages(): Promise<File[]> {
+  const files: File[] = [];
+  for (const item of await navigator.clipboard.read()) {
+    const type = item.types.find((t) => t.startsWith("image/"));
+    if (type) files.push(new File([await item.getType(type)], "captura", { type }));
+  }
+  if (!files.length) throw new Error("No hay ninguna imagen copiada");
+  return files;
+}
+
+// "Leer captura": a button that opens the file picker and hands the images
+// over, and "Pegar captura" beside it for one copied to the clipboard.
+function ScreenshotButton({ label, busy, onImages }: { label: string; busy: boolean; onImages: (files: File[]) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -62,13 +76,20 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
         hidden
         aria-label={label}
         onChange={(e) => {
-          if (e.target.files?.length) onImages(e.target.files);
+          if (e.target.files?.length) onImages([...e.target.files]);
           e.target.value = "";
         }}
       />
-      <Button size="sm" disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? "Leyendo la captura…" : label}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        {canReadClipboard && !busy && (
+          <Button size="sm" variant="ghost" onClick={() => void clipboardImages().then(onImages, (e: Error) => onImages(Object.assign([], { error: e.message })))}>
+            Pegar captura
+          </Button>
+        )}
+        <Button size="sm" disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? "Leyendo la captura…" : label}
+        </Button>
+      </div>
     </>
   );
 }
@@ -89,6 +110,9 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
   const [stayDescription, setStayDescription] = useState<string | undefined>(undefined);
   const [stayTotal, setStayTotal] = useState("");
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
+  // Where a pasted screenshot goes: the section last worked in, or asked.
+  const [focus, setFocus] = useState<"flight" | "stay" | null>(null);
+  const [pasted, setPasted] = useState<File[] | null>(null);
   const [notes, setNotes] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +127,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
     setStayTotal(stay ? toEuros(stayTotalCents(stay, plan.nights)) : "");
     setNotes([]);
     setError(null);
+    setFocus(null);
+    setPasted(null);
     // Refill each time a different proposal opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id]);
@@ -112,8 +138,10 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
   const stayCents = hasStay ? toCents(stayTotal) : undefined;
   const stayShare = stayCents === null || stayCents === undefined ? stayCents : Math.round(stayCents / people);
 
-  const read = async (kind: "flight" | "stay", files: FileList) => {
+  const read = async (kind: "flight" | "stay", files: File[] & { error?: string }) => {
+    if (files.error) return setError(files.error);
     setReading(kind);
+    setPasted(null);
     setError(null);
     try {
       const got = await onExtract(kind, await readImages(files));
@@ -136,6 +164,15 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
     } finally {
       setReading(null);
     }
+  };
+
+  // Ctrl/Cmd+V with an image: read it into the section being worked in.
+  const onPaste = (e: ClipboardEvent) => {
+    const images = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+    if (!images.length || reading) return;
+    e.preventDefault();
+    if (focus) void read(focus, images);
+    else setPasted(images);
   };
 
   const submit = async (e: FormEvent) => {
@@ -191,17 +228,39 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
         </>
       }
     >
-      <form id="precios" onSubmit={submit} className="flex flex-col gap-5">
+      <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-5">
         <span>
-          Pon lo que cuestan hoy, o sube una captura y Claude lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los {people}, como lo muestra
+          Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y Claude lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los {people}, como lo muestra
           Airbnb. Revisa lo que lea antes de guardar. Se mostrarán como «Comprobado a mano» durante 72 horas.
         </span>
 
-        <section aria-label="Vuelos" className="flex flex-col gap-3">
+        {pasted && (
+          <div role="group" aria-label="¿De qué es la captura?" className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
+            <span className="mr-auto">¿De qué es la captura que has pegado?</span>
+            <Button size="sm" onClick={() => void read("flight", pasted)}>
+              Del vuelo
+            </Button>
+            <Button size="sm" onClick={() => void read("stay", pasted)}>
+              Del alojamiento
+            </Button>
+          </div>
+        )}
+
+        <section aria-label="Vuelos" className="flex flex-col gap-3" onFocus={() => setFocus("flight")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Vuelos</strong>
             <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />
           </div>
+          {p && (
+            <a
+              href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)}
+              target="_blank"
+              rel="noreferrer"
+              className="self-start text-[13px] font-semibold text-accent hover:text-accent-hover"
+            >
+              Buscar en Google Flights · {shortDate(plan.dateFrom)} – {shortDate(plan.dateTo)}
+            </a>
+          )}
           {p &&
             euroField(
               "Vuelo, ida y vuelta · € por persona",
@@ -222,7 +281,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
           )}
         </section>
 
-        <section aria-label="Alojamiento" className="flex flex-col gap-3 border-t border-line-faint pt-4">
+        <section aria-label="Alojamiento" className="flex flex-col gap-3 border-t border-line-faint pt-4" onFocus={() => setFocus("stay")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Alojamiento</strong>
             <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />

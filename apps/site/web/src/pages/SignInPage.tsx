@@ -27,10 +27,6 @@ export function SignInPage() {
   const location = useLocation();
   const [name, setName] = useState(lastName);
   const [pin, setPin] = useState("");
-  // PINs chosen before the switch to 4 digits still work, once: signing in
-  // with one leads straight to choosing a new 4-digit PIN.
-  const [oldPin, setOldPin] = useState(false);
-  const length = oldPin ? 6 : 4;
   const [busy, setBusy] = useState<"pin" | "passkey" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const back = (location.state as { from?: string } | null)?.from ?? "/";
@@ -42,8 +38,7 @@ export function SignInPage() {
     setError(null);
     try {
       await go();
-      if (how === "pin" && oldPin) navigate("/nuevo-pin", { replace: true, state: { from: back } });
-      else navigate(back, { replace: true });
+      navigate(back, { replace: true });
     } catch (e) {
       setError(e instanceof AuthError ? e.message : "Algo ha fallado. Vuelve a intentarlo.");
       if (how === "pin") setPin("");
@@ -74,20 +69,8 @@ export function SignInPage() {
             <TextInput id={inputId} autoComplete="username" required value={name} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
           )}
         </Field>
-        <div className="flex flex-col gap-1.5">
-          <PinField label="PIN" value={pin} onChange={setPin} autoComplete="current-password" autoFocus={!!name} length={length} />
-          <button
-            type="button"
-            onClick={() => {
-              setOldPin((x) => !x);
-              setPin("");
-            }}
-            className="cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] font-semibold text-accent hover:text-accent-hover"
-          >
-            {oldPin ? "Mi PIN tiene 4 números" : "Mi PIN tiene 6 números (lo elegí antes)"}
-          </button>
-        </div>
-        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== length || !name.trim()}>
+        <PinField label="PIN" value={pin} onChange={setPin} autoComplete="current-password" autoFocus={!!name} />
+        <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 4 || !name.trim()}>
           {busy === "pin" ? "Entrando…" : "Entrar"}
         </Button>
       </form>

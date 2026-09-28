@@ -73,13 +73,14 @@ export interface PanelApi {
   openVote: (deadline: string) => Promise<string>;
   vote: () => Promise<VoteView>;
   closeVote: () => Promise<VoteView>;
-  pickWinner: (destinationId: string) => Promise<VoteView>;
+  pickWinner: (destinationId: string, opts?: { override?: boolean; note?: string }) => Promise<VoteView>;
   saveSettings: (s: GroupSettings) => Promise<void>;
   refreshMembers: () => Promise<void>;
   addMember: (name: string) => Promise<Person | null>;
   invite: (memberId: string) => Promise<string>;
   closeSessions: (memberId: string) => Promise<void>;
   revoke: (memberId: string) => Promise<void>;
+  exportData: (planId?: string) => Promise<unknown>;
 }
 
 const EMPTY_EDITORIAL: Editorial = { pros: [], cons: [], weather: "", inVote: true };
@@ -314,9 +315,9 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await syncPlan(pid);
         return v;
       },
-      async pickWinner(destinationId) {
+      async pickWinner(destinationId, opts) {
         const pid = need();
-        const v = await backend.pickWinner(pid, destinationId);
+        const v = await backend.pickWinner(pid, destinationId, opts);
         await syncPlan(pid);
         return v;
       },
@@ -345,6 +346,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         await backend.revoke(memberId);
         await loadMembers();
       },
+      exportData: (id) => backend.exportData(id),
     };
   }, [state, backend, planId, patch, loadPlan, loadMembers, syncPlan]);
 

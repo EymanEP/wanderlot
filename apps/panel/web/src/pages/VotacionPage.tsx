@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { avatarTint, deadlineLabel, initials, relativeTime, type TallyRow } from "@wanderlot/core";
-import { Avatar, Badge, Button, Card, CheckIcon, Dialog, EmptyState, Heading, Notice, PageHeader, Skeleton, buttonClasses, cn, useToast } from "@wanderlot/ui";
+import { Avatar, Badge, Button, Card, CheckIcon, Dialog, EmptyState, Field, Heading, Notice, PageHeader, RadioCard, Skeleton, TextArea, buttonClasses, cn, useToast } from "@wanderlot/ui";
 import { MessageDialog } from "../components/MessageDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import type { VoteView } from "../data/backend.ts";
@@ -19,6 +19,10 @@ export function VotacionPage() {
   const [message, setMessage] = useState<"reminder" | "announcement" | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [busy, setBusy] = useState(false);
+  // "Ir a otro destino": the group chose another destination than the vote's winner.
+  const [changing, setChanging] = useState(false);
+  const [other, setOther] = useState<string | null>(null);
+  const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
@@ -74,6 +78,7 @@ export function VotacionPage() {
   const ballotOf = new Map((view?.ballots ?? []).map((b) => [b.memberId, b]));
   const result = view?.result ?? null;
   const tied = result && !result.winnerId && result.tiedForFirst.length > 1;
+  const overridden = !!result?.voteWinnerId && !!result.winnerId && result.voteWinnerId !== result.winnerId;
 
   return (
     <PanelShell>
@@ -134,10 +139,30 @@ export function VotacionPage() {
                   ))}
                 </div>
               </>
+            ) : overridden ? (
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-bold text-muted uppercase">Vais a</span>
+                  <Heading size="headline">{city(result.winnerId!)}</Heading>
+                  <span className="text-sm text-muted">
+                    La votación la ganó {city(result.voteWinnerId!)}
+                    {result.decidedNote ? ` · «${result.decidedNote}»` : ""}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={busy} onClick={() => void act(() => pickWinner(result.voteWinnerId!, { override: true }), `Vais a ${city(result.voteWinnerId!)}`)}>
+                    Volver a {city(result.voteWinnerId!)}
+                  </Button>
+                  <Button onClick={() => setChanging(true)}>Ir a otro destino</Button>
+                </div>
+              </div>
             ) : (
-              <div className="flex flex-col gap-1">
-                <span className="text-sm font-bold text-muted uppercase">Ganó</span>
-                <Heading size="headline">{result.winnerId ? city(result.winnerId) : "Nadie votó"}</Heading>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-bold text-muted uppercase">Ganó</span>
+                  <Heading size="headline">{result.winnerId ? city(result.winnerId) : "Nadie votó"}</Heading>
+                </div>
+                {result.winnerId && result.rows.length > 1 && <Button onClick={() => setChanging(true)}>Ir a otro destino</Button>}
               </div>
             )}
             {result.rows.length > 0 && <CountTable rows={result.rows} winnerId={result.winnerId} city={city} caption="Recuento final" />}
@@ -212,6 +237,55 @@ export function VotacionPage() {
           </section>
         )}
       </main>
+
+      <Dialog
+        open={changing}
+        title="Ir a otro destino"
+        busy={busy}
+        onClose={() => setChanging(false)}
+        actions={
+          <>
+            <Button onClick={() => setChanging(false)}>Cancelar</Button>
+            <Button
+              variant="primary"
+              disabled={busy || !other}
+              onClick={() => {
+                if (!other) return;
+                setChanging(false);
+                void act(() => pickWinner(other, { override: true, ...(note.trim() ? { note: note.trim() } : {}) }), `Vais a ${city(other)}`);
+                setOther(null);
+                setNote("");
+              }}
+            >
+              {other ? `Ir a ${city(other)}` : "Elige un destino"}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <span>
+            Si al final os decidís por otro de los destinos de la votación, el sitio lo mostrará como el destino elegido. El recuento no cambia: seguirá diciendo quién ganó
+            la votación.
+          </span>
+          <div role="radiogroup" aria-label="Destino" className="flex flex-col gap-2">
+            {(result?.rows ?? [])
+              .filter((r) => r.id !== result?.winnerId)
+              .map((r) => (
+                <RadioCard
+                  key={r.id}
+                  name="otro-destino"
+                  title={city(r.id)}
+                  description={`${r.rank}.º en la votación · ${r.points} ${r.points === 1 ? "punto" : "puntos"}`}
+                  checked={other === r.id}
+                  onChange={() => setOther(r.id)}
+                />
+              ))}
+          </div>
+          <Field label="Por qué (opcional)">
+            {({ inputId }) => <TextArea id={inputId} rows={2} maxLength={300} placeholder="Lo hablamos y preferimos Praga" value={note} onChange={(e) => setNote(e.target.value)} />}
+          </Field>
+        </div>
+      </Dialog>
 
       <Dialog
         open={confirmClose}

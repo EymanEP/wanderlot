@@ -282,6 +282,36 @@ describe("with everyone signed in", () => {
       expect((await admin(`/plans/${PLAN}`, "PUT", snapshot(four()))).status).toBe(200);
     });
 
+    it("exports the group's trips with votes, comments, likes and ideas, and no sign-in secrets", async () => {
+      await admin(`/plans/${PLAN}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" });
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["lis", "nap", "opo"] });
+      const c = (await (await as("ana", `/${PLAN}/comments`, "POST", { destinationId: "lis", body: "¡Sí!" })).json()) as any;
+      await as("bea", `/${PLAN}/comments/${c.id}/like`, "PUT", { on: true });
+      await as("ana", `/${PLAN}/suggestions`, "POST", { place: "Oporto" });
+
+      const res = await admin("/export", "GET");
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data).toMatchObject({ format: "wanderlot-export", version: 1, settings: { groupName: "Wanderlot" } });
+      expect(data.members.map((m: any) => m.id).sort()).toEqual([...FRIENDS].sort());
+      expect(data.trips).toHaveLength(1);
+      const trip = data.trips[0];
+      expect(trip).toMatchObject({ plan: { id: PLAN, name: "Noviembre 2026" }, status: "voting", winnerDestinationId: null, decidedNote: null });
+      expect(trip.destinations).toHaveLength(4);
+      expect([...trip.members].sort()).toEqual([...FRIENDS].sort());
+      expect(trip.ballots).toEqual([expect.objectContaining({ memberId: "ana", ranking: ["lis", "nap", "opo"] })]);
+      expect(trip.comments).toEqual([expect.objectContaining({ id: c.id, body: "¡Sí!", likes: [{ memberId: "bea", createdAt: expect.any(String) }] })]);
+      expect(trip.suggestions).toEqual([expect.objectContaining({ memberId: "ana", place: "Oporto" })]);
+      const text = JSON.stringify(data);
+      for (const secret of ["hash", "salt", "publicKey", "token", "passkey", "session"]) expect(text).not.toContain(secret);
+
+      // One trip, or a trip that isn't there.
+      expect(((await (await admin(`/export?plan=${PLAN}`, "GET")).json()) as any).trips).toHaveLength(1);
+      expect((await admin("/export?plan=nope", "GET")).status).toBe(404);
+      // Only for the panel.
+      expect((await call("/api/admin/export")).status).toBe(401);
+    });
+
     it("rejects an invalid snapshot", async () => {
       expect((await admin(`/plans/${PLAN}`, "PUT", snapshot([destination("lis", { totalPerPersonCents: -1 })]))).status).toBe(400);
     });
@@ -397,6 +427,32 @@ describe("with everyone signed in", () => {
       expect(picked.result.winnerId).toBe("nap");
       expect(((await (await as("ana", `/${PLAN}/results`)).json()) as any).winnerId).toBe("nap");
       expect(((await (await as("ana", "")).json()) as any[])[0].winnerCity).toBe("nap");
+    });
+
+    it("lets the organiser send the group somewhere other than the winner, keeping the count", async () => {
+      await as("ana", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "lis", "nap"] });
+      await as("bea", `/${PLAN}/ballot`, "PUT", { ranking: ["opo", "nap", "lis"] });
+      const override = (body: unknown) => admin(`/plans/${PLAN}/winner`, "PUT", body);
+      // Not while voting.
+      expect((await override({ destinationId: "lis", override: true })).status).toBe(409);
+      await admin(`/plans/${PLAN}/close`, "POST");
+
+      const decided = (await (await override({ destinationId: "lis", override: true, note: "Lo hablamos y preferimos Lisboa" })).json()) as any;
+      expect(decided.result).toMatchObject({ winnerId: "lis", voteWinnerId: "opo", decidedNote: "Lo hablamos y preferimos Lisboa" });
+      expect(decided.result.rows[0].id).toBe("opo");
+      // Friends see both: where they're going, and who won the vote.
+      const results = (await (await as("ana", `/${PLAN}/results`)).json()) as any;
+      expect(results).toMatchObject({ winnerId: "lis", voteWinnerId: "opo", decidedNote: "Lo hablamos y preferimos Lisboa" });
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.plan).toMatchObject({ winnerDestinationId: "lis", decidedNote: "Lo hablamos y preferimos Lisboa" });
+      expect(((await (await as("ana", "")).json()) as any[])[0].winnerCity).toBe("lis");
+
+      // Only destinations that were in the vote; without override, only ties.
+      expect((await override({ destinationId: "xyz", override: true })).status).toBe(409);
+      expect((await override({ destinationId: "nap" })).status).toBe(409);
+      // Back to the vote's own winner: no note left over.
+      const back = (await (await override({ destinationId: "opo", override: true, note: "ignored" })).json()) as any;
+      expect(back.result).toMatchObject({ winnerId: "opo", voteWinnerId: "opo", decidedNote: null });
     });
   });
 

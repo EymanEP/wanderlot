@@ -74,13 +74,16 @@ export interface SiteClient {
   setSuggestion(planId: string, id: string, status: SuggestionView["status"], proposalId?: string): Promise<SuggestionView[]>;
   vote(planId: string): Promise<VoteState>;
   closeVote(planId: string): Promise<VoteState>;
-  pickWinner(planId: string, destinationId: string): Promise<VoteState>;
+  // Between tied destinations; with override, any destination in the vote.
+  pickWinner(planId: string, destinationId: string, opts?: { override?: boolean; note?: string }): Promise<VoteState>;
   putMembers(members: { id: string; name: string }[]): Promise<void>;
   members(): Promise<MemberStatus[]>;
   // A one-time invite; the token comes back once and the site keeps only its hash.
   invite(memberId: string): Promise<{ token: string; expiresAt: string }>;
   closeSessions(memberId: string): Promise<void>;
   revoke(memberId: string): Promise<void>;
+  // Everything the group made on the site, one trip or all (SPEC §9).
+  exportData(planId?: string): Promise<unknown>;
 }
 
 // The site said no; the panel passes its answer on.
@@ -124,11 +127,12 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     deletePlan: async (planId) => void (await call(`/plans/${planId}`, "DELETE")),
     vote: (planId) => call<VoteState>(`/plans/${planId}/vote`, "GET"),
     closeVote: (planId) => call<VoteState>(`/plans/${planId}/close`, "POST"),
-    pickWinner: (planId, destinationId) => call<VoteState>(`/plans/${planId}/winner`, "PUT", { destinationId }),
+    pickWinner: (planId, destinationId, opts = {}) => call<VoteState>(`/plans/${planId}/winner`, "PUT", { destinationId, ...opts }),
     putMembers: async (members) => void (await call("/members", "PUT", members)),
     members: () => call<MemberStatus[]>("/members", "GET"),
     invite: (id) => call<{ token: string; expiresAt: string }>(`/members/${id}/invite`, "POST"),
     closeSessions: async (id) => void (await call(`/members/${id}/sessions`, "DELETE")),
     revoke: async (id) => void (await call(`/members/${id}/revoke`, "POST")),
+    exportData: (planId) => call<unknown>(`/export${planId ? `?plan=${encodeURIComponent(planId)}` : ""}`, "GET"),
   };
 }

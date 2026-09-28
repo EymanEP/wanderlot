@@ -12,7 +12,8 @@ What this roadmap covers:
 - **The panel from anywhere:** hosting the panel, and other AI providers.
 - **Later:** big changes that wait.
 
-Nothing here is built yet.
+**Done:** the fixes (§1) and the export (2.5). Everything else is still a
+plan.
 
 **Legend**
 
@@ -39,6 +40,8 @@ keep their data and habits working:
 
 ## 1. Fixes
 
+All done, in one site deploy with the export (site API 7, migration 0006).
+
 ### 1.1 Choose a destination other than the vote's winner · S · ⚙️
 
 **Problem.** The vote picked Budapest; the group agreed on Prague. Today the
@@ -64,14 +67,19 @@ announcing Budapest.
 The panel change is small (a button and a dialog) and the site change is one
 banner, so no 🎨.
 
+**Done.** "Volver a …" in the panel goes back to the vote's winner and clears
+the note.
+
 ### 1.2 Paste a screenshot instead of saving it · S
 
 In the price dialog, Ctrl/Cmd+V pastes an image from the clipboard straight
 into "Leer captura". A "Pegar captura" button next to "Leer captura" does the
 same where there's no keyboard.
-- A pasted image goes into the section that has focus. With neither focused,
-  the dialog asks "¿Vuelo o alojamiento?".
+- A pasted image goes into the section last worked in. With neither, the
+  dialog asks "¿De qué es la captura que has pegado?".
 - Same size and type checks as uploads.
+
+**Done.** "Pegar captura" shows only where the browser can read the clipboard.
 
 ### 1.3 Remove the 6-digit PIN option · S
 
@@ -82,6 +90,8 @@ PIN in use), remove:
 - their tests.
 
 "Cambiar mi PIN" stays.
+
+**Done.**
 
 ### 1.4 Changing a trip's dates flags its checked prices · S
 
@@ -96,11 +106,17 @@ the 16th still showed as "Comprobado a mano".
   were for other days.
 - Stays keep their name and link.
 
+**Done.** Checking the price again clears the flag.
+
 ### 1.5 A "Ver en Google Flights" link on each proposal · S
 
 The organiser checks prices on Google Flights anyway. Each proposal gets a
-Google Flights search link with the origin, destination, dates and number of
-passengers filled in. Two clicks, then paste the screenshot (1.2).
+Google Flights search link with the route and the trip's dates filled in, round
+trip, one person, in euros (prices are per person). Two clicks, then paste the
+screenshot (1.2).
+
+**Done.** In each card in Revisar ("buscar en Google Flights") and in the price
+dialog.
 
 ### 1.6 Docs match what's built · S
 
@@ -109,6 +125,8 @@ passengers filled in. Two clicks, then paste the screenshot (1.2).
 - SPEC §10 lists plan creation as out of scope.
 
 Both are fixed alongside this roadmap.
+
+**Done.**
 
 ---
 
@@ -277,6 +295,8 @@ with:
 - **Later, if wanted:** importing a file into a new site, and a backup of the
   panel's file.
 
+**Done.** "Exportar" on each published trip and "Exportar todo" in Viajes.
+
 ---
 
 ## 3. The panel from anywhere, with any AI (or none)
@@ -422,8 +442,8 @@ Not planned in detail yet. They wait until the flows above are in use.
 
 ## Suggested order
 
-1. **Fixes 1.1–1.6.** Small, and they close the gaps the first trip hit. 1.1
-   and the export (2.5) change the site, so they go out in one deploy.
+1. ~~**Fixes 1.1–1.6.** Small, and they close the gaps the first trip hit. 1.1
+   and the export (2.5) change the site, so they go out in one deploy.~~ Done.
 2. **Cuándo (2.1).** The next trip needs dates agreed early. Design first.
 3. **El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
    (2.4).** One design for the trip page, built together.

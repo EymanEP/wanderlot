@@ -48,8 +48,12 @@ export function voteReminderMessage(plan: Pick<Plan, "id" | "name">, deadline: s
   ].join("\n");
 }
 
-export function voteClosedMessage(plan: Pick<Plan, "id" | "name">, winnerCity: string | null, siteUrl: string): string {
+// voteWinnerCity: when the group went somewhere other than the vote's winner.
+export function voteClosedMessage(plan: Pick<Plan, "id" | "name">, winnerCity: string | null, siteUrl: string, voteWinnerCity?: string | null): string {
   const url = new URL(`/p/${plan.id}`, siteUrl).toString();
+  if (winnerCity && voteWinnerCity && voteWinnerCity !== winnerCity) {
+    return `Votación de ${plan.name} cerrada: ganó ${voteWinnerCity}, pero al final nos vamos a ${winnerCity}. Recuento completo en ${url}`;
+  }
   return winnerCity
     ? `Votación de ${plan.name} cerrada: nos vamos a ${winnerCity}. Recuento completo en ${url}`
     : `Votación de ${plan.name} cerrada con empate. Decido yo y os cuento. Recuento en ${url}`;

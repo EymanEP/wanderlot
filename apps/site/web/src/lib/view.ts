@@ -67,6 +67,17 @@ export function sourcesFor(d: Destination): string[] {
   return [flights, "Alojamiento · anuncios revisados a mano", `Clima · medias de ${d.weather ? "noviembre" : "la época"}, AEMET`];
 }
 
+// The group chose another destination than the vote's winner.
+export function overridden(result: { winnerId: string | null; voteWinnerId?: string | null } | null): boolean {
+  return !!result?.voteWinnerId && !!result.winnerId && result.voteWinnerId !== result.winnerId;
+}
+
+// "los seis", "nosotros cinco": the group by its size, for prose. A trip of
+// one person has no "los".
+export function groupWord(n: number): string {
+  return n === 1 ? "uno" : n <= 10 ? ["", "", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"][n]! : String(n);
+}
+
 // Spanish counting words for small numbers in prose: "cuatro propuestas".
 export function numberWord(n: number): string {
   return ["cero", "una", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"][n] ?? String(n);

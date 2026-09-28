@@ -7,6 +7,7 @@ export interface StoredPlan {
   status: PlanStatus;
   voteDeadline: string | undefined;
   winnerDestinationId: string | undefined;
+  decidedNote: string | undefined;
 }
 
 export interface Invite {
@@ -77,7 +78,8 @@ export interface SiteStore {
   upsertSnapshot(s: Snapshot): Promise<void>;
   // A trip and everything hanging off it: ballots, comments, likes, ideas, who goes.
   deletePlan(planId: string): Promise<boolean>;
-  setStatus(planId: string, status: PlanStatus, fields?: { voteDeadline?: string; winnerDestinationId?: string | null }): Promise<void>;
+  // Clears the decision's note unless one is given.
+  setStatus(planId: string, status: PlanStatus, fields?: { voteDeadline?: string; winnerDestinationId?: string | null; decidedNote?: string | null }): Promise<void>;
 
   // members
   upsertMembers(members: Member[]): Promise<void>;
@@ -141,4 +143,6 @@ export interface SiteStore {
   setLike(commentId: string, memberId: string, on: boolean, at: string): Promise<void>;
   // Like counts for a plan's comments, and which ones this member liked.
   likes(planId: string, memberId: string): Promise<Map<string, { count: number; mine: boolean }>>;
+  // Who liked what in a plan, for the export.
+  commentLikes(planId: string): Promise<{ commentId: string; memberId: string; createdAt: string }[]>;
 }

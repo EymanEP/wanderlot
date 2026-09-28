@@ -26,7 +26,7 @@ import { SuggestDialog } from "../components/SuggestDialog.tsx";
 import { DestinationCard } from "../components/DestinationCard.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
-import { memberOf, numberWord, trustOf } from "../lib/view.ts";
+import { memberOf, numberWord, overridden, trustOf } from "../lib/view.ts";
 
 type CategoryFilter = "all" | Category;
 
@@ -79,7 +79,12 @@ export function PlanPage() {
             <div className="flex flex-col gap-0.5 lg:items-end">
               {closed ? (
                 <>
-                  <span className="text-[15px] font-bold">Votación cerrada{winner ? ` · ganó ${winner.place.city}` : ""}</span>
+                  <span className="text-[15px] font-bold">
+                    {overridden(result) && winner
+                      ? `Vamos a ${winner.place.city} · la votación la ganó ${destinations.find((d) => d.id === result!.voteWinnerId)?.place.city ?? ""}`
+                      : `Votación cerrada${winner ? ` · ganó ${winner.place.city}` : ""}`}
+                  </span>
+                  {overridden(result) && result!.decidedNote && <span className="text-[13px] text-ink-2">«{result!.decidedNote}»</span>}
                   <span className="text-[13px] text-muted">Votasteis {voted.size} de {plan.partySize}</span>
                 </>
               ) : draft ? (

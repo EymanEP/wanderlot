@@ -153,18 +153,13 @@ describe("Signing in", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
   });
 
-  it("takes a 6-digit PIN from before once, then asks for a new 4-digit one", async () => {
+  it("changes the PIN from the account menu, then goes back", async () => {
     const user = userEvent.setup();
-    renderAt("/p/noviembre-2026/votacion", false, false);
-    await user.type(await screen.findByLabelText("Tu nombre"), "Eyman");
-    const pin = screen.getByLabelText("PIN") as HTMLInputElement;
-    await user.type(pin, "480152");
-    expect(pin.value).toBe("4801");
-    await user.click(screen.getByRole("button", { name: "Mi PIN tiene 6 números (lo elegí antes)" }));
-    await user.type(screen.getByLabelText("PIN"), "480152");
-    await user.click(screen.getByRole("button", { name: "Entrar" }));
-
-    expect(await screen.findByRole("heading", { name: "Elige tu PIN nuevo" })).toBeTruthy();
+    renderAt("/p/noviembre-2026/votacion");
+    await screen.findByRole("heading", { level: 1, name: "Votación" });
+    await user.click(screen.getAllByRole("button", { name: "Tu cuenta" })[0]!);
+    await user.click(screen.getByRole("button", { name: "Cambiar mi PIN" }));
+    expect(await screen.findByRole("heading", { name: "Cambia tu PIN" })).toBeTruthy();
     await user.type(screen.getByLabelText("PIN nuevo"), "7304");
     await user.type(screen.getByLabelText("Repítelo"), "7305");
     await user.click(screen.getByRole("button", { name: "Guardar PIN" }));
@@ -172,8 +167,16 @@ describe("Signing in", () => {
     await user.clear(screen.getByLabelText("Repítelo"));
     await user.type(screen.getByLabelText("Repítelo"), "7304");
     await user.click(screen.getByRole("button", { name: "Guardar PIN" }));
-    // Then on to where they were going.
     expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
+  });
+
+  it("takes only 4-digit PINs", async () => {
+    const user = userEvent.setup();
+    renderAt("/entrar", false, false);
+    const pin = (await screen.findByLabelText("PIN")) as HTMLInputElement;
+    await user.type(pin, "480152");
+    expect(pin.value).toBe("4801");
+    expect(screen.queryByText(/6 números/)).toBeNull();
   });
 
   it("accepts an invite by choosing a PIN", async () => {

@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { euros, type Destination, type TallyResult } from "@wanderlot/core";
 import type { Person } from "../data/store.tsx";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, Button, Card, Heading, IataTile, IconButton, LockIcon, Text, TrophyIcon, buttonClasses, cn } from "@wanderlot/ui";
-import { flightLabel, pointsWord } from "../lib/view.ts";
+import { flightLabel, groupWord, pointsWord } from "../lib/view.ts";
 
 function meta(d: Destination): string {
   return `${d.place.country} · ${euros(d.totalPerPersonCents)} por persona · ${flightLabel(d)}`;
@@ -90,7 +90,7 @@ export function OutsideRow({ destination: d, href, addPoints, readOnly, onAdd }:
 }
 
 // While voting: every destination, alphabetical, no numbers (SPEC §4).
-export function LockedScoreboard({ cities, deadline }: { cities: string[]; deadline: string }) {
+export function LockedScoreboard({ cities, deadline, partySize }: { cities: string[]; deadline: string; partySize: number }) {
   return (
     <Card variant="raised" className="flex flex-col gap-[13px]">
       <div className="flex items-center gap-2.5">
@@ -99,7 +99,7 @@ export function LockedScoreboard({ cities, deadline }: { cities: string[]; deadl
           Marcador cerrado
         </Heading>
       </div>
-      <Text size="sm">Los puntos no se ven hasta que voten los seis o llegue el {deadline}. Así nadie vota a lo que parece que va ganando.</Text>
+      <Text size="sm">Los puntos no se ven hasta que votéis {partySize === 1 ? "" : `los ${groupWord(partySize)} `}o llegue el {deadline}. Así nadie vota a lo que parece que va ganando.</Text>
       <ul className="m-0 flex list-none flex-col gap-[7px] p-0">
         {[...cities].sort((a, b) => a.localeCompare(b, "es")).map((c) => (
           <li key={c} className="flex items-center justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-[11px]">
@@ -116,7 +116,10 @@ export function LockedScoreboard({ cities, deadline }: { cities: string[]; deadl
 }
 
 // After the close: the full count.
-export function Scoreboard({ result, cityOf }: { result: TallyResult; cityOf: (id: string) => string }) {
+// The vote's count as it was. When the group then went somewhere else, that
+// row says so; the vote's own winner stays highlighted.
+export function Scoreboard({ result, cityOf }: { result: TallyResult & { voteWinnerId?: string | null }; cityOf: (id: string) => string }) {
+  const voteWinner = result.voteWinnerId === undefined ? result.winnerId : result.voteWinnerId;
   return (
     <Card variant="raised" className="flex flex-col gap-[13px]">
       <div className="flex items-center gap-2.5">
@@ -127,11 +130,15 @@ export function Scoreboard({ result, cityOf }: { result: TallyResult; cityOf: (i
       </div>
       <ol className="m-0 flex list-none flex-col gap-[7px] p-0">
         {result.rows.map((r) => {
-          const win = r.id === result.winnerId;
+          const win = r.id === voteWinner;
+          const chosen = r.id === result.winnerId && r.id !== voteWinner && voteWinner !== null;
           return (
             <li key={r.id} className={cn("flex items-center gap-3 rounded-xl px-3.5 py-[11px]", win ? "bg-accent-soft text-accent-strong" : "bg-surface-2")}>
               <span className="w-5 text-sm font-bold tabular-nums">{r.rank}.</span>
-              <span className="flex-1 text-sm font-semibold">{cityOf(r.id)}</span>
+              <span className="flex-1 text-sm font-semibold">
+                {cityOf(r.id)}
+                {chosen && <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-white">Vamos aquí</span>}
+              </span>
               <span className="text-xs text-muted">{r.firsts} {r.firsts === 1 ? "primer puesto" : "primeros puestos"}</span>
               <span className="w-16 text-right text-base font-bold tabular-nums">{r.points} pts</span>
             </li>

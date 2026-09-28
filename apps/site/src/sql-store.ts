@@ -70,12 +70,13 @@ export class SqlStore implements SiteStore {
     return (await this.run("delete from plans where id = ?", planId)) > 0;
   }
 
-  async setStatus(planId: string, status: PlanStatus, fields: { voteDeadline?: string; winnerDestinationId?: string | null } = {}) {
+  async setStatus(planId: string, status: PlanStatus, fields: { voteDeadline?: string; winnerDestinationId?: string | null; decidedNote?: string | null } = {}) {
     await this.run(
-      `update plans set status = ?, vote_deadline = coalesce(?, vote_deadline), winner_destination_id = ? where id = ?`,
+      `update plans set status = ?, vote_deadline = coalesce(?, vote_deadline), winner_destination_id = ?, decided_note = ? where id = ?`,
       status,
       fields.voteDeadline ?? null,
       fields.winnerDestinationId ?? null,
+      fields.decidedNote ?? null,
       planId,
     );
   }
@@ -368,6 +369,15 @@ export class SqlStore implements SiteStore {
     );
     return new Map(rows.map((r) => [r.id as string, { count: Number(r.n), mine: Number(r.mine) > 0 }]));
   }
+
+  async commentLikes(planId: string) {
+    const rows = await this.all(
+      `select l.comment_id, l.member_id, l.created_at from comment_likes l join comments c on c.id = l.comment_id
+       where c.plan_id = ? order by l.created_at, l.rowid`,
+      planId,
+    );
+    return rows.map((r) => ({ commentId: r.comment_id as string, memberId: r.member_id as string, createdAt: r.created_at as string }));
+  }
 }
 
 function toPlan(row: Row): StoredPlan {
@@ -376,6 +386,7 @@ function toPlan(row: Row): StoredPlan {
     status: row.status as PlanStatus,
     voteDeadline: (row.vote_deadline as string | null) ?? undefined,
     winnerDestinationId: (row.winner_destination_id as string | null) ?? undefined,
+    decidedNote: (row.decided_note as string | null) ?? undefined,
   };
 }
 
