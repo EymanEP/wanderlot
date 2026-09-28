@@ -771,6 +771,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         voteDeadline: settled.voteDeadline ?? null,
         votedByMe: settled.ballots.some((b) => b.memberId === me),
         ...(dates ? { datesOpen: dates.status === "open", datesAnsweredByMe: answeredAll(dates, me) } : {}),
+        ...(settled.snapshot.trip ? { tripReady: true } : {}),
       });
     }
     return c.json(list);
@@ -803,6 +804,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       participation: (await store.members()).filter((m) => plan.participants.includes(m.id)).map((m) => ({ ...m, voted: voted.has(m.id) })),
       // Everyone on the trip sees who can go when.
       dates: await datesView(plan.snapshot.plan.id),
+      // The trip page, once the organiser publishes it (ROADMAP 2.2).
+      trip: plan.snapshot.trip ?? null,
     });
   });
 

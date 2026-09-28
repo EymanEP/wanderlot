@@ -39,10 +39,22 @@ const steps = [
 ];
 writeFileSync(join(dir, "steps.ndjson"), steps.map((l) => JSON.stringify(l)).join("\n") + "\n");
 writeFileSync(join(dir, "result.ndjson"), JSON.stringify(canned) + "\n");
+// What "Preparar el viaje" gets back: a short guide.
+const guide = {
+  intro: "Buen destino para noviembre.",
+  todo: [{ title: "Paseo por el centro", detail: "Sin prisa", priceEuros: null }],
+  food: [{ title: "Plato típico", detail: "", where: "El mercado" }],
+  sights: [{ title: "El mirador", detail: "Al atardecer" }],
+  beforeYouGo: [{ title: "Dinero", detail: "Euro" }],
+  toAirport: [{ mode: "bus", title: "Autobús a Barajas", detail: "", minutes: 240, priceEuros: 32 }],
+  fromAirport: [{ mode: "metro", title: "Metro al centro", detail: "", minutes: 25, priceEuros: 2 }],
+  sources: [{ label: "Turismo", url: "https://example.org/" }],
+};
+writeFileSync(join(dir, "guide.ndjson"), JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: guide }) + "\n");
 const fakeClaude = join(dir, "claude");
 writeFileSync(
   fakeClaude,
-  `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "steps.ndjson")}"\nsleep 1\ncat "${join(dir, "result.ndjson")}"\n`,
+  `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "steps.ndjson")}"\nsleep 1\ncase "$2" in *"guía del viaje"*) cat "${join(dir, "guide.ndjson")}" ;; *) cat "${join(dir, "result.ndjson")}" ;; esac\n`,
 );
 chmodSync(fakeClaude, 0o755);
 
@@ -222,6 +234,25 @@ try {
   await ana.goto(`${SITE}/p/noviembre-2026`);
   await ana.getByText(`Votación cerrada · ganó ${winner}`).waitFor();
   console.log("✓ site: Ana sees the result");
+
+  // 9. El viaje: the organiser prepares the trip page with Claude, adds the
+  // Tricount and publishes it; Ana sees it first in her trip.
+  await org.getByRole("button", { name: "Cerrar" }).click();
+  await org.getByRole("link", { name: "Preparar el viaje" }).click();
+  await org.getByRole("button", { name: "Preparar con Claude" }).click();
+  await org.getByLabel("Salís desde (opcional)").fill("Logroño");
+  await org.getByRole("button", { name: "Preparar", exact: true }).click();
+  await org.getByText("Guía preparada: revísala antes de publicarla").waitFor();
+  await org.getByLabel("Enlace del Tricount (opcional)").fill("https://tricount.com/e2e");
+  await org.getByRole("button", { name: "Publicar el viaje" }).click();
+  await org.getByText("Página del viaje publicada").waitFor();
+  await ana.goto(`${SITE}/`);
+  await ana.getByText("El viaje está listo").waitFor();
+  await ana.getByRole("link", { name: /Noviembre 2026/ }).click();
+  await ana.getByRole("heading", { level: 1, name: winner }).waitFor();
+  assert.equal(await ana.getByRole("link", { name: /Abrir el Tricount/ }).getAttribute("href"), "https://tricount.com/e2e");
+  await ana.getByText("Autobús a Barajas").waitFor();
+  console.log("✓ panel → site: trip page prepared, published and seen");
 } finally {
   await browser.close();
   site.kill();

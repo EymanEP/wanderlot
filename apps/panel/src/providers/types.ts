@@ -1,5 +1,6 @@
 import type { FlightLeg, FlightProviderName, Proposal, Source } from "@wanderlot/core";
 import type { ExtractRequest } from "./extract.ts";
+import type { GuideRequest } from "./guide.ts";
 
 // What Generar asks for (SPEC §1, Plan).
 export interface SearchRequest {
@@ -63,6 +64,9 @@ export interface ResearchProvider {
   // Reads a screenshot of a flight or a stay; resolves to the raw answer,
   // shaped by extract.ts's schema for that kind.
   extract(req: ExtractRequest, signal?: AbortSignal): Promise<unknown>;
+  // "Preparar el viaje": the trip page's guide and how to get there, shaped
+  // by guide.ts's schema. Optional: without it the organiser writes it.
+  guide?(req: GuideRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown>;
 }
 
 export type { Source };

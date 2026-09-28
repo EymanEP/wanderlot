@@ -21,7 +21,10 @@ export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
       };
     });
   const { status: _s, winnerDestinationId: _w, ...planFields } = plan;
-  return Snapshot.parse({ plan: planFields, destinations, publishedAt: now.toISOString() });
+  // The trip page goes once the organiser publishes it, for a destination
+  // that is itself published.
+  const trip = entry.tripPublished && entry.trip && destinations.some((d) => d.id === entry.trip!.destinationId) ? { trip: entry.trip } : {};
+  return Snapshot.parse({ plan: planFields, destinations, ...trip, publishedAt: now.toISOString() });
 }
 
 // The trip with no destinations: what the site needs to run a date vote

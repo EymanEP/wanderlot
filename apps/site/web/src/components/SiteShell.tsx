@@ -7,20 +7,22 @@ import { useAuth } from "../data/auth.tsx";
 import { PlanProvider, useSite } from "../data/store.tsx";
 import { PageErrorBoundary } from "./PageErrorBoundary.tsx";
 
-// Fechas shows only on trips with a date vote: first while it's open, last
-// once the dates are decided.
+// El viaje leads once it's published. Fechas shows only on trips with a
+// date vote: first while it's open, last once the dates are decided.
 function useNav() {
   const { planId } = useParams();
-  const { dates } = useSite();
+  const { dates, trip } = useSite();
   const base = `/p/${planId}`;
   const nav = [
     { to: base, label: "Destinos", end: true },
     { to: `${base}/votacion`, label: "Votación", end: false },
     { to: `${base}/comentarios`, label: "Comentarios", end: false },
   ];
-  if (!dates) return nav;
+  const viaje = { to: `${base}/viaje`, label: "El viaje", end: false };
   const fechas = { to: `${base}/fechas`, label: "Fechas", end: false };
-  return dates.status === "open" ? [fechas, ...nav] : [...nav, fechas];
+  if (dates?.status === "open") return trip ? [viaje, fechas, ...nav] : [fechas, ...nav];
+  if (trip) return [viaje, ...nav];
+  return dates ? [...nav, fechas] : nav;
 }
 
 // Loads the plan in the address, then draws the chrome around its pages.
@@ -75,7 +77,7 @@ function Chrome() {
       </div>
       <nav
         aria-label="Secciones"
-        className={cn("fixed inset-x-0 bottom-0 z-30 grid border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden", nav.length === 4 ? "grid-cols-4" : "grid-cols-3")}
+        className={cn("fixed inset-x-0 bottom-0 z-30 grid border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden", { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" }[nav.length])}
       >
         {nav.map((n) => (
           <NavLink

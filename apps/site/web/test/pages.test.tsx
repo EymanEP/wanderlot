@@ -161,6 +161,48 @@ describe("Fechas", () => {
   });
 });
 
+describe("El viaje", () => {
+  it("opens from Tus viajes once published, with the plan in one page", async () => {
+    const user = userEvent.setup();
+    renderAt("/", true);
+    const trip = await screen.findByRole("article", { name: "Noviembre 2026" });
+    expect(within(trip).getByText("El viaje está listo")).toBeTruthy();
+    await user.click(trip);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Nápoles" })).toBeTruthy();
+    const nav = screen.getAllByRole("navigation", { name: "Secciones" })[0]!;
+    expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["El viaje", "Destinos", "Votación", "Comentarios"]);
+
+    // Each person's share, and the group's Tricount.
+    const money = screen.getByLabelText("Lo que pone cada uno");
+    expect(within(money).getByText(/^Vuelo \d+ € · alojamiento \d+ €$/)).toBeTruthy();
+    expect(within(money).getByRole("link", { name: /Abrir el Tricount/ }).getAttribute("href")).toBe("https://tricount.com/es/grupo51-napoles");
+    // The stay, with the details the organiser added.
+    expect(screen.getByRole("link", { name: "Via Chiaia 12, Nápoles" }).getAttribute("href")).toContain("google.com/maps");
+    // Cómo llegar, both ends.
+    const toAirport = screen.getByRole("list", { name: "De Logroño al aeropuerto (MAD)" });
+    expect(within(toAirport).getByText("Coche hasta Barajas")).toBeTruthy();
+    expect(within(toAirport).getByText("≈ 34 €")).toBeTruthy();
+    expect(within(screen.getByRole("list", { name: "Del aeropuerto (NAP) al alojamiento" })).getByText("Alibus")).toBeTruthy();
+    // The guide, labelled as Claude's, with approximate prices.
+    expect(screen.getByRole("heading", { name: "Qué hacer" })).toBeTruthy();
+    expect(screen.getByText("≈ 22 €")).toBeTruthy();
+    expect(screen.getByText("Dónde: Pastelerías de Via Toledo")).toBeTruthy();
+    expect(screen.getByText("Lo escribió Claude")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Antes de ir" })).toBeTruthy();
+
+    // The destinations page points to it.
+    await user.click(within(nav).getByRole("link", { name: "Destinos" }));
+    expect(await screen.findByText("El viaje está listo")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ver el viaje" })).toBeTruthy();
+  });
+
+  it("isn't there before it's published", async () => {
+    renderAt("/p/noviembre-2026/viaje");
+    expect(await screen.findByText("La página del viaje aún no está lista")).toBeTruthy();
+  });
+});
+
 describe("Destino", () => {
   it("adds a comment and a reply", async () => {
     const user = userEvent.setup();

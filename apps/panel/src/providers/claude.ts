@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { extractJsonSchema, extractPrompt } from "./extract.ts";
+import { guideJsonSchema, guidePrompt } from "./guide.ts";
 import { ResearchOutput, buildPrompt, outputSchema, toResults } from "./research.ts";
 import type { ResearchProgress, ResearchProvider } from "./types.ts";
 
@@ -117,6 +118,25 @@ export function claudeProvider(run: Runner = runClaude): ResearchProvider {
         await rm(dir, { recursive: true, force: true });
       }
     },
+    guide: (req, signal, onProgress) =>
+      answer(
+        run,
+        [
+          "-p",
+          guidePrompt(req),
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--json-schema",
+          JSON.stringify(guideJsonSchema),
+          "--tools",
+          RESEARCH_TOOLS,
+          "--allowedTools",
+          RESEARCH_TOOLS,
+        ],
+        signal,
+        onProgress,
+      ),
     async *research(req, signal, onProgress) {
       const payload = await answer(
         run,

@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { CheckedPrices, DatesView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, VoteState } from "@wanderlot/core";
+import type { CheckedPrices, DatesView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, TripPage, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -79,6 +79,14 @@ export interface DatesPage {
   // Ready-to-paste messages, when there's something to say.
   reminder: string | null;
   announcement: string | null;
+}
+
+// El viaje (apps/panel/src/app.ts tripView): the decided destination, the
+// trip page being prepared, and whether the site shows it.
+export interface TripView {
+  destination: Proposal | null;
+  trip: TripPage | null;
+  published: boolean;
 }
 
 export interface DateWindow {
@@ -166,6 +174,12 @@ export interface PanelBackend {
   // The trip takes these dates; prices checked for others are flagged.
   chooseDates(planId: string, optionId: string): Promise<DatesPage & { plan: Plan }>;
   cancelDates(planId: string): Promise<DatesPage>;
+  // El viaje (ROADMAP 2.2–2.4).
+  trip(planId: string): Promise<TripView>;
+  // Claude drafts the guide and how to get there; steps arrive as it works.
+  prepareTrip(planId: string, home: string, onStep?: (s: SearchStep) => void): Promise<TripPage>;
+  saveTrip(planId: string, trip: TripPage): Promise<TripView>;
+  publishTrip(planId: string, published: boolean): Promise<TripView>;
 }
 
 // Something to show the organiser, in their words.
@@ -258,5 +272,34 @@ export const httpBackend: PanelBackend = {
   proposeDates: (planId, options, deadline) => call<DatesPage & { message: string }>(`/api/plans/${enc(planId)}/dates`, "PUT", { options, deadline }),
   chooseDates: (planId, optionId) => call<DatesPage & { plan: Plan }>(`/api/plans/${enc(planId)}/dates/choose`, "POST", { optionId }),
   cancelDates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`, "DELETE"),
+  trip: (planId) => call<TripView>(`/api/plans/${enc(planId)}/trip`),
+  async prepareTrip(planId, home, onStep) {
+    const res = await fetch(`/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });
+    if (!res.ok || !res.body) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new BackendError(data.error ?? `Error ${res.status}`);
+    }
+    // NDJSON: {progress} lines, then {trip} or {error}.
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line) as { progress?: SearchStep; trip?: TripPage; error?: string };
+        if (msg.error) throw new BackendError(msg.error);
+        if (msg.progress) onStep?.(msg.progress);
+        if (msg.trip) return msg.trip;
+      }
+    }
+    throw new BackendError("La preparación terminó sin resultado");
+  },
+  saveTrip: (planId, trip) => call<TripView>(`/api/plans/${enc(planId)}/trip`, "PUT", trip),
+  publishTrip: (planId, published) => call<TripView>(`/api/plans/${enc(planId)}/trip/publish`, "POST", { published }),
   exportData: (planId) => call<unknown>(`/api/export${planId ? `?plan=${enc(planId)}` : ""}`),
 };

@@ -160,6 +160,72 @@ describe("Fechas", () => {
   });
 });
 
+describe("El viaje", () => {
+  it("waits for a decided destination, then prepares, edits and publishes the trip page", async () => {
+    const user = userEvent.setup();
+    const backend = mockBackend({ tickMs: 2, verifyMs: 2 });
+    const view = render(
+      <MemoryRouter initialEntries={["/viaje"]}>
+        <ToastProvider>
+          <PanelProvider backend={backend}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Todavía no hay destino decidido")).toBeTruthy();
+    view.unmount();
+
+    // Nápoles wins.
+    const plan = (await backend.plan("noviembre-2026"))!.plan;
+    await backend.savePlan({ ...plan, status: "closed", winnerDestinationId: "nap" });
+    render(
+      <MemoryRouter initialEntries={["/viaje"]}>
+        <ToastProvider>
+          <PanelProvider backend={backend}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const checklist = await screen.findByLabelText("Antes de publicar");
+    expect(within(checklist).getByText("Destino decidido: Nápoles")).toBeTruthy();
+    // Nápoles's prices came from the flight API a day ago: still good.
+    expect(within(checklist).getByText("Precios de vuelos y alojamiento comprobados")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Publicar el viaje" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Preparar con Claude" }));
+    const dialog = () => within(document.querySelector("dialog[open]") as HTMLElement);
+    const home = dialog().getByLabelText("Salís desde (opcional)") as HTMLInputElement;
+    await user.clear(home);
+    await user.type(home, "Logroño");
+    await user.click(dialog().getByRole("button", { name: "Preparar" }));
+    expect(await screen.findByText("Guía preparada: revísala antes de publicarla")).toBeTruthy();
+
+    // Research's draft, editable.
+    const todo = screen.getByRole("list", { name: "Qué hacer" });
+    expect((within(todo).getByLabelText("Qué hacer 1: título") as HTMLInputElement).value).toBe("Pompeya");
+    expect((within(todo).getByLabelText("Qué hacer 1: € por persona") as HTMLInputElement).value).toBe("22");
+    expect((screen.getByLabelText("Salís desde") as HTMLInputElement).value).toBe("Logroño");
+    await user.click(within(todo).getByRole("button", { name: "Quitar Perderse por Spaccanapoli" }));
+    await user.type(screen.getByLabelText("Dirección"), "Via Chiaia 12");
+    await user.type(screen.getByLabelText("Enlace del Tricount (opcional)"), "https://tricount.com/xyz");
+    // A row added and left empty doesn't go anywhere.
+    await user.click(within(screen.getByRole("region", { name: "Sitios que ver" })).getByRole("button", { name: "Añadir" }));
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    expect(await screen.findByText("Cambios guardados")).toBeTruthy();
+    expect(within(screen.getByRole("list", { name: "Qué hacer" })).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(screen.getByRole("list", { name: "Sitios que ver" })).getAllByRole("listitem")).toHaveLength(3);
+
+    await user.click(screen.getByRole("button", { name: "Publicar el viaje" }));
+    expect(await screen.findByText("Página del viaje publicada")).toBeTruthy();
+    expect(screen.getByText("Publicada en el sitio")).toBeTruthy();
+    const saved = await backend.trip("noviembre-2026");
+    expect(saved).toMatchObject({ published: true, trip: { home: "Logroño", tricountUrl: "https://tricount.com/xyz", stay: { address: "Via Chiaia 12" } } });
+    expect(screen.getByRole("button", { name: "Retirar del sitio" })).toBeTruthy();
+  });
+});
+
 describe("Generar", () => {
   it("starts from the plan and streams a new search in", async () => {
     const user = userEvent.setup();

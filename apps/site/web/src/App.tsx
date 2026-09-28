@@ -13,6 +13,7 @@ import { FechasPage } from "./pages/FechasPage.tsx";
 import { PlanPage } from "./pages/PlanPage.tsx";
 import { TripsPage } from "./pages/TripsPage.tsx";
 import { VotacionPage } from "./pages/VotacionPage.tsx";
+import { ViajePage } from "./pages/ViajePage.tsx";
 
 // Everything under /p/ needs a session; without one, sign in and come back.
 function RequireSession({ children }: { children: ReactNode }) {
@@ -41,6 +42,7 @@ export function App() {
         <Route path="/p/:planId" element={<RequireSession><SiteShell /></RequireSession>}>
           <Route index element={<PlanPage />} />
           <Route path="destinos/:destinationId" element={<DestinoPage />} />
+          <Route path="viaje" element={<ViajePage />} />
           <Route path="fechas" element={<FechasPage />} />
           <Route path="votacion" element={<VotacionPage />} />
           <Route path="comentarios" element={<ComentariosPage />} />

@@ -7,6 +7,7 @@ import { person, usePlans } from "../data/store.tsx";
 
 // What a trip is waiting on, for this person.
 function stateOf(t: PlanSummary): { badge: string; tone: "accent" | "claude" | "neutral" | "muted"; line: string } {
+  if (t.tripReady && !t.datesOpen) return { badge: "El viaje está listo", tone: "accent", line: t.winnerCity ? `Nos vamos a ${t.winnerCity}` : "Todo en una página" };
   if (t.datesOpen && (t.status !== "voting" || t.votedByMe)) {
     return t.datesAnsweredByMe
       ? { badge: "Fechas respondidas", tone: "accent", line: "Decidiendo las fechas" }
@@ -53,7 +54,7 @@ export function TripsPage() {
               const s = stateOf(t);
               return (
                 <li key={t.id}>
-                  <Link to={t.datesOpen && !t.datesAnsweredByMe ? `/p/${t.id}/fechas` : `/p/${t.id}`} className="block h-full rounded-card text-ink no-underline hover:text-ink">
+                  <Link to={t.datesOpen && !t.datesAnsweredByMe ? `/p/${t.id}/fechas` : t.tripReady ? `/p/${t.id}/viaje` : `/p/${t.id}`} className="block h-full rounded-card text-ink no-underline hover:text-ink">
                     <Card as="article" variant="raised" aria-label={t.name} className="flex h-full flex-col gap-2.5 transition-shadow hover:shadow-pop">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <Heading as="h2" size="subheading">

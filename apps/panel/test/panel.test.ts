@@ -6,6 +6,7 @@ import { PanelStore } from "../src/store.ts";
 import type { FlightProvider, ResearchProvider, SearchRequest } from "../src/providers/types.ts";
 import type { PhotoSource } from "../src/providers/photos.ts";
 import type { ExtractRequest } from "../src/providers/extract.ts";
+import type { GuideRequest } from "../src/providers/guide.ts";
 import { createApp } from "../../site/src/app.ts";
 import { SqliteStore } from "../../site/src/sqlite.ts";
 import { SoftAuthenticator } from "../../site/test/authenticator.ts";
@@ -24,6 +25,7 @@ let panel: ReturnType<typeof createPanel>;
 let picked: string[] = [];
 let lastRequest: SearchRequest | undefined;
 let lastExtract: ExtractRequest | undefined;
+let lastGuide: GuideRequest | undefined;
 let site: ReturnType<typeof createApp>;
 
 const call = async (path: string, method = "GET", body?: unknown) => {
@@ -46,6 +48,22 @@ beforeEach(async () => {
   lastRequest = undefined;
   lastExtract = undefined;
   const research: ResearchProvider = {
+    // What Claude would draft for the trip page.
+    async guide(req, _signal, onProgress) {
+      lastGuide = req;
+      onProgress?.({ kind: "search", query: "metro aeropuerto Nápoles" });
+      const t = (mode: string, title: string, minutes: number, priceEuros: number) => ({ mode, title, detail: "", minutes, priceEuros });
+      return {
+        intro: "Nápoles en noviembre: pizza y Vesubio.",
+        todo: [{ title: "Pompeya", detail: "Tren Circumvesuviana", priceEuros: 22 }, { title: "Pasear por Spaccanapoli", detail: "", priceEuros: null }],
+        food: [{ title: "Pizza margherita", detail: "", where: "Centro histórico" }],
+        sights: [{ title: "Castel dell'Ovo", detail: "" }],
+        beforeYouGo: [{ title: "Enchufes", detail: "Tipo F y L" }],
+        toAirport: [t("car", "Coche hasta Madrid", 210, 38.5), t("bus", "Autobús a Barajas", 240, 32)],
+        fromAirport: [t("bus", "Alibus", 20, 5)],
+        sources: [{ label: "Turismo de Nápoles", url: "https://example.org/napoli" }],
+      };
+    },
     // What Claude would read off a KLM screenshot and an Airbnb one.
     async extract(req) {
       lastExtract = req;
@@ -444,6 +462,47 @@ describe("panel → site", () => {
     });
     await oldSite.request(`/api/plans/${PLAN}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(chosen.plan) });
     expect((await oldSite.request(`/api/plans/${PLAN}/dates`)).status).toBe(409);
+  });
+
+  it("prepares the trip page with Claude, takes edits and publishes it with the trip", async () => {
+    await json("/api/members", "PUT", FRIENDS);
+    await json(`/api/plans/${PLAN}/participants`, "PUT", ["ana", "bea"]);
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    for (const id of ["lis", "nap"]) await json(`/api/plans/${PLAN}/proposals/${id}/review`, "POST", { review: "approved" });
+    // Nothing decided yet.
+    expect((await json(`/api/plans/${PLAN}/trip`)).data).toEqual({ destination: null, trip: null, published: false });
+    expect((await call(`/api/plans/${PLAN}/trip/prepare`, "POST", { home: "Logroño" })).status).toBe(409);
+
+    const plan = (await json(`/api/plans/${PLAN}`)).data.plan;
+    await json(`/api/plans/${PLAN}`, "PUT", { ...plan, status: "closed", winnerDestinationId: "nap" });
+    const prepared = await call(`/api/plans/${PLAN}/trip/prepare`, "POST", { home: "Logroño" });
+    const lines = prepared.body.trim().split("\n").map((l) => JSON.parse(l));
+    expect(lines[0]).toEqual({ progress: { kind: "search", query: "metro aeropuerto Nápoles" } });
+    expect(lastGuide).toMatchObject({ city: "Nápoles", iata: "NAP", origin: "MAD", home: "Logroño", dateFrom: "2026-11-07", partySize: 2 });
+    const trip = lines.at(-1).trip;
+    expect(trip).toMatchObject({ destinationId: "nap", home: "Logroño", tricountUrl: null, preparedAt: clock.toISOString() });
+    expect(trip.todo[0]).toEqual({ title: "Pompeya", detail: "Tren Circumvesuviana", priceCents: 2200 });
+    expect(trip.toAirport[0]).toMatchObject({ mode: "car", minutes: 210, priceCents: 3850 });
+    // Where the group lives, remembered for next time.
+    expect((await json("/api/settings")).data.homeTown).toBe("Logroño");
+
+    // The organiser's touches; research doesn't own the stay's details.
+    const edited = (await json(`/api/plans/${PLAN}/trip`, "PUT", { ...trip, stay: { address: "Via Chiaia 12", checkIn: "15:00", checkOut: "11:00" }, tricountUrl: "https://tricount.com/xyz" })).data;
+    expect(edited.trip.stay.address).toBe("Via Chiaia 12");
+    expect((await json(`/api/plans/${PLAN}/trip`, "PUT", { ...trip, tricountUrl: "not a url" })).status).toBe(400);
+
+    // Publishing: the site gets it with the trip, for the trip's people.
+    expect((await json(`/api/plans/${PLAN}/trip/publish`, "POST", { published: true })).data.published).toBe(true);
+    const onSite = (await (await site.request("/api/admin/export", { headers: { authorization: `Bearer ${ADMIN}` } })).json()) as any;
+    expect(onSite.trips[0].trip).toMatchObject({ destinationId: "nap", tricountUrl: "https://tricount.com/xyz", stay: { address: "Via Chiaia 12" } });
+    expect((await json(`/api/plans/${PLAN}/publish-status`)).data.changed).toBe(false);
+    // Preparing again keeps the organiser's stay details and Tricount.
+    const again = (await call(`/api/plans/${PLAN}/trip/prepare`, "POST", { home: "Logroño" })).body.trim().split("\n").map((l) => JSON.parse(l)).at(-1).trip;
+    expect(again).toMatchObject({ tricountUrl: "https://tricount.com/xyz", stay: { address: "Via Chiaia 12" } });
+    // Taking it down.
+    await json(`/api/plans/${PLAN}/trip/publish`, "POST", { published: false });
+    const after = (await (await site.request("/api/admin/export", { headers: { authorization: `Bearer ${ADMIN}` } })).json()) as any;
+    expect(after.trips[0].trip).toBeUndefined();
   });
 
   it("issues, reissues and revokes invites", async () => {

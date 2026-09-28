@@ -199,6 +199,10 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   winner, and the result message.
 - Dates can be agreed first: the organiser proposes a few windows, each friend
   says yes, if need be or no, and the chosen one becomes the trip's dates.
+- Once the destination is decided, the trip gets its own page: flights and
+  stay with the checked prices, how to get to the airport and from it, what
+  to do, eat and see, what to know before going (drafted by Claude, edited by
+  the organiser), each person's share and the group's Tricount.
 - Friends can install the site on their phone's home screen.
 - Prices: research's are labelled as written by Claude. The organiser checks
   the finalists by hand, typing the prices or having Claude read screenshots

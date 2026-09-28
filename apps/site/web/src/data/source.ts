@@ -13,6 +13,7 @@ import {
   type PlanSummary,
   type SuggestionView,
   type TallyResult,
+  type TripPage,
 } from "@wanderlot/core";
 import {
   DATES_PLAN_ID,
@@ -27,6 +28,7 @@ import {
   placeName,
   plan as mockPlan,
   plans as mockPlans,
+  tripPage as mockTripPage,
 } from "@wanderlot/mocks";
 
 export interface PlanView {
@@ -37,6 +39,8 @@ export interface PlanView {
   participation: { id: string; name: string; voted: boolean }[];
   // The date vote (ROADMAP 2.1); older sites leave it out.
   dates?: DatesView | null;
+  // The trip page, once published (ROADMAP 2.2); older sites leave it out.
+  trip?: TripPage | null;
 }
 
 export interface Results extends TallyResult {
@@ -153,6 +157,7 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         destinations: p.id === plan.id ? mockDestinations.length : 0,
         voteDeadline: p.id === plan.id ? (plan.voteDeadline ?? null) : null,
         votedByMe: p.id === plan.id && ballots.some((b) => b.memberId === ME.id),
+        ...(p.id === plan.id && closed ? { tripReady: true } : {}),
         ...(p.id === DATES_PLAN_ID ? { datesOpen: dates.status === "open", datesAnsweredByMe: answeredAll(dates, ME.id) } : {}),
       }));
     },
@@ -169,6 +174,8 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         myBallot: mine ? { ranking: mine.ranking, updatedAt: mine.updatedAt } : null,
         participation: mockMembers.map((m) => ({ id: m.id, name: m.name, voted: isMain && ballots.some((b) => b.memberId === m.id) })),
         dates: planId === DATES_PLAN_ID ? dates : null,
+        // After the vote, Nápoles has its trip page.
+        trip: isMain && closed ? mockTripPage : null,
       };
     },
     async results(planId) {

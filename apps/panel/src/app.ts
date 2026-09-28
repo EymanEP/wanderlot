@@ -3,8 +3,9 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { DateWindows, FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
+import { DateWindows, FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
+import { GuideOutput, toTripPage } from "./providers/guide.ts";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -659,6 +660,120 @@ export function createPanel({
     }
     return pending;
   }
+
+  // --- El viaje (ROADMAP 2.2–2.4) ---------------------------------------------
+
+  // The decided destination's proposal, if there is one.
+  const decided = (planId: string) => {
+    const entry = store.get(planId);
+    const id = entry?.plan.winnerDestinationId;
+    return id ? entry.proposals.find((p) => p.id === id) : undefined;
+  };
+
+  const tripView = (planId: string) => {
+    const entry = store.get(planId)!;
+    const destination = decided(planId) ?? null;
+    const trip = entry.trip && entry.trip.destinationId === destination?.id ? entry.trip : null;
+    return { destination, trip, published: !!entry.tripPublished && !!trip };
+  };
+
+  app.get("/api/plans/:planId/trip", async (c) => {
+    const planId = c.req.param("planId");
+    const entry = store.get(planId);
+    if (!entry) return c.json({ error: "not found" }, 404);
+    // A vote that closed on its own (deadline, last ballot) since the panel
+    // last looked: learn the winner from the site. Best effort.
+    if (entry.plan.status !== "draft" && !entry.plan.winnerDestinationId) {
+      await site.vote(planId).then((state) => voteView(planId, state), () => {});
+    }
+    return c.json(tripView(planId));
+  });
+
+  // "Preparar el viaje": research drafts the guide and how to get there.
+  // Streams NDJSON {progress} lines, then {trip} or {error}.
+  app.post("/api/plans/:planId/trip/prepare", async (c) => {
+    const planId = c.req.param("planId");
+    const entry = store.get(planId);
+    if (!entry) return c.json({ error: "not found" }, 404);
+    const destination = decided(planId);
+    if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
+    if (!research.guide) return c.json({ error: "Preparar el viaje necesita Claude: conecta el comando claude o una clave de la API." }, 409);
+    const body = z.object({ home: z.string().trim().max(60).default("") }).safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: "expected {home?}" }, 400);
+    const { home } = body.data;
+    const stay = baseStay(destination.stays);
+    const { plan } = entry;
+    const guide = research.guide;
+
+    c.header("content-type", "application/x-ndjson");
+    return stream(c, async (s) => {
+      let writing = Promise.resolve();
+      const write = (line: unknown) => (writing = writing.then(async () => void (await s.writeln(JSON.stringify(line)))));
+      try {
+        const raw = await guide(
+          {
+            city: destination.place.city,
+            country: destination.place.country,
+            iata: destination.place.iata,
+            origin: destination.outbound.from,
+            home,
+            dateFrom: plan.dateFrom,
+            dateTo: plan.dateTo,
+            nights: plan.nights,
+            partySize: plan.partySize,
+            ...(stay ? { stay: { name: stay.name, ...(stay.description ? { description: stay.description } : {}), ...(stay.url ? { url: stay.url } : {}) } } : {}),
+          },
+          c.req.raw.signal,
+          (p) => void write({ progress: p }),
+        );
+        const out = GuideOutput.parse(raw);
+        const previous = store.get(planId)!.trip;
+        const trip = TripPage.parse(toTripPage(destination.id, home, out, now(), previous?.destinationId === destination.id ? previous : undefined));
+        store.update(planId, (e) => ({ entry: { ...e!, trip }, result: null }));
+        // Remember where the group lives for next time; best effort.
+        if (home) {
+          const settings = await site.settings().catch(() => null);
+          if (settings && settings.homeTown !== home) await site.putSettings({ ...settings, homeTown: home }).catch(() => {});
+        }
+        await write({ trip });
+      } catch (err) {
+        await write({ error: (err as Error).message });
+      }
+    });
+  });
+
+  // The organiser's edits: text, prices, the stay's details, Tricount.
+  app.put("/api/plans/:planId/trip", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const destination = decided(planId);
+    if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
+    const parsed = TripPage.safeParse({ ...(await c.req.json().catch(() => ({}))), destinationId: destination.id });
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "página del viaje no válida", issues: parsed.error.issues }, 400);
+    store.update(planId, (e) => ({ entry: { ...e!, trip: parsed.data }, result: null }));
+    return c.json(tripView(planId));
+  });
+
+  // Publishes the trip page (or takes it down) with the rest of the trip.
+  app.post("/api/plans/:planId/trip/publish", async (c) => {
+    const planId = c.req.param("planId");
+    const entry = store.get(planId);
+    if (!entry) return c.json({ error: "not found" }, 404);
+    const { published } = z.object({ published: z.boolean().default(true) }).parse(await c.req.json().catch(() => ({})));
+    const view = tripView(planId);
+    if (published && !view.trip) return c.json({ error: "prepara la página del viaje antes de publicarla" }, 409);
+    if (published && view.destination?.review !== "approved") return c.json({ error: "el destino elegido no está aprobado en Revisar" }, 409);
+    if ((await site.version()) < 9) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe mostrar la página del viaje. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
+    store.update(planId, (e) => ({ entry: { ...e!, tripPublished: published }, result: null }));
+    const next = store.get(planId)!;
+    const snapshot = buildSnapshot(next, now());
+    await site.publish(snapshot);
+    await site.setPlanMembers(planId, next.participants ?? []);
+    store.update(planId, (e) => ({ entry: { ...e!, published: { at: snapshot.publishedAt, fingerprint: snapshotFingerprint(e!) } }, result: null }));
+    return c.json(tripView(planId));
+  });
 
   // --- Fechas (ROADMAP 2.1) -------------------------------------------------
 

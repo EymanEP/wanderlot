@@ -1,12 +1,13 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { DateWindows, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { DateWindows, TripPage, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   DATES_PLAN_ID,
   MOCK_NOW,
   SITE_URL,
   dates as mockDates,
+  tripPage as mockTripPage,
   access as mockAccess,
   editorial as mockEditorial,
   ballots as mockBallots,
@@ -16,7 +17,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { DatesPage, MemberAccess, PanelBackend, PlanEntry, VoteView } from "./backend.ts";
+import type { DatesPage, MemberAccess, PanelBackend, PlanEntry, TripView, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -116,6 +117,15 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       reminder: d?.status === "open" && missing.length ? `${missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`} por decir qué fechas le vienen bien para ${name}. Es un minuto: ${link}` : null,
       announcement: chosen ? `Fechas de ${name} decididas: ${rangeLabel(chosen.dateFrom, chosen.dateTo)}. Ya podéis pedir los días. ${link}` : null,
     };
+  };
+  // El viaje, per plan: the page being prepared and whether it's published.
+  const trips = new Map<string, { trip: TripPage; published: boolean }>();
+  const tripView = (planId: string): TripView => {
+    const e = entry(planId);
+    const destination = e.proposals.find((p) => p.id === e.plan.winnerDestinationId) ?? null;
+    const t = trips.get(planId);
+    const trip = t && t.trip.destinationId === destination?.id ? t.trip : null;
+    return { destination, trip, published: !!trip && !!t?.published };
   };
   // A trip whose vote already ran was published when it opened.
   for (const e of entries.values()) if (e.plan.status !== "draft") published.set(e.plan.id, { at: MOCK_NOW.toISOString(), key: publishKey(e.plan.id) });
@@ -425,6 +435,44 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     async cancelDates(planId) {
       datesBy.delete(planId);
       return datesPage(planId);
+    },
+    trip: async (planId) => tripView(planId),
+    async prepareTrip(planId, home, onStep) {
+      const destination = tripView(planId).destination;
+      if (!destination) throw new Error("primero decide el destino en Votación");
+      for (const query of [`qué hacer en ${destination.place.city}`, `aeropuerto ${destination.place.iata} al centro`]) {
+        await wait(tickMs);
+        onStep?.({ kind: "search", query });
+      }
+      await wait(tickMs);
+      const before = trips.get(planId)?.trip;
+      // The mocks have one guide, Nápoles's; other destinations borrow it.
+      const trip: TripPage = {
+        ...mockTripPage,
+        destinationId: destination.id,
+        home,
+        toAirport: home ? mockTripPage.toAirport : [],
+        stay: before?.stay ?? { address: "", checkIn: "", checkOut: "" },
+        tricountUrl: before?.tricountUrl ?? null,
+        preparedAt: MOCK_NOW.toISOString(),
+      };
+      trips.set(planId, { trip, published: trips.get(planId)?.published ?? false });
+      if (home) settings = { ...settings, homeTown: home };
+      return trip;
+    },
+    async saveTrip(planId, trip) {
+      const destination = tripView(planId).destination;
+      if (!destination) throw new Error("primero decide el destino en Votación");
+      const parsed = TripPage.safeParse({ ...trip, destinationId: destination.id });
+      if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "página del viaje no válida");
+      trips.set(planId, { trip: parsed.data, published: trips.get(planId)?.published ?? false });
+      return tripView(planId);
+    },
+    async publishTrip(planId, published) {
+      const t = trips.get(planId);
+      if (published && !tripView(planId).trip) throw new Error("prepara la página del viaje antes de publicarla");
+      if (t) trips.set(planId, { ...t, published });
+      return tripView(planId);
     },
     async exportData(planId) {
       const trips = [...entries.values()].filter((e) => published.has(e.plan.id) && (!planId || e.plan.id === planId));

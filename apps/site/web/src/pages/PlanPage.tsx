@@ -4,6 +4,7 @@ import { airportCity, longDate, shortDate, type Category } from "@wanderlot/core
 import {
   BeachIcon,
   Button,
+  Card,
   CityIcon,
   Chip,
   EmptyState,
@@ -42,7 +43,7 @@ export function PlanPage() {
   const site = useSite();
   const { planId } = useParams();
   const { group } = useAuth();
-  const { plan, destinations, myRanking, voted, comments, members, now, result, closed, dates } = site;
+  const { plan, destinations, myRanking, voted, comments, members, now, result, closed, dates, trip } = site;
   const datesOpen = dates?.status === "open";
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
@@ -138,6 +139,20 @@ export function PlanPage() {
             Hasta 400 € por persona
           </Chip>
         </ScrollRow>
+      )}
+
+      {trip && (
+        <Card variant="accent" className="flex flex-wrap items-center justify-between gap-3">
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-bold">El viaje está listo</span>
+            <span className="text-sm">
+              Vuelos, alojamiento, cómo llegar y qué hacer en {destinations.find((d) => d.id === trip.destinationId)?.place.city ?? "el destino"}, todo en una página.
+            </span>
+          </span>
+          <Link to={`${base}/viaje`} className={buttonClasses({ variant: "primary" })}>
+            Ver el viaje
+          </Link>
+        </Card>
       )}
 
       {destinations.length === 0 ? (

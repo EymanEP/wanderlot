@@ -2,7 +2,7 @@
 // and editorial notes never leave it except through publish (SPEC §2).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Destination, Plan, Proposal } from "@wanderlot/core";
+import type { Destination, Plan, Proposal, TripPage } from "@wanderlot/core";
 
 // What Comparativa adds on top of an approved proposal, plus what to search
 // for in the photo picker (never published).
@@ -17,6 +17,10 @@ export interface PlanEntry {
   // The last publish: when, and a fingerprint of what went, to tell whether
   // the site is behind the panel.
   published?: { at: string; fingerprint: string };
+  // El viaje (ROADMAP 2.2): the trip page being prepared, and whether it goes
+  // to the site with the next publish.
+  trip?: TripPage;
+  tripPublished?: boolean;
 }
 
 // The latest invite link per member, kept here so the organiser can copy it

@@ -14,6 +14,7 @@ const NAV = [
   { to: "/revisar", label: "Revisar" },
   { to: "/comparativa", label: "Comparativa" },
   { to: "/votacion", label: "Votación" },
+  { to: "/viaje", label: "El viaje" },
   { to: "/personas", label: "Personas" },
 ];
 
@@ -54,7 +55,7 @@ function PlanSwitcher() {
   const options = [...state.plans.map((p) => ({ value: p.id, label: `Plan · ${p.name}` })), { value: NEW_PLAN, label: "+ Nuevo plan" }];
   return (
     <Select
-      className="hidden w-60 xl:block"
+      className="hidden w-60 2xl:block"
       size="sm"
       label="Plan"
       value={state.plan.id}
@@ -92,18 +93,18 @@ export function PanelShell({ end, showPlan = true, children, tone = "white" }: P
     <Page className={tone === "canvas" ? "bg-canvas" : undefined}>
       <TopBar
         brand={<Brand sub={<span className="hidden sm:inline">Panel local</span>} />}
-        nav={<PanelNav className="hidden md:flex" />}
+        nav={<PanelNav className="hidden lg:flex" />}
         end={
           <>
             {showPlan && <PlanSwitcher />}
-            <span className="hidden lg:inline-flex">
+            <span className="hidden xl:inline-flex">
               <Status />
             </span>
             {end}
           </>
         }
       />
-      <div className="border-b border-line-soft bg-surface px-4 py-2 md:hidden">
+      <div className="border-b border-line-soft bg-surface px-4 py-2 lg:hidden">
         <PanelNav className="overflow-x-auto" />
       </div>
       <SiteOutdated />

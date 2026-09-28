@@ -456,6 +456,18 @@ describe("with everyone signed in", () => {
     });
   });
 
+  describe("the trip page", () => {
+    it("reaches the trip's people once published, and only for a published destination", async () => {
+      const trip = { destinationId: "lis", intro: "Lisboa en noviembre", food: [{ title: "Pastel de nata", where: "Belém" }], tricountUrl: "https://tricount.com/abc" };
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).trip).toBeNull();
+      expect((await admin(`/plans/${PLAN}`, "PUT", { ...snapshot(four()), trip: { ...trip, destinationId: "xyz" } })).status).toBe(400);
+      expect((await admin(`/plans/${PLAN}`, "PUT", { ...snapshot(four()), trip })).status).toBe(200);
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.trip).toMatchObject({ destinationId: "lis", intro: "Lisboa en noviembre", food: [{ title: "Pastel de nata", detail: "", where: "Belém" }], todo: [], tricountUrl: "https://tricount.com/abc" });
+      expect(((await (await as("ana", "")).json()) as any[])[0].tripReady).toBe(true);
+    });
+  });
+
   describe("dates", () => {
     const A = "2026-11-03_2026-11-07";
     const B = "2026-11-12_2026-11-16";

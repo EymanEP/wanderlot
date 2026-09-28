@@ -166,6 +166,14 @@ export function VotacionPage() {
               </div>
             )}
             {result.rows.length > 0 && <CountTable rows={result.rows} winnerId={result.winnerId} city={city} caption="Recuento final" />}
+            {result.winnerId && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-faint pt-3.5">
+                <span className="text-sm text-muted">Con el destino decidido, prepara la página del viaje: precios, cómo llegar y qué hacer.</span>
+                <Link to="/viaje" className={buttonClasses({ variant: "secondary", size: "sm" })}>
+                  Preparar el viaje
+                </Link>
+              </div>
+            )}
           </Card>
         )}
 

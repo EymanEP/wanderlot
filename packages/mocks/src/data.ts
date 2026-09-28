@@ -6,6 +6,7 @@ import {
   type Ballot,
   type Comment,
   type DatesView,
+  type TripPage,
   type Destination,
   type Photo,
   type Plan,
@@ -510,4 +511,57 @@ export const dates: DatesView = {
     { memberId: "ivan", answers: { [EASTER]: "yes", [EASTER_LATE]: "maybe", [AFTER]: "yes" }, note: null, updatedAt: "2026-09-24T21:40:00Z" },
     { memberId: "ruben", answers: { [EASTER]: "maybe", [EASTER_LATE]: "yes", [AFTER]: "yes" }, note: "Tengo que pedirlo antes del 15", updatedAt: "2026-09-25T06:05:00Z" },
   ],
+};
+
+// --- el viaje (ROADMAP 2.2) -------------------------------------------------
+
+// Nápoles won (the closed-vote mocks): its trip page, as research drafts it
+// and the organiser finishes it.
+const bus = (title: string, detail: string, minutes: number, euros: number) => ({ mode: "bus" as const, title, detail, minutes, priceCents: euros * 100 });
+export const tripPage: TripPage = {
+  destinationId: "nap",
+  intro:
+    "Nápoles en noviembre es ruidosa, barata y sin colas: buen tiempo para andar, pizza en cada esquina y el Vesubio mirando desde la bahía. Id con hambre y sin prisa.",
+  todo: [
+    { title: "Pompeya", detail: "Tren Circumvesuviana desde Garibaldi; id temprano y llevad agua", priceCents: 2200 },
+    { title: "Subterráneos de Nápoles", detail: "Visita guiada por las cisternas griegas bajo el centro", priceCents: 1500 },
+    { title: "Ferry a Procida", detail: "Un día en la isla de colores; sale del Molo Beverello", priceCents: 2400 },
+    { title: "Perderse por Spaccanapoli", detail: "La calle que parte el centro en dos; mejor sin mapa", priceCents: null },
+  ],
+  food: [
+    { title: "Pizza margherita", detail: "La de verdad: masa blanda, borde alto", where: "Centro histórico, en las pizzerías de toda la vida" },
+    { title: "Sfogliatella", detail: "Hojaldre relleno de ricota; mejor recién hecha", where: "Pastelerías de Via Toledo" },
+    { title: "Pizza fritta", detail: "Frita y doblada, para comer andando", where: "Puestos del Quartieri Spagnoli" },
+  ],
+  sights: [
+    { title: "Cristo velado", detail: "En la Capilla Sansevero; se entra con reserva" },
+    { title: "Castel dell'Ovo", detail: "Gratis, con vistas a la bahía al atardecer" },
+    { title: "Murales de Maradona", detail: "En los Quartieri Spagnoli; buscad el grande" },
+  ],
+  beforeYouGo: [
+    { title: "Dinero", detail: "Euro. Casi todo acepta tarjeta, pero llevad algo de efectivo para cafés y pizzas al paso." },
+    { title: "Enchufes", detail: "Tipo F y L: los de España entran en casi todos." },
+    { title: "Propinas", detail: "No se espera; muchos sitios cobran «coperto» en la cuenta." },
+    { title: "Transporte", detail: "El billete UNICO sirve para metro, funicular y autobús; se valida al subir." },
+    { title: "Cuidado con", detail: "Motos en las calles estrechas y carteristas en el metro y la estación central." },
+  ],
+  home: "Logroño",
+  toAirport: [
+    {
+      mode: "car",
+      title: "Coche hasta Barajas",
+      detail: "330 km por la A-1 (3 h 20 min) · 2 coches · gasolina 22 € y peajes 0 € por persona · parking T4 larga estancia 7 días, 12 € por persona",
+      minutes: 200,
+      priceCents: 3400,
+    },
+    bus("Autobús de ALSA a Barajas", "Salidas a las 7:00 y 15:00; para en la T4", 285, 36),
+  ],
+  fromAirport: [
+    bus("Alibus", "Al puerto y la estación central cada 20 minutos; el mejor con maletas", 25, 5),
+    { mode: "taxi", title: "Taxi", detail: "Tarifa fija al centro: 25 € el coche, cabéis en dos", minutes: 20, priceCents: 850 },
+  ],
+  stay: { address: "Via Chiaia 12, Nápoles", checkIn: "15:00", checkOut: "11:00" },
+  tricountUrl: "https://tricount.com/es/grupo51-napoles",
+  sources: [{ label: "Turismo de Nápoles", url: "https://www.visitnaples.eu/" }],
+  preparedAt: "2026-09-24T19:00:00Z",
 };

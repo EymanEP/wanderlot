@@ -87,6 +87,19 @@ One of the six. `{ id, name, tokenHash }`. There are no accounts or passwords
 `{ id, planId, destinationId, memberId, parentId?, body, createdAt }`.
 Threads are one level deep: a reply's parent must be a top-level comment.
 
+### Trip page (El viaje)
+Once the destination is decided, an optional part of the snapshot:
+`trip: { destinationId, intro, todo, food, sights, beforeYouGo, home,
+toAirport, fromAirport, stay: { address, checkIn, checkOut }, tricountUrl,
+sources, preparedAt }`. Guide items are `{ title, detail, priceCents?,
+where? }`; ways to get there are `{ mode: car | bus | train | metro | taxi |
+shuttle | walk | other, title, detail, minutes, priceCents }`, per person.
+Its `destinationId` must be one of the published destinations. Research
+drafts the guide and the transport; the organiser edits it and adds the
+stay's details and the Tricount link. Flights and stay show the destination's
+own (checked) prices; everything the guide says is labelled as Claude's and
+approximate.
+
 ---
 
 ## 2. The two halves and the boundary between them
@@ -422,7 +435,11 @@ Every outside service sits behind an interface in the panel, and each hoster
 configures only the ones they have. The panel works with none of the paid ones.
 
 ### Research (AI)
-`ResearchProvider` produces proposals, pros and cons, and photo subjects.
+`ResearchProvider` produces proposals, pros and cons, and photo subjects; it
+also reads screenshots of prices (`extract`) and drafts the trip page
+(`guide`: what to do, eat and see, what to know, and how to get from the
+group's home town to the airport and from the airport to the stay, with
+sources). `guide` uses the same tools and settings as research.
 
 | provider | how | cost to the hoster |
 |---|---|---|
@@ -477,8 +494,8 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `POST` | `/api/session/verify` | anyone | starts a session |
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
-| `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe, datesOpen?, datesAnsweredByMe? }` |
-| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation + `dates` (the date vote with everyone's answers, or `null`) |
+| `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe, datesOpen?, datesAnsweredByMe?, tripReady? }` |
+| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation + `dates` (the date vote with everyone's answers, or `null`) + `trip` (the trip page, or `null`; site API version 9) |
 | `PUT` | `/api/plans/:planId/dates` | member | `{ answers: { optionId: yes \| maybe \| no }, note? }` for every window; `409` once the dates are chosen |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
@@ -488,7 +505,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` / `POST` | `/api/plans/:planId/suggestions` | member | ideas for the trip / `{ place, note? }`; `409` once closed or with 5 waiting |
 | `GET` | `/api/admin/plans/:planId/suggestions` | panel | the trip's ideas with who suggested them |
 | `PUT` | `/api/admin/plans/:planId/suggestions/:id` | panel | `{ status: new \| researched \| dismissed, proposalId? }` |
-| `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin? }` |
+| `GET` / `PUT` | `/api/admin/settings` | panel | `{ groupName, organiserName, defaultOrigin?, homeTown? }` |
 | `PUT` | `/api/admin/plans/:planId` | panel | publish snapshot; `409` if it breaks the freeze |
 | `DELETE` | `/api/admin/plans/:planId` | panel | delete the trip with its ballots, comments, likes, ideas and people; `{ deleted }` (false if it wasn't there). Site API version 6 |
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
@@ -541,6 +558,9 @@ it). Calls that touch the site go through the admin API above.
 | `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie; `{ destinationId, override: true, note? }` to go somewhere other than the vote's winner (`409` on a site older than API version 7) |
 | `GET` / `PUT` / `DELETE` | `/api/plans/:planId/dates` | Fechas: `{ dates, people, reminder, announcement }` / `{ options, deadline? }` proposes or changes the windows (publishing the trip without destinations if it isn't on the site yet) and adds the group-chat `message` / removes the date vote. `409` without people on the trip, or on a site older than API version 8 |
 | `POST` | `/api/plans/:planId/dates/choose` | `{ optionId }`: the trip takes those dates here and on the site; checked prices are flagged `forOtherDates` |
+| `GET` / `PUT` | `/api/plans/:planId/trip` | El viaje: `{ destination, trip, published }` (the decided destination's proposal, the trip page being prepared, whether the site shows it) / save the organiser's edits (`409` until a destination is decided) |
+| `POST` | `/api/plans/:planId/trip/prepare` | `{ home? }`: research drafts the guide and how to get there; streams NDJSON `{progress}` lines, then `{trip}` or `{error}`. Keeps the stay's details and the Tricount link; saves `home` as the group's `homeTown`. `409` without a decided destination or without Claude |
+| `POST` | `/api/plans/:planId/trip/publish` | `{ published }`: publishes the trip with its page, or takes the page down. `409` on a site older than API version 9 |
 | `GET` | `/api/export?plan=` | the site's export (above), for Viajes to download; `409` on a site older than API version 7 |
 | `GET` / `PUT` | `/api/members` | people and their access / add or rename |
 | `POST` | `/api/members/:id/invite` | a fresh one-time invite link |

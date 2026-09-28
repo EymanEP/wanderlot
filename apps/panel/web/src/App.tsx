@@ -8,6 +8,7 @@ import { FechasPage } from "./pages/FechasPage.tsx";
 import { GenerarPage } from "./pages/GenerarPage.tsx";
 import { NewPlanPage } from "./pages/NewPlanPage.tsx";
 import { VotacionPage } from "./pages/VotacionPage.tsx";
+import { ViajePage } from "./pages/ViajePage.tsx";
 import { PersonasPage } from "./pages/PersonasPage.tsx";
 import { RevisarPage } from "./pages/RevisarPage.tsx";
 import { TripsPage } from "./pages/TripsPage.tsx";
@@ -64,6 +65,7 @@ export function App() {
       <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
       <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
       <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
+      <Route path="/viaje" element={<RequirePlan><ViajePage /></RequirePlan>} />
       <Route path="/personas" element={<PersonasPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
