@@ -519,12 +519,13 @@ but its vote hasn't opened.
 
 ## 10. Out of scope for v1 / still open
 
-What's planned next (a date vote, the trip page, getting to the airport,
-export, and later languages and currencies) is in [ROADMAP.md](ROADMAP.md).
+What's planned next is in [ROADMAP.md](ROADMAP.md): a date vote, the trip
+page, getting to the airport, export, the panel hosted on the site with other
+AI providers (or none), and later languages and currencies.
 
-- **A hosted panel.** v1's panel is local only. A later option: serve it from
-  the same Cloudflare deployment under `/admin`, behind Cloudflare Access for
-  login, using `anthropic-api` (a Worker can't run the `claude` binary).
+- **A hosted panel.** v1's panel is local only. ROADMAP §3 plans serving it
+  from the site under `/admin` for the organiser, with its data moved to the
+  site's database and AI optional (a Worker can't run the `claude` binary).
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.

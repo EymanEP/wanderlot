@@ -9,6 +9,7 @@ finalist by hand on Google Flights and Airbnb.
 What this roadmap covers:
 - **Fixes:** things that got in the way on that trip.
 - **Features:** planned by user flow.
+- **The panel from anywhere:** hosting the panel, and other AI providers.
 - **Later:** big changes that wait.
 
 Nothing here is built yet.
@@ -278,7 +279,124 @@ with:
 
 ---
 
-## 3. Later
+## 3. The panel from anywhere, with any AI (or none)
+
+**Why.** Today the panel only runs on the organiser's laptop:
+- it accepts requests to `127.0.0.1` only;
+- it keeps its data in `data/panel.json`;
+- its AI is the `claude` command or an Anthropic API key.
+
+The organiser wants to manage the group from their phone: add or remove
+people, make invite links, rename a trip, change photos. That should work
+without any AI, and research should work with other assistants: Codex,
+OpenCode (its Zen plan) or any provider with an API key.
+
+This is a platform change, so it goes in three phases. Each one is useful on
+its own.
+
+### 3.1 Manage from the phone: the panel on the site, without AI · L · 🎨 · ⚙️
+
+**What.** The panel's management pages, served by the site under `/admin`:
+- **Viajes:** rename, change dates, delete, export.
+- **Personas:** add, remove, invite links, close sessions.
+- **Votación:** open, remind, close, decide.
+- **Photos** of published destinations: Wikimedia needs no key; Unsplash and
+  Pexels need their keys as Worker secrets.
+
+Pages that need AI (Generar, reading screenshots, the guide) show why they're
+off and what would turn them on.
+
+**Signing in.**
+- The organiser signs in to the site as usual. Their member account carries an
+  organiser role, set once from the local panel or with `npm run setup`.
+- Admin actions then use their session instead of the admin token, which never
+  reaches a browser.
+- A 4-digit PIN is too weak to guard the whole group, so the organiser signs
+  in to `/admin` with a passkey (Face ID or a fingerprint) or a longer
+  password, and admin sessions expire sooner.
+
+**The catch: one source of truth.** The local panel keeps its own copy of
+every trip in `data/panel.json` and publishes it over the site. If the phone
+changes a photo and the laptop publishes later, the laptop's copy wins and the
+change is lost. So 3.1 needs 3.2, or at least a rule that the local panel
+first reads back what's on the site.
+
+**Screens to design.**
+- The admin sign-in.
+- The panel's pages at phone width, where they don't fit today.
+- The "AI is off" states.
+
+### 3.2 One store: the panel's data moves to the site · L · ⚙️
+
+**What moves.** Everything the panel keeps in `data/panel.json` moves to the
+site's database, in new tables:
+- proposals, including unpublished ones;
+- Comparativa notes and photo searches;
+- the last publish;
+- invite links.
+
+**The local panel changes role.** It becomes the same panel, pointed at the
+site, and adds only what needs the laptop: running `claude`, `codex` or
+`opencode`. Research started from the laptop saves its proposals on the site,
+so the phone sees them straight away.
+
+**Compatibility.**
+- On first start, the new local panel imports the existing
+  `data/panel.json` into the site and keeps the file as a backup.
+- Nothing already published changes.
+- A group that never hosts the panel keeps working as today, with its data on
+  the site.
+
+**Also:**
+- Unpublished research is never visible to friends; it sits behind the
+  organiser role.
+- The export (2.5) gains an option to include it.
+
+### 3.3 Bring your own AI · M
+
+**The idea.** Research, screenshot reading and the guide go through one
+`ResearchProvider` interface today, with two implementations (the `claude`
+command and the Anthropic API). Add more, chosen in a new panel settings page
+(🎨, small):
+
+- **Local commands,** for the local panel only: `claude` (today), plus
+  `codex` and `opencode` through their non-interactive modes. Before building
+  each, check that it can:
+  - search the web;
+  - return JSON matching a schema;
+  - read an image file.
+- **API keys,** for the local or hosted panel:
+  - Anthropic (today);
+  - OpenAI;
+  - any OpenAI-compatible endpoint, set by base URL, key and model name. That
+    covers OpenRouter and similar gateways, and possibly OpenCode Zen's key;
+    that needs checking against its docs.
+
+**Where the keys live.**
+- The hosted panel keeps them as Worker secrets, set with `wrangler secret`
+  or `npm run setup`, never in the browser.
+- The local panel keeps them in `.env`, as now.
+
+**What each feature needs, and what happens without it.**
+
+| Feature | Needs | Without it |
+|---|---|---|
+| Generar | web search and structured output | Off. Proposals can still be added by hand (a small form: place, flights, stay, prices), useful with no AI at all |
+| Reading screenshots | image input | The price dialog works as before, typing the prices |
+| The trip guide (2.2) | web search helps, but a model can write it from what it knows | Off, or written from the model's knowledge and labelled so |
+
+Where a provider has no web search, research falls back to what the model
+knows, and every price is marked as an estimate. That's weaker than today, and
+the panel says so when the provider is chosen.
+
+**Limits to check** before promising research on the hosted panel:
+- A Worker can call these APIs, but research runs for minutes.
+- It may need to run in the background (a Queue or a Durable Object) and
+  report progress, instead of streaming over one long request.
+
+---
+
+## 4. Later
 
 Not planned in detail yet. They wait until the flows above are in use.
 
@@ -296,7 +414,6 @@ Not planned in detail yet. They wait until the flows above are in use.
     consistently.
   - Existing data stays in euros.
 - **Already out of scope in SPEC §10:**
-  - a hosted panel;
   - email or push notifications;
   - booking inside the app;
   - several groups per deployment.
@@ -310,5 +427,12 @@ Not planned in detail yet. They wait until the flows above are in use.
 2. **Cuándo (2.1).** The next trip needs dates agreed early. Design first.
 3. **El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
    (2.4).** One design for the trip page, built together.
-4. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
-5. **Later:** languages and currency.
+4. **The panel from anywhere.**
+   - **3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
+     laptop overwrite each other.
+   - **3.3 (other AIs) alongside,** since it's independent.
+   - **Could come earlier** than 2.1–2.2 if managing from the phone matters
+     more than the new flows. It's the biggest piece, so decide the order
+     before starting either.
+5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
+6. **Later:** languages and currency.
