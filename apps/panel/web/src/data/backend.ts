@@ -135,12 +135,15 @@ export interface PanelBackend {
   openVote(planId: string, deadline: string): Promise<{ message: string }>;
   vote(planId: string): Promise<VoteView>;
   closeVote(planId: string): Promise<VoteView>;
-  pickWinner(planId: string, destinationId: string): Promise<VoteView>;
+  // Between tied destinations; with override, any destination in the vote.
+  pickWinner(planId: string, destinationId: string, opts?: { override?: boolean; note?: string }): Promise<VoteView>;
   members(): Promise<MemberAccess[]>;
   putMembers(members: { id: string; name: string }[]): Promise<void>;
   invite(memberId: string): Promise<{ url: string; expiresAt: string }>;
   closeSessions(memberId: string): Promise<void>;
   revoke(memberId: string): Promise<void>;
+  // The site's data as JSON: one trip, or everything.
+  exportData(planId?: string): Promise<unknown>;
 }
 
 // Something to show the organiser, in their words.
@@ -223,10 +226,11 @@ export const httpBackend: PanelBackend = {
   openVote: (planId, deadline) => call<{ message: string }>(`/api/plans/${enc(planId)}/open-vote`, "POST", { deadline }),
   vote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/vote`),
   closeVote: (planId) => call<VoteView>(`/api/plans/${enc(planId)}/close`, "POST"),
-  pickWinner: (planId, destinationId) => call<VoteView>(`/api/plans/${enc(planId)}/winner`, "PUT", { destinationId }),
+  pickWinner: (planId, destinationId, opts = {}) => call<VoteView>(`/api/plans/${enc(planId)}/winner`, "PUT", { destinationId, ...opts }),
   members: () => call<MemberAccess[]>("/api/members"),
   putMembers: async (members) => void (await call("/api/members", "PUT", members)),
   invite: (id) => call<{ url: string; expiresAt: string }>(`/api/members/${enc(id)}/invite`, "POST"),
   closeSessions: async (id) => void (await call(`/api/members/${enc(id)}/sessions`, "DELETE")),
   revoke: async (id) => void (await call(`/api/members/${enc(id)}/revoke`, "POST")),
+  exportData: (planId) => call<unknown>(`/api/export${planId ? `?plan=${enc(planId)}` : ""}`),
 };

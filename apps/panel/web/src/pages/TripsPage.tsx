@@ -6,6 +6,7 @@ import { PanelShell } from "../components/PanelShell.tsx";
 import { TripDates, type FlexDays } from "../components/TripDates.tsx";
 import type { TripSummary } from "../data/backend.ts";
 import { usePanel } from "../data/store.tsx";
+import { downloadJson } from "../lib/download.ts";
 
 const STATUS = {
   draft: { label: "Borrador", tone: "neutral" },
@@ -18,7 +19,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // Where the organiser starts: every trip, how far along it is, and opening,
 // editing or deleting one.
 export function TripsPage() {
-  const { state, now, trips, selectPlan, savePlan, deletePlan } = usePanel();
+  const { state, now, trips, selectPlan, savePlan, deletePlan, exportData } = usePanel();
   const navigate = useNavigate();
   const toast = useToast();
   const [list, setList] = useState<TripSummary[] | null>(null);
@@ -45,6 +46,17 @@ export function TripsPage() {
     navigate(t.proposals ? "/revisar" : "/generar");
   };
 
+  // What the group made on the site, to keep: one trip or all of them.
+  const exportTrips = async (trip?: TripSummary) => {
+    try {
+      const data = await exportData(trip?.plan.id);
+      downloadJson(`wanderlot-${trip?.plan.id ?? "viajes"}-${now.toISOString().slice(0, 10)}.json`, data);
+      toast(trip ? `${trip.plan.name} exportado` : "Viajes exportados");
+    } catch (e) {
+      toast(`No se pudo exportar: ${(e as Error).message}`);
+    }
+  };
+
   const remove = async () => {
     if (!deleting) return;
     setBusy(true);
@@ -66,9 +78,16 @@ export function TripsPage() {
           title="Viajes"
           subtitle={list ? `${plural(list.length, "viaje", "viajes")} · ${plural(list.filter((t) => t.plan.status === "voting").length, "en votación", "en votación")}` : "Cargando…"}
           actions={
-            <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
-              Nuevo viaje
-            </Link>
+            <>
+              {list?.some((t) => t.publishedAt) && (
+                <Button variant="ghost" onClick={() => void exportTrips()} title="Los viajes publicados, con votos, comentarios e ideas, en un archivo JSON">
+                  Exportar todo
+                </Button>
+              )}
+              <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
+                Nuevo viaje
+              </Link>
+            </>
           }
         />
         {error && <Notice role="alert">No se pudieron cargar los viajes: {error}</Notice>}
@@ -120,6 +139,11 @@ export function TripsPage() {
                         Abrir
                       </Button>
                       <Button onClick={() => setEditing(t.plan)}>Editar</Button>
+                      {t.publishedAt && (
+                        <Button variant="ghost" onClick={() => void exportTrips(t)}>
+                          Exportar
+                        </Button>
+                      )}
                       <Button variant="ghost" onClick={() => setDeleting(t)}>
                         Borrar
                       </Button>

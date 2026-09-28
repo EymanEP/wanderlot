@@ -53,6 +53,9 @@ export interface VoteState {
   tally: TallyResult;
   // Each ballot, most recently changed first.
   ballots: { memberId: string; ranking: string[]; updatedAt: string }[];
-  // The final result, once closed; winnerId is the organiser's pick after a tie.
-  result: (TallyResult & { winnerId: string | null }) | null;
+  // The final result, once closed. winnerId is where they're going: the
+  // vote's winner, the organiser's pick after a tie, or another destination
+  // the organiser chose (then voteWinnerId is the vote's own and decidedNote
+  // says why). Older sites leave the last two out.
+  result: (TallyResult & { winnerId: string | null; voteWinnerId?: string | null; decidedNote?: string | null }) | null;
 }

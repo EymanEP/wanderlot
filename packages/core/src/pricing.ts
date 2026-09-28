@@ -59,3 +59,15 @@ export function applyCheckedPrices<P extends Pick<Proposal, "outbound" | "inboun
     stays,
   };
 }
+
+// The trip's dates changed: every price checked for the old ones (by hand or
+// by an API) is marked as for other dates, so it shows as stale and its
+// flight times stop showing until it's checked again. Research's prices stay
+// as they are: they were estimates anyway.
+export function markForOtherDates<P extends Pick<Proposal, "provenance">>(p: P): P {
+  const prov = p.provenance;
+  if (prov.kind === "claude" || prov.forOtherDates) return p;
+  if (prov.kind === "api") return { ...p, provenance: { ...prov, forOtherDates: true } };
+  const { flightDetails: _details, ...rest } = prov;
+  return { ...p, provenance: { ...rest, forOtherDates: true } };
+}

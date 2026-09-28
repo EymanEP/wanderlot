@@ -16,7 +16,7 @@ import { CommentComposer, CommentThread } from "../components/Comments.tsx";
 import { FlightLegRow, FlightTotalRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
-import { memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
+import { groupWord, memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
 
 export function DestinoPage() {
   const site = useSite();
@@ -141,7 +141,7 @@ export function DestinoPage() {
       </div>
 
       <section id="comentarios" aria-labelledby="comentarios-titulo" className="flex scroll-mt-28 flex-col gap-3.5">
-        <SectionHeader id="comentarios-titulo" title={`Comentarios · ${comments.length}`} aside="Solo los vemos nosotros seis" />
+        <SectionHeader id="comentarios-titulo" title={`Comentarios · ${comments.length}`} aside={`Solo los vemos nosotros${plan.partySize > 1 ? ` ${groupWord(plan.partySize)}` : ""}`} />
         <CommentComposer me={me} onSubmit={(body) => site.addComment(d.id, body)} />
         <CommentThread
           comments={comments}

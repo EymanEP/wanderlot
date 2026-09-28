@@ -52,6 +52,8 @@ export const Provenance = z.discriminatedUnion("kind", [
     kind: z.literal("api"),
     provider: FlightProviderName,
     checkedAt: isoDateTime,
+    // The trip's dates changed after this check: the price was for others.
+    forOtherDates: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("organiser"),
@@ -62,6 +64,8 @@ export const Provenance = z.discriminatedUnion("kind", [
     // screenshot), not only the price. Without it they're research's guess,
     // and the site shows the price alone.
     flightDetails: z.boolean().optional(),
+    // The trip's dates changed after this check: the price was for others.
+    forOtherDates: z.boolean().optional(),
   }),
   z.object({
     kind: z.literal("claude"),
@@ -147,14 +151,17 @@ export const Plan = z.object({
   maxPriceCents: cents.nullable(),
   status: PlanStatus,
   voteDeadline: isoDateTime.optional(),
+  // Where they're going: the vote's winner, or another destination the
+  // organiser chose after it, with a note saying why.
   winnerDestinationId: id.optional(),
+  decidedNote: z.string().max(300).optional(),
 });
 export type Plan = z.infer<typeof Plan>;
 
 // Panel → site. The only thing that ever crosses the boundary (§2).
 export const Snapshot = z
   .object({
-    plan: Plan.omit({ status: true, winnerDestinationId: true }),
+    plan: Plan.omit({ status: true, winnerDestinationId: true, decidedNote: true }),
     destinations: z.array(Destination),
     publishedAt: isoDateTime,
   })
@@ -240,5 +247,5 @@ export interface SuggestionView {
 // The site's admin API version. Bumped whenever the panel starts needing
 // something new from the site, so it can tell the organiser to redeploy
 // (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
-// 6: deleting a trip.
-export const SITE_API_VERSION = 6;
+// 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
+export const SITE_API_VERSION = 7;

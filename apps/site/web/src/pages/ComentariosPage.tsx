@@ -3,20 +3,20 @@ import { Link, useParams } from "react-router";
 import { Chip, EmptyState, Main, PageHeader, ScrollRow, SectionHeader, Select } from "@wanderlot/ui";
 import { CommentComposer, CommentThread } from "../components/Comments.tsx";
 import { useSite } from "../data/store.tsx";
-import { memberOf } from "../lib/view.ts";
+import { groupWord, memberOf } from "../lib/view.ts";
 
 // Every conversation in the plan, grouped by destination.
 export function ComentariosPage() {
   const site = useSite();
   const { planId } = useParams();
-  const { destinations, comments, members, me, now } = site;
+  const { destinations, comments, members, me, now, plan } = site;
   const [filter, setFilter] = useState<string>("all");
   const [target, setTarget] = useState(destinations[0]?.id ?? "");
   const shown = destinations.filter((d) => filter === "all" || d.id === filter);
 
   return (
     <Main>
-      <PageHeader size="display" title="Comentarios" subtitle={`${comments.length} comentarios sobre ${destinations.length} destinos · solo los vemos nosotros seis`} />
+      <PageHeader size="display" title="Comentarios" subtitle={`${comments.length} comentarios sobre ${destinations.length} destinos · solo los vemos nosotros${plan.partySize > 1 ? ` ${groupWord(plan.partySize)}` : ""}`} />
 
       <ScrollRow role="group" aria-label="Filtrar por destino">
         <Chip variant="solid" size="lg" on={filter === "all"} onClick={() => setFilter("all")}>

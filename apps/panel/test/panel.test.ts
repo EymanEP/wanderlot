@@ -190,6 +190,20 @@ describe("panel → site", () => {
     // A later price-only check keeps the times checked earlier.
     const later = (await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 12000 })).data;
     expect(later.provenance.flightDetails).toBe(true);
+    // New dates for the trip: that check no longer holds, until it's done again.
+    const plan = (await json(`/api/plans/${PLAN}`)).data.plan;
+    await json(`/api/plans/${PLAN}`, "PUT", { ...plan, dateFrom: "2026-11-03", dateTo: "2026-11-07", nights: 4 });
+    const movedNap = (await json(`/api/plans/${PLAN}`)).data.proposals.find((p: Proposal) => p.id === "nap");
+    expect(movedNap.provenance).toMatchObject({ kind: "organiser", forOtherDates: true });
+    expect(movedNap.provenance.flightDetails).toBeUndefined();
+    await json(`/api/plans/${PLAN}/proposals/nap/review`, "POST", { review: "approved" });
+    expect((await json(`/api/plans/${PLAN}/publish`, "POST", {})).data.warnings).toContainEqual({ destinationId: "nap", city: "Nápoles", reason: "stale" });
+    const rechecked = (await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 13000 })).data;
+    expect(rechecked.provenance.forOtherDates).toBeUndefined();
+    expect(rechecked.provenance.flightDetails).toBeUndefined();
+    // Saving the same dates again changes nothing.
+    await json(`/api/plans/${PLAN}`, "PUT", { ...plan, dateFrom: "2026-11-03", dateTo: "2026-11-07", nights: 4 });
+    expect((await json(`/api/plans/${PLAN}`)).data.proposals.find((p: Proposal) => p.id === "nap").provenance.forOtherDates).toBeUndefined();
     // One leg without the other isn't a checked itinerary.
     expect((await json(`/api/plans/${PLAN}/proposals/nap/prices`, "POST", { flightCents: 1, outbound: legs.outbound })).status).toBe(400);
   });
@@ -264,6 +278,13 @@ describe("panel → site", () => {
     const refused = await oldSite.request(`/api/plans/${PLAN}`, { method: "DELETE", headers: { origin: "http://127.0.0.1:5151" } });
     expect(refused.status).toBe(409);
     expect(((await refused.json()) as any).error).toMatch(/deploy:site/);
+
+    // Export: what the site holds, one trip or all; an older site can't.
+    const exported = (await json(`/api/export?plan=${PLAN}`)).data;
+    expect(exported).toMatchObject({ format: "wanderlot-export", version: 1 });
+    expect(exported.trips.map((t: any) => [t.plan.id, t.destinations.length])).toEqual([[PLAN, 2]]);
+    expect((await json("/api/export")).data.trips).toHaveLength(1);
+    expect((await oldSite.request("/api/export")).status).toBe(409);
 
     const deleted = await json(`/api/plans/${PLAN}`, "DELETE");
     expect(deleted.data).toEqual({ ok: true });

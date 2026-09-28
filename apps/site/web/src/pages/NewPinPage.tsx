@@ -5,8 +5,7 @@ import { AuthLayout } from "../components/AuthLayout.tsx";
 import { PinField } from "../components/PinField.tsx";
 import { AuthError, useAuth } from "../data/auth.tsx";
 
-// Choosing a new 4-digit PIN while signed in: where a 6-digit PIN from before
-// the switch leads, and "Cambiar mi PIN" in the account menu.
+// Choosing a new PIN while signed in: "Cambiar mi PIN" in the account menu.
 export function NewPinPage() {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -37,9 +36,9 @@ export function NewPinPage() {
     <AuthLayout>
       <div className="flex flex-col gap-2">
         <Heading as="h1" size="headline">
-          Elige tu PIN nuevo
+          Cambia tu PIN
         </Heading>
-        <Text>Ahora los PIN son de 4 números. Elige uno para entrar a partir de ahora; el de antes deja de valer.</Text>
+        <Text>Elige un PIN nuevo de 4 números para entrar a partir de ahora; el de antes deja de valer.</Text>
       </div>
       {error && <Notice role="alert">{error}</Notice>}
       <form onSubmit={submit} className="flex flex-col gap-4" aria-label="Elegir PIN nuevo">

@@ -180,7 +180,7 @@ try {
   assert.match((await org.getByRole("listitem", { name: "Ana" }).textContent())!, /1\. \S+ · 2\. \S+ · 3\. /);
   await org.getByRole("button", { name: "Cerrar ya" }).click();
   await org.getByRole("button", { name: "Cerrar con 1 voto" }).click();
-  await org.getByText("Ganó").waitFor();
+  await org.getByText("Ganó", { exact: true }).waitFor();
   const winner = (await org.getByRole("heading", { level: 2 }).first().textContent())!.trim();
   await org.getByRole("button", { name: "Anunciar el resultado" }).click();
   assert.match(await org.getByLabel("Mensaje para el grupo").inputValue(), new RegExp(`nos vamos a ${winner}`));

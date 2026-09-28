@@ -40,7 +40,8 @@ The organising unit: one named trip window.
 | `maxPriceCents` | ceiling per person, flights and stay; `null` for no limit |
 | `status` | `draft` → `voting` → `closed` (see §4) |
 | `voteDeadline` | set when voting opens |
-| `winnerDestinationId` | set when closed |
+| `winnerDestinationId` | where they're going: set when closed; the vote's winner unless the organiser chose another |
+| `decidedNote` | optional, up to 300 characters: why the organiser chose another destination |
 
 A plan in `draft` exists only in the panel. The site sees a plan from its first
 publish onwards.
@@ -138,6 +139,10 @@ derived, not a third provenance kind:
 
 - On the site, a verified badge always shows its age: "Verificado hace 3 días".
   A stale one renders in the neutral tone rather than green.
+- A price checked for other dates is stale too: when a trip's dates change,
+  every checked proposal gets `forOtherDates` and shows "Precio de otras
+  fechas", and flight times read from a screenshot are dropped. Checking it
+  again clears the flag.
 - In the panel, publishing a stale or unverified proposal is allowed but asks
   for confirmation, and **opening a vote re-checks every verified `inVote`
   destination** first.
@@ -195,6 +200,10 @@ If two destinations are still level after all three, the result is a **tie**
 and the organiser picks one of the tied destinations in the panel's Votación
 screen; the site then shows it as the winner. There is no hidden fourth rule.
 
+Once closed, the organiser can also send the group to another destination in
+the vote, with an optional note ("Lo hablamos y preferimos Praga"). The count
+doesn't change: the site shows both where they're going and who won the vote.
+
 ### Lifecycle
 ```
 draft ──open vote (deadline)──▶ voting ──all 6 voted, or deadline passes──▶ closed
@@ -238,11 +247,8 @@ organiser brings each person in with a **one-time invite**; they choose a
 device. A **passkey** (Face ID, a fingerprint) is an optional extra for
 whoever wants it on a given device.
 
-PINs used to be 6 digits. Those still sign in ("Mi PIN tiene 6 números" on the
-sign-in screen), and doing so leads straight to choosing a new 4-digit PIN
-(`PUT /api/session/pin`, signed in, same rules as a new PIN), so everyone moves
-to 4 digits without a new invite. "Cambiar mi PIN" in the account menu uses the
-same screen.
+"Cambiar mi PIN" in the account menu sets a new one while signed in
+(`PUT /api/session/pin`, same rules as a new PIN); the old one stops working.
 
 ### Trips
 - Members belong to the group, and the organiser puts them on **trips**
@@ -465,7 +471,8 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `POST` | `/api/admin/plans/:planId/open-vote` | panel | `{ deadline }`; needs ≥ 2 in-vote destinations |
 | `GET` | `/api/admin/plans/:planId/vote` | panel | `{ status, voteDeadline, partySize, voted, tally, ballots, result }`: the live count and every ballot for the organiser; `result` once closed |
 | `POST` | `/api/admin/plans/:planId/close` | panel | close early; `409` unless voting with ≥ 1 ballot |
-| `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`; only among those tied for first |
+| `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`, only among those tied for first; or `{ destinationId, override: true, note? }`, any destination in the vote once closed (choosing the vote's own winner clears the note). Results carry `winnerId` (where they're going), `voteWinnerId` and `decidedNote`. Site API version 7 |
+| `GET` | `/api/admin/export?plan=` | panel | everything the group made, one trip or all: `{ format: "wanderlot-export", version: 1, exportedAt, settings, members, trips }`, each trip its snapshot, status, winner, note, members, ballots, comments with likes and ideas. No PIN hashes, passkeys, sessions or invites. Site API version 7 |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |
 | `GET` / `PUT` | `/api/admin/plans/:planId/members` | panel | who is on the trip: `[memberId]` |
 | `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
@@ -488,7 +495,7 @@ it). Calls that touch the site go through the admin API above.
 | `GET` | `/api/status` | research, flights and photo sources available here; whether the site answers, and whether it runs an older version than the panel (`GET /api/admin/version`) |
 | `GET` / `PUT` | `/api/settings` | the group's settings, stored on the site |
 | `GET` / `POST` | `/api/plans` | list (newest first) / create a draft |
-| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan |
+| `GET` / `PUT` | `/api/plans/:planId` | plan, proposals, editorial notes and participants / save the plan; new dates mark checked prices `forOtherDates` |
 | `GET` | `/api/trips` | the Viajes page: each trip with its proposal counts, participants and publish status |
 | `DELETE` | `/api/plans/:planId` | delete the trip here and on the site; `409` if the site is older than API version 6, touching nothing |
 | `PUT` | `/api/plans/:planId/participants` | `[memberId]`: who goes; sent to the site too |
@@ -506,7 +513,8 @@ it). Calls that touch the site go through the admin API above.
 | `POST` | `/api/plans/:planId/open-vote` | `{ deadline }`; returns the group-chat message |
 | `GET` | `/api/plans/:planId/vote` | who voted, reminder and result messages, the count once closed |
 | `POST` | `/api/plans/:planId/close` | close early |
-| `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie |
+| `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie; `{ destinationId, override: true, note? }` to go somewhere other than the vote's winner (`409` on a site older than API version 7) |
+| `GET` | `/api/export?plan=` | the site's export (above), for Viajes to download; `409` on a site older than API version 7 |
 | `GET` / `PUT` | `/api/members` | people and their access / add or rename |
 | `POST` | `/api/members/:id/invite` | a fresh one-time invite link |
 | `DELETE` | `/api/members/:id/sessions` | sign them out everywhere |
@@ -519,10 +527,13 @@ but its vote hasn't opened.
 
 ## 10. Out of scope for v1 / still open
 
-- **A hosted panel.** v1's panel is local only. A later option: serve it from
-  the same Cloudflare deployment under `/admin`, behind Cloudflare Access for
-  login, using `anthropic-api` (a Worker can't run the `claude` binary).
-- Plan-creation screen in the panel.
+What's planned next is in [ROADMAP.md](ROADMAP.md): a date vote, the trip
+page, getting to the airport, export, the panel hosted on the site with other
+AI providers (or none), and later languages and currencies.
+
+- **A hosted panel.** v1's panel is local only. ROADMAP §3 plans serving it
+  from the site under `/admin` for the organiser, with its data moved to the
+  site's database and AI optional (a Worker can't run the `claude` binary).
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.

@@ -2,7 +2,7 @@
 // from (the real API or the mocks); <PlanProvider> loads one plan through it
 // and hands screens a ready view with useSite().
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { avatarTint, initials, type CommentView, type Destination, type Plan, type PlanSummary, type TallyResult } from "@wanderlot/core";
+import { avatarTint, initials, type CommentView, type Destination, type Plan, type PlanSummary } from "@wanderlot/core";
 import { EmptyState, Main, Skeleton, buttonClasses } from "@wanderlot/ui";
 import type { Results, SiteSource } from "./source.ts";
 
@@ -64,7 +64,7 @@ export interface SiteApi {
   myBallot: { ranking: string[]; updatedAt: string } | null;
   closed: boolean;
   // Only once closed.
-  result: TallyResult | null;
+  result: Results | null;
   closedBallots: Results["ballots"] | null;
   comments: CommentView[];
   liked: string[];

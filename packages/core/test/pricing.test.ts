@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCheckedPrices, flightDetailsKnown, stayGroupCents, stayShareCents, totalPerPersonCents } from "../src/index.ts";
+import { applyCheckedPrices, flightDetailsKnown, markForOtherDates, stayGroupCents, stayShareCents, totalPerPersonCents } from "../src/index.ts";
 import { proposal } from "./fixtures.ts";
 
 // Lisbon: 98 € out + 102 € back per person; the flat is 204 € a night.
@@ -53,5 +53,23 @@ describe("what was checked with the prices", () => {
     expect(flightDetailsKnown({ provenance: { kind: "api", provider: "duffel", checkedAt: "2026-09-26T10:00:00Z" } })).toBe(true);
     expect(flightDetailsKnown({ provenance: { kind: "organiser", checkedAt: "2026-09-26T10:00:00Z", sources: [] } })).toBe(false);
     expect(flightDetailsKnown({ provenance: { kind: "organiser", checkedAt: "2026-09-26T10:00:00Z", sources: [], flightDetails: true } })).toBe(true);
+  });
+});
+
+describe("markForOtherDates", () => {
+  it("makes checked prices stale and hides their flight times; leaves research's alone", async () => {
+    const { trustState, trustLabel } = await import("../src/index.ts");
+    const now = new Date("2026-09-26T12:00:00Z");
+    const checked = { ...lis, provenance: { kind: "organiser" as const, checkedAt: "2026-09-26T10:00:00Z", sources: [], flightDetails: true } };
+    const moved = markForOtherDates(checked);
+    expect(moved.provenance).toEqual({ kind: "organiser", checkedAt: "2026-09-26T10:00:00Z", sources: [], forOtherDates: true });
+    const state = trustState(moved.provenance, now);
+    expect(state).toMatchObject({ kind: "stale", otherDates: true });
+    expect(trustLabel(state, "organiser")).toBe("Precio de otras fechas");
+    expect(flightDetailsKnown(moved)).toBe(false);
+    const api = markForOtherDates({ ...lis, provenance: { kind: "api" as const, provider: "duffel" as const, checkedAt: "2026-09-26T10:00:00Z" } });
+    expect(flightDetailsKnown(api)).toBe(false);
+    const research = { ...lis, provenance: { kind: "claude" as const, sources: [{ label: "x", url: "https://x.org" }] } };
+    expect(markForOtherDates(research)).toBe(research);
   });
 });

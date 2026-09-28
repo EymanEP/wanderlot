@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { ToastProvider } from "@wanderlot/ui";
@@ -65,6 +65,39 @@ describe("Viajes", () => {
     // Opening one with proposals goes to Revisar.
     await user.click(within(card("Noviembre 2026")).getByRole("button", { name: "Abrir" }));
     expect(await screen.findByRole("button", { name: /^Publicar/ })).toBeTruthy();
+  });
+});
+
+describe("Viajes · exportar", () => {
+  it("downloads one published trip or all of them as JSON", async () => {
+    const saved: { name: string; data: any }[] = [];
+    const create = URL.createObjectURL;
+    const click = HTMLAnchorElement.prototype.click;
+    let blob: Blob | null = null;
+    URL.createObjectURL = (b: Blob) => ((blob = b), "blob:export");
+    URL.revokeObjectURL = () => {};
+    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+      saved.push({ name: this.download, data: blob });
+    };
+    try {
+      const user = userEvent.setup();
+      renderAt("/");
+      const closed = await screen.findByRole("article", { name: "Puente de mayo 2026" });
+      // Only what's on the site can be exported.
+      expect(within(screen.getByRole("article", { name: "Semana Santa 2027" })).queryByRole("button", { name: "Exportar" })).toBeNull();
+      await user.click(within(closed).getByRole("button", { name: "Exportar" }));
+      expect(await screen.findByText("Puente de mayo 2026 exportado")).toBeTruthy();
+      await user.click(screen.getByRole("button", { name: "Exportar todo" }));
+      expect(await screen.findByText("Viajes exportados")).toBeTruthy();
+
+      expect(saved.map((s) => s.name)).toEqual([expect.stringMatching(/^wanderlot-.+-\d{4}-\d\d-\d\d\.json$/), expect.stringMatching(/^wanderlot-viajes-/)]);
+      const data = JSON.parse(await (saved[1]!.data as Blob).text());
+      expect(data).toMatchObject({ format: "wanderlot-export", version: 1 });
+      expect(data.trips.map((t: any) => t.plan.name)).toEqual(["Puente de mayo 2026"]);
+    } finally {
+      URL.createObjectURL = create;
+      HTMLAnchorElement.prototype.click = click;
+    }
   });
 });
 
@@ -246,6 +279,10 @@ describe("Revisar · capturas", () => {
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
     expect(dialog.getByText(/verá solo el precio, sin horarios/)).toBeTruthy();
+    // Google Flights, for this route on the trip's dates.
+    const search = dialog.getByRole("link", { name: /Buscar en Google Flights/ }).getAttribute("href")!;
+    expect(new URL(search).searchParams.get("q")).toMatch(/^Flights from MAD to KRK on \d{4}-\d\d-\d\d through \d{4}-\d\d-\d\d$/);
+    expect(within(card).getByRole("link", { name: "buscar en Google Flights" }).getAttribute("href")).toBe(search);
 
     const shot = new File(["png"], "vuelo.png", { type: "image/png" });
     await user.upload(dialog.getByLabelText("Leer captura del vuelo"), shot);
@@ -266,6 +303,31 @@ describe("Revisar · capturas", () => {
     // The checked times show; the stay is theirs.
     expect(await within(after).findByText(/^Vuelos: 272 € ida y vuelta por persona · Directo · 2 h 10 m · KLM/)).toBeTruthy();
     expect(within(after).getByText(/Apartamento con terraza en De Pijp$/)).toBeTruthy();
+  });
+
+  it("reads a pasted screenshot into the section being worked in, or asks which one it is", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialogEl = document.querySelector("dialog[open]") as HTMLElement;
+    const dialog = within(dialogEl);
+    const form = dialogEl.querySelector("form") as HTMLFormElement;
+    const image = (name: string) => ({ clipboardData: { files: [new File(["png"], name, { type: "image/png" })] } });
+
+    // Nothing worked in yet: which part is it?
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.paste(form, image("vuelo.png"));
+    const ask = await dialog.findByRole("group", { name: "¿De qué es la captura?" });
+    await user.click(within(ask).getByRole("button", { name: "Del vuelo" }));
+    expect(await dialog.findByText(/^Ida · 11:55 MAD → 14:05 KRK/)).toBeTruthy();
+    expect(dialog.queryByRole("group", { name: "¿De qué es la captura?" })).toBeNull();
+
+    // Pasting while in the stay goes straight there.
+    await user.click(dialog.getByLabelText("Alojamiento · € en total"));
+    fireEvent.paste(form, image("airbnb.png"));
+    expect(await dialog.findByDisplayValue("Apartamento con terraza en De Pijp")).toBeTruthy();
+    expect((dialog.getByLabelText("Alojamiento · € en total") as HTMLInputElement).value).toBe("1512");
   });
 
   it("hides research's times when only the price was checked", async () => {
@@ -361,6 +423,22 @@ describe("Votación", () => {
 
     await user.click(screen.getByRole("button", { name: "Anunciar el resultado" }));
     expect(((await screen.findByLabelText("Mensaje para el grupo")) as HTMLTextAreaElement).value).toContain("nos vamos a Marrakech");
+    await user.click(within(document.querySelector("dialog[open]") as HTMLElement).getByRole("button", { name: "Cerrar" }));
+
+    // The group talks it over and goes for another one: the count stays.
+    await user.click(screen.getByRole("button", { name: "Ir a otro destino" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    expect((dialog.getByRole("button", { name: "Elige un destino" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(dialog.getByRole("radio", { name: /Lisboa/ }));
+    await user.type(dialog.getByLabelText("Por qué (opcional)"), "Mejores vuelos");
+    await user.click(dialog.getByRole("button", { name: "Ir a Lisboa" }));
+    expect(await screen.findByText("Vais a")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Lisboa" })).toBeTruthy();
+    expect(screen.getByText("La votación la ganó Marrakech · «Mejores vuelos»")).toBeTruthy();
+    // And back.
+    await user.click(screen.getByRole("button", { name: "Volver a Marrakech" }));
+    expect(await screen.findByRole("heading", { name: "Marrakech" })).toBeTruthy();
+    expect(screen.queryByText("Vais a")).toBeNull();
   });
 });
 

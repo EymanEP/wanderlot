@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { addDaysIso, applyCheckedPrices, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { addDaysIso, applyCheckedPrices, markForOtherDates, slugify, tally, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   MOCK_NOW,
   SITE_URL,
@@ -98,6 +98,8 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const approved = e.proposals.filter((p) => p.review === "approved");
     return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null)]);
   };
+  // A trip whose vote already ran was published when it opened.
+  for (const e of entries.values()) if (e.plan.status !== "draft") published.set(e.plan.id, { at: MOCK_NOW.toISOString(), key: publishKey(e.plan.id) });
   const patchProposal = (planId: string, id: string, fn: (p: Proposal) => Proposal) => {
     const e = entry(planId);
     entries.set(planId, { ...e, proposals: e.proposals.map((p) => (p.id === id ? fn(p) : p)) });
@@ -119,7 +121,10 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       voted: ballots.map((b) => b.memberId),
       tally: counted,
       ballots: [...ballots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(({ memberId, ranking, updatedAt }) => ({ memberId, ranking, updatedAt })),
-      result: plan.status === "closed" ? { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId } : null,
+      result:
+        plan.status === "closed"
+          ? { ...counted, winnerId: plan.winnerDestinationId ?? counted.winnerId, voteWinnerId: counted.winnerId, decidedNote: plan.decidedNote ?? null }
+          : null,
     };
     const going = participants.get(planId) ?? [];
     const people = members.filter((m) => going.includes(m.id)).map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
@@ -197,7 +202,9 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       return { ...entry(planId), participants: ids };
     },
     async savePlan(p) {
-      entries.set(p.id, { ...entry(p.id), plan: p });
+      const e = entry(p.id);
+      const moved = e.plan.dateFrom !== p.dateFrom || e.plan.dateTo !== p.dateTo;
+      entries.set(p.id, { ...e, plan: p, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
       return p;
     },
     async generate(planId, opts, onProposal, signal, onStep) {
@@ -269,7 +276,9 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
           checkedAt: MOCK_NOW.toISOString(),
           sources: p.provenance.kind === "api" ? [] : p.provenance.sources,
           // As the server: times checked now, earlier, or by the API.
-          ...(prices.outbound || p.provenance.kind === "api" || (p.provenance.kind === "organiser" && p.provenance.flightDetails) ? { flightDetails: true } : {}),
+          ...(prices.outbound || (p.provenance.kind !== "claude" && !p.provenance.forOtherDates && (p.provenance.kind === "api" || p.provenance.flightDetails))
+            ? { flightDetails: true }
+            : {}),
         },
       }));
       return entry(planId).proposals.find((p) => p.id === id)!;
@@ -334,10 +343,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
       if (v.result?.winnerId) setPlan(planId, { winnerDestinationId: v.result.winnerId });
       return voteView(planId);
     },
-    async pickWinner(planId, destinationId) {
+    async pickWinner(planId, destinationId, opts = {}) {
       const v = voteView(planId);
-      if (!v.result?.tiedForFirst.includes(destinationId)) throw new Error("solo se elige entre los empatados");
-      setPlan(planId, { winnerDestinationId: destinationId });
+      if (!v.result) throw new Error("la votación sigue abierta");
+      if (!opts.override && !v.result.tiedForFirst.includes(destinationId)) throw new Error("solo se elige entre los empatados");
+      const own = destinationId === v.result.voteWinnerId;
+      setPlan(planId, { winnerDestinationId: destinationId, decidedNote: opts.override && !own ? opts.note || undefined : undefined });
       return voteView(planId);
     },
     members: async () => members,
@@ -363,6 +374,18 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
         inviteUrl: null,
         invite: m?.invite?.status === "valid" ? { ...m.invite, status: "cancelled" } : (m?.invite ?? null),
       });
+    },
+    async exportData(planId) {
+      const trips = [...entries.values()].filter((e) => published.has(e.plan.id) && (!planId || e.plan.id === planId));
+      if (planId && !trips.length) throw new Error("not found");
+      return {
+        format: "wanderlot-export",
+        version: 1,
+        exportedAt: MOCK_NOW.toISOString(),
+        settings,
+        members: members.map(({ id, name }) => ({ id, name })),
+        trips: trips.map((e) => ({ plan: e.plan, destinations: e.proposals.filter((p) => p.review === "approved"), status: e.plan.status })),
+      };
     },
   };
 }

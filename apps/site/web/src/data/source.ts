@@ -34,6 +34,10 @@ export interface PlanView {
 
 export interface Results extends TallyResult {
   ballots: { memberId: string; name?: string; ranking: string[] }[];
+  // When the group went somewhere other than the vote's winner: winnerId is
+  // where they're going, voteWinnerId the vote's own, decidedNote why.
+  voteWinnerId?: string | null;
+  decidedNote?: string | null;
 }
 
 export interface SiteSource {

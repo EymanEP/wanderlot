@@ -480,7 +480,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       ballots: [...plan.ballots]
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .map((b) => ({ memberId: b.memberId, ranking: b.ranking, updatedAt: b.updatedAt })),
-      result: plan.status === "closed" ? { ...tally, winnerId: plan.winnerDestinationId ?? tally.winnerId } : null,
+      result:
+        plan.status === "closed"
+          ? { ...tally, winnerId: plan.winnerDestinationId ?? tally.winnerId, voteWinnerId: tally.winnerId, decidedNote: plan.decidedNote ?? null }
+          : null,
     };
   }
 
@@ -501,16 +504,29 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json(await voteState(planId));
   });
 
-  // A tie for first after every rule: the organiser decides (SPEC §4).
+  // A tie for first after every rule: the organiser decides (SPEC §4). With
+  // override, the group went for another destination in the vote than the
+  // one that won; the count stays as it was, and the note says why.
   admin.put("/plans/:planId/winner", async (c) => {
     const planId = c.req.param("planId");
-    const body = z.object({ destinationId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {destinationId}" }, 400);
+    const body = z
+      .object({ destinationId: z.string().min(1), override: z.boolean().default(false), note: z.string().trim().max(300).optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {destinationId, override?, note?}" }, 400);
     const state = await voteState(planId);
     if (!state) return c.json({ error: "not found" }, 404);
     if (!state.result) return c.json({ error: "la votación sigue abierta" }, 409);
-    if (!state.result.tiedForFirst.includes(body.data.destinationId)) return c.json({ error: "solo se elige entre los empatados" }, 409);
-    await store.setStatus(planId, "closed", { winnerDestinationId: body.data.destinationId });
+    const { destinationId, override, note } = body.data;
+    if (override) {
+      const plan = (await store.getPlan(planId))!;
+      if (!plan.snapshot.destinations.some((d) => d.id === destinationId && d.inVote)) return c.json({ error: "ese destino no estaba en la votación" }, 409);
+      // Back to the vote's own winner: no note.
+      const own = destinationId === state.result.voteWinnerId;
+      await store.setStatus(planId, "closed", { winnerDestinationId: destinationId, decidedNote: own ? null : note || null });
+      return c.json(await voteState(planId));
+    }
+    if (!state.result.tiedForFirst.includes(destinationId)) return c.json({ error: "solo se elige entre los empatados" }, 409);
+    await store.setStatus(planId, "closed", { winnerDestinationId: destinationId });
     return c.json(await voteState(planId));
   });
 
@@ -542,6 +558,48 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   admin.get("/plans/:planId/members", async (c) => c.json(await store.planMembers(c.req.param("planId"))));
 
   admin.get("/version", (c) => c.json({ api: SITE_API_VERSION }));
+
+  // Everything the group made here, as one JSON file: the trips as published,
+  // how each one went, the votes, comments and suggestions. Sign-in secrets
+  // (PINs, passkeys, sessions, invites) stay out. ?plan= exports one trip.
+  admin.get("/export", async (c) => {
+    const only = c.req.query("plan");
+    const plans = (await store.plans()).filter((p) => !only || p.id === only);
+    if (only && !plans.length) return c.json({ error: "not found" }, 404);
+    const trips = await Promise.all(
+      plans.map(async (p) => {
+        const [members, ballots, comments, likes, suggestions] = await Promise.all([
+          store.planMembers(p.id),
+          store.ballots(p.id),
+          store.comments(p.id),
+          store.commentLikes(p.id),
+          store.suggestions(p.id),
+        ]);
+        return {
+          ...p.snapshot,
+          status: p.status,
+          voteDeadline: p.voteDeadline ?? null,
+          winnerDestinationId: p.winnerDestinationId ?? null,
+          decidedNote: p.decidedNote ?? null,
+          members,
+          ballots,
+          comments: [...comments].reverse().map((cm) => ({
+            ...cm,
+            likes: likes.filter((l) => l.commentId === cm.id).map(({ memberId, createdAt }) => ({ memberId, createdAt })),
+          })),
+          suggestions: suggestions.map(({ planId: _plan, ...s }) => s),
+        };
+      }),
+    );
+    return c.json({
+      format: "wanderlot-export",
+      version: 1,
+      exportedAt: iso(),
+      settings: { ...DEFAULT_SETTINGS, ...(await store.settings()) },
+      members: await store.members(),
+      trips,
+    });
+  });
 
   admin.get("/settings", async (c) => c.json({ ...DEFAULT_SETTINGS, ...(await store.settings()) }));
 
@@ -676,7 +734,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const voted = new Set(plan.ballots.map((b) => b.memberId));
     return c.json({
       // partySize: the people on the trip, who the vote waits for.
-      plan: { ...plan.snapshot.plan, partySize: plan.partySize, status: plan.status, voteDeadline: plan.voteDeadline, winnerDestinationId: plan.winnerDestinationId },
+      plan: { ...plan.snapshot.plan, partySize: plan.partySize, status: plan.status, voteDeadline: plan.voteDeadline, winnerDestinationId: plan.winnerDestinationId, decidedNote: plan.decidedNote },
       destinations: plan.snapshot.destinations,
       publishedAt: plan.snapshot.publishedAt,
       me,
@@ -711,6 +769,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({
       ...result,
       winnerId: plan.winnerDestinationId ?? result.winnerId,
+      voteWinnerId: result.winnerId,
+      decidedNote: plan.decidedNote ?? null,
       ballots: plan.ballots.map((b) => ({ memberId: b.memberId, name: names.get(b.memberId), ranking: b.ranking })),
     });
   });

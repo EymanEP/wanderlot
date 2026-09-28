@@ -6,7 +6,7 @@ import { BallotsList, LockedScoreboard, OutsideRow, Participation, RankRow, Scor
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { add, isComplete, moveDown, moveUp, pointsIfAdded, remove, sameRanking } from "../lib/ranking.ts";
-import { memberOf, names } from "../lib/view.ts";
+import { memberOf, names, overridden } from "../lib/view.ts";
 
 export function VotacionPage() {
   const site = useSite();
@@ -79,7 +79,13 @@ export function VotacionPage() {
             <>
               <span className="text-[13px] font-bold">Nos vamos a</span>
               <span className="text-[28px] font-extrabold tracking-[-0.03em]">{winner ?? "Empate"}</span>
-              <span className="text-[13px]">{winner ? `${result!.rows[0]!.points} puntos de ${plan.partySize * 6}.` : `Decide ${group.organiserName} entre los empatados.`}</span>
+              <span className="text-[13px]">
+                {overridden(result)
+                  ? `Ganó la votación ${cityOf(result!.voteWinnerId!)}, pero al final elegimos ${winner}${result!.decidedNote ? `: «${result!.decidedNote}»` : "."}`
+                  : winner
+                    ? `${result!.rows.find((r) => r.id === result!.winnerId)?.points ?? 0} puntos de ${plan.partySize * 6}.`
+                    : `Decide ${group.organiserName} entre los empatados.`}
+              </span>
             </>
           ) : (
             <>
@@ -148,7 +154,7 @@ export function VotacionPage() {
         </div>
 
         <aside className="flex shrink-0 flex-col gap-[18px] lg:w-[396px]">
-          {result ? <Scoreboard result={result} cityOf={cityOf} /> : <LockedScoreboard cities={inVote.map((d) => d.place.city)} deadline={longDate(deadline)} />}
+          {result ? <Scoreboard result={result} cityOf={cityOf} /> : <LockedScoreboard cities={inVote.map((d) => d.place.city)} deadline={longDate(deadline)} partySize={plan.partySize} />}
           {closed ? (
             <BallotsList ballots={closedBallots ?? []} cityOf={cityOf} members={(id) => memberOf(members, id)} />
           ) : (

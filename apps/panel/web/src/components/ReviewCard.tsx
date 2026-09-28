@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { euros, standardImageUrl } from "@wanderlot/core";
+import { euros, googleFlightsUrl, standardImageUrl } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
@@ -80,9 +80,12 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         </div>
 
         {trust === "unverified" && <Notice>Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar.</Notice>}
-        {trust === "stale" && (
-          <Notice tone="neutral">El precio se consultó {trustText(p, now).replace(/^(Verificado|Comprobado) /, "")}. Vuelve a comprobarlo antes de abrir la votación.</Notice>
-        )}
+        {trust === "stale" &&
+          (p.provenance.kind !== "claude" && p.provenance.forOtherDates ? (
+            <Notice tone="neutral">Este precio se comprobó para otras fechas: el viaje ha cambiado de días. Vuelve a comprobarlo.</Notice>
+          ) : (
+            <Notice tone="neutral">El precio se consultó {trustText(p, now).replace(/^(Verificado|Comprobado) /, "")}. Vuelve a comprobarlo antes de abrir la votación.</Notice>
+          ))}
 
         {showSources && (
           <ul id={`${p.id}-sources`} className="m-0 flex list-none flex-col gap-1.5 rounded-xl bg-surface-2 p-3 text-[13px]">
@@ -117,7 +120,16 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             ·{" "}
             <button type="button" onClick={onEditPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
               {p.provenance.kind === "organiser" ? "cambiar precios" : "poner precios reales"}
-            </button>
+            </button>{" "}
+            ·{" "}
+            <a
+              href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-accent hover:text-accent-hover"
+            >
+              buscar en Google Flights
+            </a>
           </span>
           <div className="flex shrink-0 gap-2">
             {discarded ? (

@@ -25,7 +25,7 @@ export interface AuthClient {
   // With a PIN: works on any device.
   acceptInviteWithPin(token: string, pin: string): Promise<Member>;
   signInWithPin(name: string, pin: string): Promise<Member>;
-  // A new PIN while signed in: moves a 6-digit PIN from before to 4 digits.
+  // A new PIN while signed in ("Cambiar mi PIN").
   changePin(pin: string): Promise<void>;
   // With a passkey on this device, for those who want Face ID or a fingerprint.
   acceptInvite(token: string): Promise<Member>;
@@ -121,11 +121,10 @@ export function mockAuthClient(startSignedIn = true): AuthClient {
       if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
       return (member = { id: ME.id, name: ME.name });
     },
-    // The design's PIN for everyone is 4801; 480152 stands for a 6-digit one
-    // from before the switch to 4.
+    // The design's PIN for everyone is 4801.
     signInWithPin: async (name, pin) => {
       await wait();
-      if ((pin !== "4801" && pin !== "480152") || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
+      if (pin !== "4801" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
       return (member = { id: ME.id, name: ME.name });
     },
     changePin: async (pin) => {

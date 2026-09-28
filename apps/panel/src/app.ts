@@ -3,7 +3,7 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, slugify, type Proposal, type VoteState } from "@wanderlot/core";
+import { FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, addDaysIso, applyCheckedPrices, markForOtherDates, slugify, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
@@ -181,6 +181,16 @@ export function createPanel({
     return c.json({ ok: true });
   });
 
+  // What the group made on the site (votes, comments, ideas), as JSON to keep.
+  // Research and drafts live here in data/panel.json already.
+  app.get("/api/export", async (c) => {
+    if ((await site.version()) < 7) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe exportar. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
+    const planId = c.req.query("plan");
+    return c.json(await site.exportData(planId || undefined));
+  });
+
   // A new trip window, as a draft (SPEC §1).
   app.post("/api/plans", async (c) => {
     const body = NewPlan.safeParse(await c.req.json().catch(() => null));
@@ -205,7 +215,12 @@ export function createPanel({
     const parsed = Plan.safeParse({ ...(await c.req.json()), id: c.req.param("planId") });
     if (!parsed.success) return c.json({ error: "invalid plan", issues: parsed.error.issues }, 400);
     const plan = parsed.data;
-    store.update(plan.id, (e) => ({ entry: { proposals: [], editorial: {}, ...e, plan }, result: null }));
+    store.update(plan.id, (e) => {
+      // New dates: prices checked for the old ones no longer hold (ROADMAP 1.4).
+      const moved = e && (e.plan.dateFrom !== plan.dateFrom || e.plan.dateTo !== plan.dateTo);
+      const proposals = moved ? e.proposals.map(markForOtherDates) : (e?.proposals ?? []);
+      return { entry: { editorial: {}, ...e, proposals, plan }, result: null };
+    });
     return c.json(plan);
   });
 
@@ -414,7 +429,7 @@ export function createPanel({
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
     const prev = proposal.provenance;
     // Times checked now, or on an earlier check that this one keeps.
-    const flightDetails = body.data.outbound !== undefined || (prev.kind === "organiser" && prev.flightDetails === true) || prev.kind === "api";
+    const flightDetails = body.data.outbound !== undefined || (prev.kind !== "claude" && !prev.forOtherDates && (prev.kind === "api" || prev.flightDetails === true));
     const updated: Proposal = {
       ...applyCheckedPrices(proposal, body.data, entry.plan.nights),
       provenance: {
@@ -566,7 +581,12 @@ export function createPanel({
     // A tie waits for the organiser's pick before anything is announced.
     const announcement =
       state.result && (state.result.winnerId || state.result.tiedForFirst.length === 0)
-        ? voteClosedMessage(entry.plan, state.result.winnerId ? (cities[state.result.winnerId] ?? state.result.winnerId) : null, siteUrl)
+        ? voteClosedMessage(
+            entry.plan,
+            state.result.winnerId ? (cities[state.result.winnerId] ?? state.result.winnerId) : null,
+            siteUrl,
+            state.result.voteWinnerId ? (cities[state.result.voteWinnerId] ?? state.result.voteWinnerId) : null,
+          )
         : null;
     return { ...state, people, cities, reminder, announcement };
   }
@@ -587,9 +607,16 @@ export function createPanel({
   app.put("/api/plans/:planId/winner", async (c) => {
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
-    const body = z.object({ destinationId: z.string().min(1) }).safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {destinationId}" }, 400);
-    return c.json(await voteView(planId, await site.pickWinner(planId, body.data.destinationId)));
+    const body = z
+      .object({ destinationId: z.string().min(1), override: z.boolean().optional(), note: z.string().trim().max(300).optional() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {destinationId, override?, note?}" }, 400);
+    const { destinationId, ...opts } = body.data;
+    // Going somewhere other than the vote's winner needs a site that knows how.
+    if (opts.override && (await site.version()) < 7) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe cambiar de destino. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
+    return c.json(await voteView(planId, await site.pickWinner(planId, destinationId, opts)));
   });
 
   app.post("/api/plans/:planId/open-vote", async (c) => {
