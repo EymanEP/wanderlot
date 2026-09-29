@@ -71,6 +71,24 @@ export interface ResearchProvider {
   // "Preparar el viaje": the trip page's guide and how to get there, shaped
   // by guide.ts's schema. Optional: without it the organiser writes it.
   guide?(req: GuideRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown>;
+  // The same work, handed to the AI's own servers to run in the background
+  // and checked on later (ROADMAP 3.3): how the panel at /admin searches,
+  // since a Worker request can't wait minutes. Absent: not possible.
+  background?: BackgroundAi;
+}
+
+// What a background job does: research for a trip, or its guide.
+export type BackgroundTask = { kind: "research"; req: SearchRequest } | { kind: "guide"; req: GuideRequest };
+
+// "running" may name a new id: the job went on in a new request (a search
+// that paused and was resumed).
+export type BackgroundCheck = { state: "running"; id?: string } | { state: "done"; raw: unknown } | { state: "failed"; error: string };
+
+export interface BackgroundAi {
+  // Resolves to the AI's id for the job.
+  start(task: BackgroundTask): Promise<string>;
+  check(id: string, task: BackgroundTask): Promise<BackgroundCheck>;
+  cancel(id: string): Promise<void>;
 }
 
 export type { Source };

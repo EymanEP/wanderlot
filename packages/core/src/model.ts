@@ -326,5 +326,5 @@ export interface SuggestionView {
 // 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
 // 8: the date vote. 9: the trip page. 10: the panel's data on the site, and
 // the panel at /admin. 11: research by other AIs, including estimates
-// without sources.
-export const SITE_API_VERSION = 11;
+// without sources. 12: searching from /admin in the background.
+export const SITE_API_VERSION = 12;

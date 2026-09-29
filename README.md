@@ -186,7 +186,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `OPENAI_API_KEY`, `OPENAI_MODEL` | panel | — / `gpt-5` (research through OpenAI, with web search) |
 | `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_NAME` | panel | — (any OpenAI-compatible endpoint; no web search, so prices are estimates) |
 | `WANDERLOT_AI` | panel | the first AI set up; Ajustes changes it |
-| `WANDERLOT_SITE_AI` | `deploy:site` | — (`1`: copy the AI keys to the site, so the panel at `/admin` reads screenshots) |
+| `WANDERLOT_SITE_AI` | `deploy:site` | — (`1`: copy the AI keys to the site, so the panel at `/admin` reads screenshots and, with Claude's API or OpenAI, searches in the background) |
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |

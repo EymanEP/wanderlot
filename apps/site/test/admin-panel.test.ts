@@ -141,14 +141,50 @@ describe("the panel at /admin", () => {
     expect(await store.panelVersions()).toEqual({});
   });
 
-  it("uses an AI key set on the site to read screenshots, but leaves searching to the laptop", async () => {
-    site = createApp({ store, adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, ai: { OPENAI_API_KEY: "sk-test" } });
+  it("searches in the background with an AI key set on the site, and the laptop sees the results", async () => {
+    // OpenAI's background mode: queued, then running, then done.
+    const answer = {
+      proposals: [
+        {
+          place: { city: "Lisboa", country: "Portugal", iata: "LIS" },
+          category: "ciudad",
+          outbound: { from: "MAD", to: "LIS", departAt: "2026-11-07T07:20:00+01:00", arriveAt: "2026-11-07T07:40:00+00:00", carrier: "TAP", flightNumber: "TP1017", stops: 0, priceCents: 6000 },
+          inbound: { from: "LIS", to: "MAD", departAt: "2026-11-14T19:00:00+00:00", arriveAt: "2026-11-14T21:20:00+01:00", carrier: "TAP", flightNumber: "TP1018", stops: 0, priceCents: 6000 },
+          stays: [],
+          todo: [],
+          see: [],
+          sources: [{ label: "TAP", url: "https://www.flytap.com" }],
+          pros: ["Vuelo corto"],
+          cons: [],
+          weather: "17 °C",
+          photoSubjects: ["Alfama"],
+        },
+      ],
+    };
+    const calls: string[] = [];
+    let polls = 0;
+    const openai = (async (url: string, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(`${init?.method ?? "GET"} ${path}`);
+      if (path === "/v1/responses") {
+        const body = JSON.parse(String(init!.body));
+        expect(body).toMatchObject({ background: true, store: true, tools: [{ type: "web_search" }] });
+        expect(body.stream).toBeUndefined();
+        return Response.json({ id: "resp_1", status: "queued" });
+      }
+      if (path === "/v1/responses/resp_1/cancel") return Response.json({ id: "resp_1", status: "cancelled" });
+      polls++;
+      return polls < 2
+        ? Response.json({ id: "resp_1", status: "in_progress" })
+        : Response.json({ id: "resp_1", status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(answer) }] }] });
+    }) as typeof fetch;
+    site = createApp({ store, adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, ai: { OPENAI_API_KEY: "sk-test" }, aiFetch: openai });
     const client = siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init));
     laptop = createPanel({ store: new PanelStore(sitePanelBackend(client)), flights: {} as FlightProvider, research: {} as ResearchProvider, site: client, siteUrl: ORIGIN, now: () => clock });
     const cookie = await signIn();
     await onLaptop("/api/plans/noviembre", "PUT", plan("noviembre", "Noviembre 2026"));
 
-    expect(await (await onPhone("/api/status", { cookie })).json()).toMatchObject({ hosted: true, research: "openai-api", ai: { name: "OpenAI", search: true } });
+    expect(await (await onPhone("/api/status", { cookie })).json()).toMatchObject({ hosted: true, research: "openai-api", ai: { name: "OpenAI", search: true, background: true } });
     const ai = (await (await onPhone("/api/ai", { cookie })).json()) as any;
     expect(ai).toMatchObject({ active: "openai-api", canChoose: false });
     expect(ai.options.find((o: any) => o.id === "anthropic-api").setup).toMatch(/wrangler secret put ANTHROPIC_API_KEY/);
@@ -156,13 +192,43 @@ describe("the panel at /admin", () => {
     expect(JSON.stringify(ai)).not.toContain("sk-test");
     expect((await onPhone("/api/ai", { method: "PUT", cookie, body: { id: "openai-api" } })).status).toBe(409);
 
-    const research = await onPhone("/api/plans/noviembre/generate", {
+    // The phone starts a search: it answers at once, with the job.
+    const search = { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: false, suggestThings: false, count: 1 };
+    const started = await onPhone("/api/plans/noviembre/generate", { method: "POST", cookie, body: search });
+    expect(started.status).toBe(202);
+    expect(((await started.json()) as any).job).toMatchObject({ kind: "research", ai: "openai-api", aiName: "OpenAI", status: "running", startedAt: clock.toISOString() });
+    // One at a time per trip.
+    expect((await onPhone("/api/plans/noviembre/generate", { method: "POST", cookie, body: search })).status).toBe(409);
+
+    // Still running when the phone checks; the laptop's check finds it done.
+    expect(((await (await onPhone("/api/plans/noviembre/job", { cookie })).json()) as any).job.status).toBe("running");
+    expect((await onLaptop("/api/plans/noviembre/job")).data.job).toMatchObject({ status: "done", added: 1 });
+    const trip = (await onLaptop("/api/plans/noviembre")).data;
+    expect(trip.proposals.map((p: any) => [p.id, p.review, p.provenance.by])).toEqual([["lis", "pending", "OpenAI"]]);
+    expect(trip.editorial.lis).toMatchObject({ pros: ["Vuelo corto"], photoQueries: ["Alfama"] });
+    expect(calls).toEqual(["POST /v1/responses", "GET /v1/responses/resp_1", "GET /v1/responses/resp_1"]);
+
+    // Clearing how it ended; a new one can be cancelled.
+    expect((await onPhone("/api/plans/noviembre/job", { method: "DELETE", cookie })).status).toBe(200);
+    expect((await onPhone("/api/plans/noviembre/generate", { method: "POST", cookie, body: search })).status).toBe(202);
+    await onPhone("/api/plans/noviembre/job", { method: "DELETE", cookie });
+    expect(calls.at(-1)).toBe("POST /v1/responses/resp_1/cancel");
+    expect((await onLaptop("/api/plans/noviembre/job")).data.job).toBeNull();
+  });
+
+  it("says which AIs can search from the site", async () => {
+    site = createApp({ store, adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, ai: { AI_BASE_URL: "https://openrouter.ai/api/v1", AI_API_KEY: "k", AI_MODEL: "m" } });
+    const client = siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init));
+    laptop = createPanel({ store: new PanelStore(sitePanelBackend(client)), flights: {} as FlightProvider, research: {} as ResearchProvider, site: client, siteUrl: ORIGIN, now: () => clock });
+    const cookie = await signIn();
+    await onLaptop("/api/plans/noviembre", "PUT", plan("noviembre", "Noviembre 2026"));
+    const res = await onPhone("/api/plans/noviembre/generate", {
       method: "POST",
       cookie,
       body: { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: false, suggestThings: false },
     });
-    expect(research.status).toBe(409);
-    expect(((await research.json()) as any).error).toMatch(/panel de tu ordenador/);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as any).error).toMatch(/openrouter.ai no puede buscar en segundo plano/);
   });
 
   it("keeps invite links sealed in the database, and both panels can copy them", async () => {

@@ -14,8 +14,8 @@ What this roadmap covers:
 
 **Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
 phase 1 (2.3) and the Tricount link (2.4), the export (2.5), the panel on the
-site (3.1), one store (3.2) and the first part of other AIs (3.3). Everything
-else is still a plan.
+site (3.1), one store (3.2) and other AIs (3.3, all but other local
+commands). Everything else is still a plan.
 
 **Legend**
 
@@ -483,9 +483,19 @@ system:
   flight times until the price dialog adds them.
 - **The panel at `/admin` reads screenshots** with a key shared from the
   laptop (`npm run setup` asks; `npm run deploy:site` stores it as Worker
-  secrets). It still doesn't search or prepare the guide.
+  secrets).
+
+**Second part done** (site API 12; no migration): **the panel at `/admin`
+searches and prepares the guide** in the background, on the AI's own
+servers: a Message Batch with Claude's API, background mode with OpenAI's.
+Starting one returns at once; the job is kept with the trip, so the phone
+can be closed and the laptop sees it too, and each check is a few quick
+requests, within a Worker's limits on the free plan. What it finds is saved
+as a streamed search would save it. OpenAI-compatible endpoints can't run in
+the background, so there they still search from the laptop.
+
 - Not yet: `codex` and `opencode` as local commands (each needs checking
-  first), and research running on the site in the background.
+  first).
 
 ---
 
@@ -525,8 +535,8 @@ Not planned in detail yet. They wait until the flows above are in use.
 4. **The panel from anywhere.**
    - ~~**3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
      laptop overwrite each other.~~ Done, together.
-   - **3.3 (other AIs).** First part done: Ajustes, OpenAI and compatible
-     endpoints, adding by hand, screenshots at `/admin`. Next, research on
-     the site in the background.
+   - ~~**3.3 (other AIs).**~~ Done: Ajustes, OpenAI and compatible
+     endpoints, adding by hand, and searching from `/admin` in the
+     background. Left: `codex` and `opencode` as local commands.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
 6. **Later:** languages and currency.

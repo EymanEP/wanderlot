@@ -163,7 +163,7 @@ describe("an OpenAI-compatible endpoint", () => {
 describe("choosing the AI", () => {
   const stub = (name: string): ResearchProvider => ({ who: { by: name }, extract: async () => ({}), research: async function* () {} });
   const entry = (id: AiEntry["option"]["id"], ready: boolean): AiEntry => ({
-    option: { id, name: id, model: null, ready, setup: `configura ${id}`, search: true, images: true },
+    option: { id, name: id, model: null, ready, setup: `configura ${id}`, search: true, images: true, background: false },
     make: () => stub(id),
   });
 
@@ -219,8 +219,8 @@ describe("the panel with other AIs", () => {
       flights: {} as FlightProvider,
       ai: new AiChoice(
         [
-          { option: { id: "claude-cli", name: "Claude (comando claude)", model: null, ready: false, setup: "Instala Claude Code", search: true, images: true }, make: () => estimates },
-          { option: { id: "compatible-api", name: "Mistral", model: "mistral-large", ready: true, setup: "", search: false, images: true }, make: () => estimates },
+          { option: { id: "claude-cli", name: "Claude (comando claude)", model: null, ready: false, setup: "Instala Claude Code", search: true, images: true, background: false }, make: () => estimates },
+          { option: { id: "compatible-api", name: "Mistral", model: "mistral-large", ready: true, setup: "", search: false, images: true, background: false }, make: () => estimates },
         ],
         null,
         (id) => saved.push(id),
@@ -291,5 +291,63 @@ describe("the model", () => {
     expect(check(base)).toBe(false);
     expect(check({ ...base, estimate: true, by: "Mistral" })).toBe(true);
     expect(check({ kind: "claude", sources: [{ label: "x", url: "https://x.test" }] })).toBe(true);
+  });
+});
+
+describe("Claude in the background", () => {
+  // A stand-in for the Message Batches API: each batch ends with the next
+  // queued answer.
+  function fakeBatches(answers: { stop_reason: string; content: unknown[] }[]) {
+    const created: any[] = [];
+    let n = 0;
+    let retrieved = 0;
+    const api = {
+      create: async (body: any) => {
+        created.push(body);
+        return { id: `batch_${++n}` };
+      },
+      // Still processing the first time it's asked about, ended after.
+      retrieve: async () => ({ processing_status: retrieved++ === 0 ? "in_progress" : "ended" }),
+      results: async (id: string) =>
+        (async function* () {
+          const a = answers[Number(id.split("_")[1]) - 1]!;
+          yield { custom_id: "wanderlot", result: { type: "succeeded", message: a } };
+        })(),
+      cancel: async () => ({}),
+    };
+    return { api, created };
+  }
+
+  it("runs research as a batch, resumes a paused search once, and reads the answer", async () => {
+    const { anthropicProvider } = await import("../src/providers/anthropic.ts");
+    const answer = lisbon([{ label: "TAP", url: "https://www.flytap.com" }]);
+    const { api, created } = fakeBatches([
+      { stop_reason: "pause_turn", content: [{ type: "text", text: "Sigo buscando" }] },
+      { stop_reason: "end_turn", content: [{ type: "text", text: JSON.stringify(answer) }] },
+    ]);
+    const ai = anthropicProvider({ stream: (() => { throw new Error("unused"); }) as any, batches: api as any });
+    const task = { kind: "research" as const, req: REQ };
+    const id = await ai.background!.start(task);
+    expect(created[0].requests[0].params).toMatchObject({ tools: [{ type: "web_search_20260209" }], output_config: { format: { type: "json_schema" } } });
+    // No refusal fallback: the Batches API doesn't take it.
+    expect(created[0].requests[0].params.fallbacks).toBeUndefined();
+    expect(await ai.background!.check(id, task)).toEqual({ state: "running" });
+    const resumed = await ai.background!.check(id, task);
+    expect(resumed).toEqual({ state: "running", id: "batch_2#resumed" });
+    expect(created[1].requests[0].params.messages.map((m: any) => m.role)).toEqual(["user", "assistant"]);
+    expect(await ai.background!.check("batch_2#resumed", task)).toEqual({ state: "done", raw: answer });
+  });
+
+  it("fails the job on a refusal, or a second pause", async () => {
+    const { anthropicProvider } = await import("../src/providers/anthropic.ts");
+    const task = { kind: "research" as const, req: REQ };
+    const refused = fakeBatches([{ stop_reason: "refusal", content: [] }]);
+    await refused.api.retrieve();
+    const a = anthropicProvider({ stream: (() => { throw new Error("unused"); }) as any, batches: refused.api as any });
+    expect(await a.background!.check("batch_1", task)).toMatchObject({ state: "failed", error: /no ha querido/ });
+    const paused = fakeBatches([{ stop_reason: "pause_turn", content: [] }, { stop_reason: "pause_turn", content: [] }]);
+    await paused.api.retrieve();
+    const b = anthropicProvider({ stream: (() => { throw new Error("unused"); }) as any, batches: paused.api as any });
+    expect(await b.background!.check("batch_2#resumed", task)).toMatchObject({ state: "failed", error: /tardó demasiado/ });
   });
 });

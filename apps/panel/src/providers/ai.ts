@@ -21,6 +21,9 @@ export interface AiOption {
   // Searches the web (otherwise prices are estimates), and reads images.
   search: boolean;
   images: boolean;
+  // Can run a search on its own servers and be checked on later: what the
+  // panel at /admin needs to search.
+  background: boolean;
 }
 
 export interface AiView {
@@ -51,7 +54,7 @@ export interface AiEnv {
 
 // The API providers, in order of preference. `anthropic` builds the
 // Anthropic one (its SDK loads only where it's used).
-export function apiEntries(env: AiEnv, anthropic: (key: string) => ResearchProvider, where: "local" | "site"): AiEntry[] {
+export function apiEntries(env: AiEnv, anthropic: (key: string) => ResearchProvider, where: "local" | "site", fetcher?: typeof fetch): AiEntry[] {
   const secret = (name: string) => (where === "local" ? `Añade ${name} a .env (npm run setup) y reinicia el panel.` : `Guárdala en el sitio: npx wrangler secret put ${name} (en apps/site).`);
   const openaiModel = env.OPENAI_MODEL || OPENAI_MODEL;
   let host = "";
@@ -61,12 +64,12 @@ export function apiEntries(env: AiEnv, anthropic: (key: string) => ResearchProvi
   const compatibleName = env.AI_NAME || host || "Otra IA";
   return [
     {
-      option: { id: "anthropic-api", name: "Claude (API de Anthropic)", model: null, ready: !!env.ANTHROPIC_API_KEY, setup: secret("ANTHROPIC_API_KEY"), search: true, images: true },
+      option: { id: "anthropic-api", name: "Claude (API de Anthropic)", model: null, ready: !!env.ANTHROPIC_API_KEY, setup: secret("ANTHROPIC_API_KEY"), search: true, images: true, background: true },
       make: () => anthropic(env.ANTHROPIC_API_KEY!),
     },
     {
-      option: { id: "openai-api", name: "OpenAI", model: openaiModel, ready: !!env.OPENAI_API_KEY, setup: secret("OPENAI_API_KEY"), search: true, images: true },
-      make: () => openaiProvider({ apiKey: env.OPENAI_API_KEY!, model: openaiModel, baseUrl: OPENAI_URL, api: "responses", name: "OpenAI" }),
+      option: { id: "openai-api", name: "OpenAI", model: openaiModel, ready: !!env.OPENAI_API_KEY, setup: secret("OPENAI_API_KEY"), search: true, images: true, background: true },
+      make: () => openaiProvider({ apiKey: env.OPENAI_API_KEY!, model: openaiModel, baseUrl: OPENAI_URL, api: "responses", name: "OpenAI", ...(fetcher ? { fetch: fetcher } : {}) }),
     },
     {
       option: {
@@ -80,8 +83,10 @@ export function apiEntries(env: AiEnv, anthropic: (key: string) => ResearchProvi
             : "Guarda AI_BASE_URL, AI_API_KEY y AI_MODEL en el sitio con npx wrangler secret put (en apps/site).",
         search: false,
         images: true,
+        background: false,
       },
-      make: () => openaiProvider({ apiKey: env.AI_API_KEY!, model: env.AI_MODEL!, baseUrl: env.AI_BASE_URL!.replace(/\/+$/, ""), api: "chat", name: compatibleName }),
+      make: () =>
+        openaiProvider({ apiKey: env.AI_API_KEY!, model: env.AI_MODEL!, baseUrl: env.AI_BASE_URL!.replace(/\/+$/, ""), api: "chat", name: compatibleName, ...(fetcher ? { fetch: fetcher } : {}) }),
     },
   ];
 }

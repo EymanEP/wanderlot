@@ -32,6 +32,7 @@ import {
   useToast,
 } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
+import { JobCard } from "../components/JobCard.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import type { ScreenshotImage, SearchStep, TripView } from "../data/backend.ts";
 import { usePanel, usePlan } from "../data/store.tsx";
@@ -93,7 +94,7 @@ function stepText(step: SearchStep): string {
 // prices, have Claude draft the guide and how to get there, edit it, add the
 // stay's details and the Tricount link, and publish it for the group.
 export function ViajePage() {
-  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, now } = usePanel();
+  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const [view, setView] = useState<TripView | null>(null);
@@ -125,6 +126,14 @@ export function ViajePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.id, plan.winnerDestinationId]);
 
+  // A guide prepared in the background (the panel at /admin): read the trip
+  // page again once it's done, here or on another device.
+  const job = state.job?.kind === "guide" ? state.job : null;
+  useEffect(() => {
+    if (job?.status === "done") void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status]);
+
   // The group's home town, once the settings have loaded.
   useEffect(() => {
     if (state.settings?.homeTown) setHome((h) => h || state.settings!.homeTown!);
@@ -142,6 +151,7 @@ export function ViajePage() {
     setPreparing([]);
     try {
       const t = await prepareTrip(home.trim(), (s) => setPreparing((steps) => [...(steps ?? []), s]));
+      if ("job" in t) return;
       setDraft(t);
       setView((v) => (v ? { ...v, trip: t } : v));
       setDirty(false);
@@ -205,10 +215,10 @@ export function ViajePage() {
   }
 
   const checked = destination ? pricesChecked(destination, now) : false;
-  // Research needs an AI, and runs on the laptop, not the panel the site
-  // serves (it takes minutes).
+  // Research needs an AI; the panel the site serves needs one that runs in
+  // the background (it takes minutes), and one guide at a time.
   const hosted = !!state.status?.hosted;
-  const claude = state.status?.research !== "none" && !hosted;
+  const claude = state.status?.research !== "none" && (!hosted || !!state.status?.ai?.background) && job?.status !== "running";
   const ai = state.status?.ai?.name ?? "Claude";
 
   return (
@@ -227,7 +237,7 @@ export function ViajePage() {
                 )}
                 <Button
                   disabled={!!preparing || !claude}
-                  title={claude ? undefined : hosted ? "Prepáralo desde el panel de tu ordenador" : "Necesita una IA: mira en Ajustes"}
+                  title={claude ? undefined : job?.status === "running" ? "Ya se está preparando" : "Necesita una IA: mira en Ajustes"}
                   onClick={() => setAsking(true)}
                 >
                   {draft?.preparedAt ? "Volver a preparar" : `Preparar con ${ai}`}
@@ -282,6 +292,8 @@ export function ViajePage() {
             </ol>
           </Card>
         )}
+
+        {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(`No se pudo: ${e.message}`))} />}
 
         {preparing && (
           <Card variant="raised" role="region" aria-label="Preparando el viaje" className="flex flex-col gap-2">

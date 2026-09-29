@@ -6,7 +6,7 @@ import { z } from "zod";
 import { extractPrompt, extractSchemas, type ExtractImage } from "./extract.ts";
 import { GuideEstimate, GuideOutput, guidePrompt } from "./guide.ts";
 import { EstimateOutput, ResearchOutput, SYSTEM, SYSTEM_ESTIMATE, buildPrompt, toResults, type Researcher } from "./research.ts";
-import type { ResearchProgress, ResearchProvider } from "./types.ts";
+import type { BackgroundAi, BackgroundTask, ResearchProgress, ResearchProvider } from "./types.ts";
 
 export const OPENAI_URL = "https://api.openai.com/v1";
 
@@ -48,7 +48,74 @@ export function openaiProvider(cfg: OpenAiConfig): ResearchProvider {
       yield* toResults(req, out, who);
     },
     guide: (req, signal, onProgress) => ask({ prompt: guidePrompt(req, estimate), schema: estimate ? GuideEstimate : GuideOutput, search: !estimate, signal, onProgress }),
+    // OpenAI itself runs a request in the background and keeps it to be
+    // fetched later; other endpoints can't.
+    ...(cfg.api === "responses" ? { background: background(cfg) } : {}),
   };
+}
+
+// The Responses API's background mode: start returns at once; each check is
+// one quick request, so the panel at /admin can search within a Worker's
+// limits (ROADMAP 3.3).
+function background(cfg: OpenAiConfig): BackgroundAi {
+  const ask = (task: BackgroundTask): Ask =>
+    task.kind === "research"
+      ? { prompt: buildPrompt(task.req, { by: cfg.name }), schema: ResearchOutput, search: true }
+      : { prompt: guidePrompt(task.req), schema: GuideOutput, search: true };
+  const get = async (path: string, method = "GET") => {
+    const res = await (cfg.fetch ?? fetch)(`${cfg.baseUrl ?? OPENAI_URL}${path}`, { method, headers: { authorization: `Bearer ${cfg.apiKey}` } });
+    if (res.status === 401) throw new Error(`${cfg.name} no acepta la clave`);
+    if (!res.ok) throw new Error(`${cfg.name} respondió ${res.status}`);
+    return (await res.json()) as FinalResponse & { id: string };
+  };
+  return {
+    async start(task) {
+      const res = await post(cfg, "/responses", { ...responsesBody(cfg, ask(task)), background: true, store: true });
+      const { id } = (await res.json()) as { id?: string };
+      if (!id) throw new Error(`${cfg.name} no aceptó la búsqueda`);
+      return id;
+    },
+    async check(id) {
+      const r = await get(`/responses/${encodeURIComponent(id)}`);
+      if (r.status === "queued" || r.status === "in_progress") return { state: "running" };
+      try {
+        return { state: "done", raw: parseJson(outputText(cfg, r), cfg.name) };
+      } catch (e) {
+        return { state: "failed", error: (e as Error).message };
+      }
+    },
+    async cancel(id) {
+      await get(`/responses/${encodeURIComponent(id)}/cancel`, "POST").catch(() => {});
+    },
+  };
+}
+
+type Item = { type: string; action?: { type?: string; query?: string; url?: string }; content?: { type: string; text?: string }[] };
+type FinalResponse = { status?: string; output?: Item[]; incomplete_details?: { reason?: string }; error?: { message?: string } };
+
+// The request for an answer shaped by `a.schema`.
+function responsesBody(cfg: OpenAiConfig, a: Ask) {
+  const content = [{ type: "input_text", text: a.prompt }, ...(a.images ?? []).map((img) => ({ type: "input_image", image_url: dataUrl(img) }))];
+  return {
+    model: cfg.model,
+    instructions: SYSTEM,
+    input: [{ role: "user", content }],
+    ...(a.search ? { tools: [{ type: "web_search" }] } : {}),
+    text: { format: { type: "json_schema", name: "respuesta", schema: jsonSchema(a.schema), strict: false } },
+  };
+}
+
+// A finished response's text; throws with the reason when it didn't finish.
+function outputText(cfg: OpenAiConfig, final: FinalResponse): string {
+  if (final.status === "failed") throw new Error(`${cfg.name} falló: ${final.error?.message ?? "error"}`);
+  if (final.status === "cancelled") throw new Error("Búsqueda cancelada");
+  if (final.status === "incomplete") throw new Error(`La respuesta de ${cfg.name} se cortó (${final.incomplete_details?.reason ?? "incompleta"}); prueba con menos propuestas`);
+  return (final.output ?? [])
+    .filter((i) => i.type === "message")
+    .flatMap((i) => i.content ?? [])
+    .filter((c) => c.type === "output_text")
+    .map((c) => c.text ?? "")
+    .join("");
 }
 
 // The schema as OpenAI takes it: not strict, since strict mode wants every
@@ -85,25 +152,10 @@ class HttpError extends Error {
 // OpenAI's Responses API, streamed so Generar sees each search as it happens
 // and a long search doesn't sit on one silent connection.
 async function responses(cfg: OpenAiConfig, a: Ask): Promise<string> {
-  const content = [{ type: "input_text", text: a.prompt }, ...(a.images ?? []).map((img) => ({ type: "input_image", image_url: dataUrl(img) }))];
-  const res = await post(
-    cfg,
-    "/responses",
-    {
-      model: cfg.model,
-      instructions: SYSTEM,
-      input: [{ role: "user", content }],
-      ...(a.search ? { tools: [{ type: "web_search" }] } : {}),
-      text: { format: { type: "json_schema", name: "respuesta", schema: jsonSchema(a.schema), strict: false } },
-      stream: true,
-    },
-    a.signal,
-  );
-  type Item = { type: string; action?: { type?: string; query?: string; url?: string }; content?: { type: string; text?: string }[] };
-  type Final = { status?: string; output?: Item[]; incomplete_details?: { reason?: string }; error?: { message?: string } };
-  let final: Final | undefined;
+  const res = await post(cfg, "/responses", { ...responsesBody(cfg, a), stream: true }, a.signal);
+  let final: FinalResponse | undefined;
   for await (const e of events(res)) {
-    const event = e as { type?: string; item?: Item; response?: Final; message?: string };
+    const event = e as { type?: string; item?: Item; response?: FinalResponse; message?: string };
     if (event.type === "response.output_item.done" && event.item?.type === "web_search_call") {
       const action = event.item.action;
       if (action?.type === "search" && action.query) a.onProgress?.({ kind: "search", query: action.query });
@@ -119,14 +171,7 @@ async function responses(cfg: OpenAiConfig, a: Ask): Promise<string> {
     }
   }
   if (!final) throw new Error(`${cfg.name} no terminó de responder`);
-  if (final.status === "failed") throw new Error(`${cfg.name} falló: ${final.error?.message ?? "error"}`);
-  if (final.status === "incomplete") throw new Error(`La respuesta de ${cfg.name} se cortó (${final.incomplete_details?.reason ?? "incompleta"}); prueba con menos propuestas`);
-  return (final.output ?? [])
-    .filter((i) => i.type === "message")
-    .flatMap((i) => i.content ?? [])
-    .filter((c) => c.type === "output_text")
-    .map((c) => c.text ?? "")
-    .join("");
+  return outputText(cfg, final);
 }
 
 // Chat completions, as every OpenAI-compatible endpoint has them. The schema

@@ -1,25 +1,27 @@
 // The local panel's API: Generar, Revisar y aprobar, Comparativa, publish.
 // Served on 127.0.0.1 only (see server.ts).
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
 import { Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
 import { AI_IDS, AiChoice, type AiId, type AiView } from "./providers/ai.ts";
-import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
+import type { BackgroundTask, FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
+import type { GuideRequest } from "./providers/guide.ts";
+import { EstimateOutput, ResearchOutput, toResults, type Researcher } from "./providers/research.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
 
 import { SiteError, buildSnapshot, publishWarnings, shellSnapshot, snapshotFingerprint, type MemberStatus, type SiteClient } from "./publish.ts";
-import { StoreConflict, type PanelStore } from "./store.ts";
+import { StoreConflict, type PanelJob, type PanelStore, type PlanEntry } from "./store.ts";
 import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage, type PendingInvite } from "./announce.ts";
 
 // What this computer can do, found at startup (SPEC §8).
 export interface PanelStatus {
   // The AI in use (ROADMAP 3.3), and what it can do.
   research: AiId | "none";
-  ai?: { name: string; search: boolean; images: boolean };
+  ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: ("wikimedia" | "unsplash" | "pexels")[];
   // The panel served by the site at /admin (ROADMAP 3.1). An AI there reads
@@ -115,6 +117,50 @@ const ManualBody = PricesBody.extend({
   category: Category,
 });
 
+// Adds research's results to a trip, as pending: a new search never replaces
+// a proposal the organiser may already have approved, so each gets an unused
+// id. Research's notes seed Comparativa; the organiser's edits win.
+function withResearched(entry: PlanEntry, results: ResearchResult[], suggestedBy?: string): { entry: PlanEntry; added: Proposal[] } {
+  let proposals = entry.proposals;
+  let editorial = entry.editorial;
+  const added: Proposal[] = [];
+  for (const { proposal: p, notes } of results) {
+    const taken = new Set(proposals.map((x) => x.id));
+    const base = p.id.replace(/-\d+$/, "") || "propuesta";
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    const proposal: Proposal = { ...p, id, review: "pending", ...(suggestedBy ? { suggestedBy } : {}) };
+    if (notes) {
+      const prev = editorial[id] ?? {};
+      editorial = {
+        ...editorial,
+        [id]: { pros: notes.pros, cons: notes.cons, weather: notes.weather, ...prev, photoQueries: notes.photoSubjects.length ? notes.photoSubjects : (prev.photoQueries ?? []) },
+      };
+    }
+    proposals = [...proposals, proposal];
+    added.push(proposal);
+  }
+  return { entry: { ...entry, proposals, editorial }, added };
+}
+
+// What the guide is asked about the decided destination.
+function guideRequest(entry: PlanEntry, destination: Proposal, home: string): GuideRequest {
+  const stay = baseStay(destination.stays);
+  const { plan } = entry;
+  return {
+    city: destination.place.city,
+    country: destination.place.country,
+    iata: destination.place.iata,
+    origin: destination.outbound.from,
+    home,
+    dateFrom: plan.dateFrom,
+    dateTo: plan.dateTo,
+    nights: plan.nights,
+    partySize: plan.partySize,
+    ...(stay ? { stay: { name: stay.name, ...(stay.description ? { description: stay.description } : {}), ...(stay.url ? { url: stay.url } : {}) } } : {}),
+  };
+}
+
 async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
   for await (const proposal of it) yield { proposal };
 }
@@ -150,9 +196,77 @@ export function createPanel({
     const { ai: _was, ...rest } = status;
     // As the screens say it: "Preparar con Claude", "OpenAI está buscando".
     const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
-    return { ...rest, research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images } } : {}) };
+    return { ...rest, research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
   };
-  const HOSTED_SEARCH = "Buscar tarda varios minutos y desde el panel del sitio aún no se puede: hazlo desde el panel de tu ordenador.";
+  // The panel at /admin searches in the background, which needs an AI that
+  // can (ROADMAP 3.3).
+  const hostedSearch = () =>
+    statusNow().research === "none"
+      ? "Para buscar desde el panel del sitio hace falta una clave de Claude (API de Anthropic) u OpenAI en el sitio: mira en Ajustes, o busca desde el panel de tu ordenador."
+      : `${statusNow().ai?.name ?? "Esta IA"} no puede buscar en segundo plano, que es como busca el panel del sitio: usa Claude (API de Anthropic) u OpenAI, o busca desde el panel de tu ordenador.`;
+
+  // The trip page from the guide research wrote; keeps the organiser's stay
+  // details and Tricount. Remembers where the group lives, best effort.
+  const saveGuide = async (planId: string, destinationId: string, home: string, raw: unknown, who: Researcher): Promise<TripPage> => {
+    const out = (who.estimate ? GuideEstimate : GuideOutput).parse(raw);
+    const previous = store.get(planId)!.trip;
+    const trip = TripPage.parse(toTripPage(destinationId, home, out, now(), previous?.destinationId === destinationId ? previous : undefined, who.by));
+    store.update(planId, (e) => ({ entry: { ...e!, trip }, result: null }));
+    if (home) {
+      const settings = await site.settings().catch(() => null);
+      if (settings && settings.homeTown !== home) await site.putSettings({ ...settings, homeTown: home }).catch(() => {});
+    }
+    return trip;
+  };
+
+  // Hands a search or guide to the AI to run in the background: answers at
+  // once (202) with the job, which GET …/job then follows.
+  const startJob = async (c: Context, planId: string, task: BackgroundTask, extra: Pick<PanelJob, "idea" | "destinationId"> = {}) => {
+    const ai = currentAi();
+    const active = aiChoice?.active?.option;
+    if (!ai?.background || !active) return c.json({ error: hostedSearch() }, 409);
+    if (store.get(planId)!.job?.status === "running") return c.json({ error: "Ya hay una búsqueda en marcha en este viaje: espera a que termine o cancélala." }, 409);
+    const externalId = await ai.background.start(task);
+    const job: PanelJob = { kind: task.kind, ai: active.id, aiName: statusNow().ai?.name ?? active.name, externalId, task, startedAt: now().toISOString(), status: "running", ...extra };
+    store.update(planId, (e) => ({ entry: { ...e!, job }, result: null }));
+    return c.json({ job }, 202);
+  };
+
+  // Asks the AI how a running job is doing and, once it's done, saves what
+  // it found. A failed check leaves the job running, to try again.
+  const advanceJob = async (planId: string) => {
+    const job = store.get(planId)?.job;
+    const ai = currentAi();
+    if (!job || job.status !== "running" || !ai?.background) return;
+    const check = await ai.background.check(job.externalId, job.task).catch(() => null);
+    if (!check) return;
+    const finish = (patch: Partial<PanelJob>) =>
+      store.update(planId, (e) => ({ entry: { ...e!, job: { ...job, ...patch, finishedAt: now().toISOString() } }, result: null }));
+    if (check.state === "running") {
+      if (check.id) store.update(planId, (e) => ({ entry: { ...e!, job: { ...job, externalId: check.id! } }, result: null }));
+      return;
+    }
+    if (check.state === "failed") return void finish({ status: "failed", error: check.error });
+    const who = ai.who ?? {};
+    if (job.task.kind === "research") {
+      const out = (who.estimate ? EstimateOutput : ResearchOutput).safeParse(check.raw);
+      if (!out.success) return void finish({ status: "failed", error: `${job.aiName} respondió con datos que no encajan; vuelve a probar` });
+      const results = toResults(job.task.req, out.data, who);
+      const added = store.update(planId, (e) => {
+        const r = withResearched(e!, results, job.idea?.by);
+        return { entry: { ...r.entry, job: { ...job, status: "done" as const, added: r.added.length, finishedAt: now().toISOString() } }, result: r.added };
+      });
+      if (job.idea && added[0]) await site.setSuggestion(planId, job.idea.id, "researched", added[0].id).catch(() => {});
+      return;
+    }
+    if (!job.destinationId || decided(planId)?.id !== job.destinationId) return void finish({ status: "failed", error: "El destino del viaje cambió mientras se preparaba la guía" });
+    try {
+      await saveGuide(planId, job.destinationId, job.task.req.home, check.raw, who);
+      finish({ status: "done" });
+    } catch {
+      finish({ status: "failed", error: `${job.aiName} respondió con datos que no encajan; vuelve a probar` });
+    }
+  };
 
   // Every request starts from what's saved now, so this device sees what
   // another one changed, and ends once its own changes are saved.
@@ -352,7 +466,8 @@ export function createPanel({
     }
     const ai = currentAi();
     if (body.data.source === "claude") {
-      if (status.hosted) return c.json({ error: HOSTED_SEARCH }, 409);
+      // On the site, handed to the AI to run in the background.
+      if (status.hosted) return startJob(c, plan.id, { kind: "research", req }, idea ? { idea: { id: idea.id, by: idea.member.name } } : {});
       if (!ai) return c.json({ error: "No hay ninguna IA configurada: mira en Ajustes cómo añadir una." }, 409);
     }
     // Research's steps, relayed as they happen for Generar's live view.
@@ -377,35 +492,12 @@ export function createPanel({
       relay = (p) => void write({ progress: p });
       for (const p of progress.splice(0)) relay(p);
       try {
-        for await (const { proposal: p, notes } of source) {
-          // A new search adds to the list and never replaces a proposal the
-          // organiser may already have approved: each gets an unused id.
-          const taken = new Set(store.get(plan.id)!.proposals.map((x) => x.id));
-          const base = p.id.replace(/-\d+$/, "") || "propuesta";
-          let id = base;
-          for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
-          const proposal: Proposal = { ...p, id, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) };
-          if (idea && !researched) researched = id;
-          store.update(plan.id, (e) => {
-            // Research's notes seed Comparativa; the organiser's edits win.
-            const prev = e!.editorial[proposal.id] ?? {};
-            const editorial = notes
-              ? {
-                  ...e!.editorial,
-                  [proposal.id]: {
-                    pros: notes.pros,
-                    cons: notes.cons,
-                    weather: notes.weather,
-                    ...prev,
-                    photoQueries: notes.photoSubjects.length ? notes.photoSubjects : (prev.photoQueries ?? []),
-                  },
-                }
-              : e!.editorial;
-            return {
-              entry: { ...e!, editorial, proposals: [...e!.proposals.filter((x) => x.id !== proposal.id), proposal] },
-              result: null,
-            };
+        for await (const result of source) {
+          const [proposal] = store.update(plan.id, (e) => {
+            const r = withResearched(e!, [result], idea?.member.name);
+            return { entry: r.entry, result: r.added };
           });
+          if (idea && !researched) researched = proposal!.id;
           await write({ proposal });
         }
         // Mark the idea done, pointing at what came of it. Best effort: the
@@ -416,6 +508,37 @@ export function createPanel({
         await write({ error: (err as Error).message });
       }
     });
+  });
+
+  // A search or guide running in the background (ROADMAP 3.3): checked on
+  // each call, and saved once done. The laptop asks the site, which holds
+  // the AI keys that started it.
+  app.get("/api/plans/:planId/job", async (c) => {
+    const planId = c.req.param("planId");
+    const entry = store.get(planId);
+    if (!entry) return c.json({ error: "not found" }, 404);
+    if (entry.job?.status === "running") {
+      if (currentAi()?.background && aiChoice?.active?.option.id === entry.job.ai) await advanceJob(planId);
+      else if (!status.hosted && (await site.version().catch(() => 0)) >= 12) {
+        // Best effort: shown as still running until the site answers.
+        await site.checkJob(planId).catch(() => {});
+        await store.refresh().catch(() => {});
+      }
+    }
+    return c.json({ job: store.get(planId)!.job ?? null });
+  });
+
+  // Cancels a running job, or clears how the last one ended.
+  app.delete("/api/plans/:planId/job", async (c) => {
+    const planId = c.req.param("planId");
+    const job = store.get(planId)?.job;
+    if (!job) return c.json({ job: null });
+    if (job.status === "running") await currentAi()?.background?.cancel(job.externalId);
+    store.update(planId, (e) => {
+      const { job: _gone, ...rest } = e!;
+      return { entry: rest, result: null };
+    });
+    return c.json({ job: null });
   });
 
   // Ideas friends sent from the site for this trip.
@@ -826,14 +949,14 @@ export function createPanel({
     if (!entry) return c.json({ error: "not found" }, 404);
     const destination = decided(planId);
     if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
-    if (status.hosted) return c.json({ error: HOSTED_SEARCH }, 409);
-    const ai = currentAi();
-    if (!ai?.guide) return c.json({ error: "Preparar el viaje necesita una IA: mira en Ajustes cómo añadir una." }, 409);
     const body = z.object({ home: z.string().trim().max(60).default("") }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "expected {home?}" }, 400);
     const { home } = body.data;
-    const stay = baseStay(destination.stays);
-    const { plan } = entry;
+    const req = guideRequest(entry, destination, home);
+    // On the site, handed to the AI to run in the background.
+    if (status.hosted) return startJob(c, planId, { kind: "guide", req }, { destinationId: destination.id });
+    const ai = currentAi();
+    if (!ai?.guide) return c.json({ error: "Preparar el viaje necesita una IA: mira en Ajustes cómo añadir una." }, 409);
     const guide = ai.guide.bind(ai);
     const who = ai.who ?? {};
 
@@ -842,32 +965,8 @@ export function createPanel({
       let writing = Promise.resolve();
       const write = (line: unknown) => (writing = writing.then(async () => void (await s.writeln(JSON.stringify(line)))));
       try {
-        const raw = await guide(
-          {
-            city: destination.place.city,
-            country: destination.place.country,
-            iata: destination.place.iata,
-            origin: destination.outbound.from,
-            home,
-            dateFrom: plan.dateFrom,
-            dateTo: plan.dateTo,
-            nights: plan.nights,
-            partySize: plan.partySize,
-            ...(stay ? { stay: { name: stay.name, ...(stay.description ? { description: stay.description } : {}), ...(stay.url ? { url: stay.url } : {}) } } : {}),
-          },
-          c.req.raw.signal,
-          (p) => void write({ progress: p }),
-        );
-        const out = (who.estimate ? GuideEstimate : GuideOutput).parse(raw);
-        const previous = store.get(planId)!.trip;
-        const trip = TripPage.parse(toTripPage(destination.id, home, out, now(), previous?.destinationId === destination.id ? previous : undefined, who.by));
-        store.update(planId, (e) => ({ entry: { ...e!, trip }, result: null }));
-        // Remember where the group lives for next time; best effort.
-        if (home) {
-          const settings = await site.settings().catch(() => null);
-          if (settings && settings.homeTown !== home) await site.putSettings({ ...settings, homeTown: home }).catch(() => {});
-        }
-        await write({ trip });
+        const raw = await guide(req, c.req.raw.signal, (p) => void write({ progress: p }));
+        await write({ trip: await saveGuide(planId, destination.id, home, raw, who) });
       } catch (err) {
         await write({ error: (err as Error).message });
       }
