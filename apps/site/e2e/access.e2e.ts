@@ -16,10 +16,21 @@ const PORT = worker ? 8912 : 8911;
 const ORIGIN = `http://localhost:${PORT}`;
 const ADMIN = "e2e-".padEnd(40, "x");
 
+// A fresh local D1 needs the schema before the Worker opens it: applying the
+// migrations while wrangler dev starts made both open the database at once
+// (SQLITE_BUSY in CI).
+const persist = worker ? mkdtempSync(join(tmpdir(), "wanderlot-d1-")) : "";
+if (worker) {
+  await new Promise<void>((resolve, reject) => {
+    const m = spawn("npx", ["wrangler", "d1", "migrations", "apply", "wanderlot", "--local", "--persist-to", persist], { stdio: "ignore" });
+    m.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`migrations exited ${code}`))));
+  });
+}
+
 const server = worker
   ? spawn(
       "npx",
-      ["wrangler", "dev", "--port", String(PORT), "--var", `ADMIN_TOKEN:${ADMIN}`, "--var", `ORIGIN:${ORIGIN}`, "--persist-to", mkdtempSync(join(tmpdir(), "wanderlot-d1-"))],
+      ["wrangler", "dev", "--port", String(PORT), "--var", `ADMIN_TOKEN:${ADMIN}`, "--var", `ORIGIN:${ORIGIN}`, "--persist-to", persist],
       { stdio: ["ignore", "pipe", "inherit"], detached: true },
     )
   : spawn(process.execPath, ["--import", "tsx", "src/server.ts"], {
@@ -28,14 +39,6 @@ const server = worker
     });
 const stop = () => (worker ? process.kill(-server.pid!) : server.kill());
 
-if (worker) {
-  // A fresh local D1 needs the schema before the Worker can use it.
-  await new Promise<void>((resolve, reject) => {
-    const persist = (server.spawnargs.at(-1) as string);
-    const m = spawn("npx", ["wrangler", "d1", "migrations", "apply", "wanderlot", "--local", "--persist-to", persist], { stdio: "ignore" });
-    m.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`migrations exited ${code}`))));
-  });
-}
 await new Promise<void>((resolve, reject) => {
   const ready = worker ? "Ready on" : "Wanderlot site";
   server.stdout!.on("data", (d) => String(d).includes(ready) && resolve());
