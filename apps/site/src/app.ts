@@ -33,11 +33,23 @@ import {
   type VoteState,
   type PlanSummary,
 } from "@wanderlot/core";
-import { base64url, fromBase64url, pinHasher, randomToken, safeEqual, sha256 } from "./crypto.ts";
+import { base64url, fromBase64url, passwordHasher, pinHasher, randomToken, safeEqual, sealer, sha256 } from "./crypto.ts";
+// The panel itself, served at /admin without AI (ROADMAP 3.1).
+import { createPanel } from "../../panel/src/app.ts";
+import { siteClient } from "../../panel/src/publish.ts";
+import { wikimedia } from "../../panel/src/providers/photos.ts";
+import { PanelStore, StoreConflict, type PanelBackend, type PlanEntry } from "../../panel/src/store.ts";
 import type { Invite, SiteStore } from "./store.ts";
 import { SECURITY_HEADERS } from "./headers.ts";
 
 const SESSION_COOKIE = "wl_session";
+// The panel at /admin: its own cookie, only sent to /admin, and shorter-lived.
+const ORGANISER_COOKIE = "wl_admin";
+const ORGANISER_TTL_MS = 30 * 86_400_000;
+const PASSWORD_MAX_TRIES = 5;
+// A panel entry must fit in one database row (D1: 2 MB).
+const MAX_PANEL_ENTRY = 1_900_000;
+const NO_AI = "Esto necesita Claude, y el panel del sitio no lo tiene: hazlo desde el panel de tu ordenador.";
 const RECENT_COMMENTS = 3;
 const DAY = 86_400_000;
 export const INVITE_TTL_MS = 7 * DAY;
@@ -63,6 +75,9 @@ export interface SiteOptions {
   // Keys the PIN hashes (crypto.ts). Defaults to the admin token; changing it
   // makes everyone set a new PIN from a new invite.
   pinSecret?: string;
+  // The panel's built index.html, served at /admin/* (the Node server; on
+  // Cloudflare the Worker hands it out from the static assets).
+  adminIndexHtml?: string;
 }
 
 type Env = { Variables: { member: Member } };
@@ -123,17 +138,23 @@ export const MAX_OPEN_SUGGESTIONS = 5;
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
-export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, limit, pinSecret }: SiteOptions) {
+export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, adminIndexHtml, limit, pinSecret }: SiteOptions) {
   const app = new Hono<Env>();
   const hashPin = pinHasher(pinSecret || adminToken);
+  const hashPassword = passwordHasher(pinSecret || adminToken);
 
   app.use("*", async (c, next) => {
     // Changes must come from the site's own pages. Browsers always send
     // Origin on cross-site writes; SameSite=Lax alone would trust sibling
     // subdomains of a custom domain.
-    if (c.req.method !== "GET" && c.req.method !== "HEAD" && c.req.path.startsWith("/api/") && !c.req.path.startsWith("/api/admin/")) {
+    const writes = c.req.method !== "GET" && c.req.method !== "HEAD";
+    if (writes && ((c.req.path.startsWith("/api/") && !c.req.path.startsWith("/api/admin/")) || c.req.path.startsWith("/admin/api/"))) {
       const origin = c.req.header("origin");
       if (origin !== undefined && origin !== rp.origin) return c.json({ error: "forbidden origin" }, 403);
+    }
+    // The panel's changes come as JSON, which no cross-site form can send.
+    if (writes && c.req.path.startsWith("/admin/api/") && !/^application\/json\b/i.test(c.req.header("content-type") ?? "")) {
+      return c.json({ error: "expected application/json" }, 415);
     }
     await next();
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
@@ -613,6 +634,78 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ ok: true });
   });
 
+  // --- the panel's own data (ROADMAP 3.2) ---
+
+  const sealed = sealer(adminToken);
+
+  admin.get("/panel/plans", async (c) => c.json(await store.panelVersions()));
+
+  admin.get("/panel/plans/:planId", async (c) => {
+    const p = await store.panelPlan(c.req.param("planId"));
+    return p ? c.json({ entry: JSON.parse(p.entry) as unknown, version: p.version }) : c.json({ error: "not found" }, 404);
+  });
+
+  // Saves a trip if nobody saved it since `version` (0: a new one); null deletes.
+  admin.put("/panel/plans/:planId", async (c) => {
+    const planId = c.req.param("planId");
+    const body = z
+      .object({ entry: z.looseObject({ plan: z.looseObject({ id: z.string() }) }).nullable(), version: z.number().int().min(0) })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {entry, version}" }, 400);
+    if (body.data.entry && body.data.entry.plan.id !== planId) return c.json({ error: "plan id mismatch" }, 400);
+    const text = body.data.entry ? JSON.stringify(body.data.entry) : null;
+    if (text && text.length > MAX_PANEL_ENTRY) return c.json({ error: "Este viaje ocupa demasiado: descarta propuestas o fotos que no uses" }, 413);
+    const version = await store.savePanelPlan(planId, text, body.data.version, iso());
+    return version === null ? c.json({ error: "conflict" }, 409) : c.json({ version });
+  });
+
+  // Unused invite links, opened for the panel; expired ones are left out.
+  async function panelInvites() {
+    const box = await sealed;
+    const out: Record<string, { token: string; expiresAt: string }> = {};
+    for (const i of await store.panelInvites()) {
+      if (Date.parse(i.expiresAt) <= now().getTime()) continue;
+      const token = await box.open(i.sealed);
+      if (token) out[i.memberId] = { token, expiresAt: i.expiresAt };
+    }
+    return out;
+  }
+
+  admin.get("/panel/invites", async (c) => c.json(await panelInvites()));
+
+  admin.put("/panel/invites/:memberId", async (c) => {
+    const body = z
+      .object({ invite: z.object({ token: z.string().min(1).max(200), expiresAt: z.iso.datetime({ offset: true }) }).nullable() })
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {invite}" }, 400);
+    const { invite } = body.data;
+    await store.savePanelInvite(c.req.param("memberId"), invite ? await (await sealed).seal(invite.token) : null, invite?.expiresAt ?? null);
+    return c.json({ ok: true });
+  });
+
+  // --- the panel at /admin (ROADMAP 3.1) ---
+
+  const organiserView = async () => {
+    const login = await store.organiserLogin();
+    return { enabled: !!login, setAt: login?.setAt ?? null };
+  };
+
+  admin.get("/organiser", async (c) => c.json(await organiserView()));
+
+  // Sets the password (signing out every device on the panel), or turns the
+  // panel at /admin off with null.
+  admin.put("/organiser", async (c) => {
+    const body = z.object({ password: z.string().min(10, "Usa al menos 10 caracteres").max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {password}" }, 400);
+    const { password } = body.data;
+    if (password) {
+      const salt = randomToken(16);
+      await store.setOrganiserLogin({ hash: await (await hashPassword)(salt, password), salt, setAt: iso() });
+    } else await store.setOrganiserLogin(null);
+    await store.deleteOrganiserSessions();
+    return c.json(await organiserView());
+  });
+
   admin.get("/version", (c) => c.json({ api: SITE_API_VERSION }));
 
   // Everything the group made here, as one JSON file: the trips as published,
@@ -940,6 +1033,120 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   });
 
   app.route("/api/plans", api);
+
+  // --- the panel at /admin (ROADMAP 3.1) -------------------------------------
+
+  async function organiserSignedIn(c: Context<Env>): Promise<boolean> {
+    const token = getCookie(c, ORGANISER_COOKIE);
+    if (!token || !(await store.organiserLogin())) return false;
+    const hash = await sha256(token);
+    const session = await store.organiserSession(hash);
+    if (!session) return false;
+    if (Date.parse(session.expiresAt) <= now().getTime()) {
+      await store.deleteOrganiserSession(hash);
+      return false;
+    }
+    if (now().getTime() - Date.parse(session.lastSeenAt) > DAY) await store.touchOrganiserSession(hash, iso(), iso(ORGANISER_TTL_MS));
+    return true;
+  }
+
+  const OFF = "El panel en el sitio no está activado. Actívalo desde el panel de tu ordenador, en Personas.";
+  const WRONG_PASSWORD = "Contraseña incorrecta";
+
+  app.get("/admin/api/session", async (c) =>
+    (await store.organiserLogin()) ? ((await organiserSignedIn(c)) ? c.json({ ok: true }) : c.json({ error: "unauthorized" }, 401)) : c.json({ error: OFF }, 404),
+  );
+
+  // Signing in with the password, with lockouts that grow like a PIN's.
+  app.post("/admin/api/session", async (c) => {
+    if (await throttled(c)) return tooMany(c);
+    const body = z.object({ password: z.string().max(200) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {password}" }, 400);
+    const login = await store.organiserLogin();
+    if (!login) return c.json({ error: OFF }, 404);
+    if (login.lockedUntil && Date.parse(login.lockedUntil) > now().getTime()) {
+      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(Date.parse(login.lockedUntil) - now().getTime())}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+    }
+    if (!safeEqual(await (await hashPassword)(login.salt, body.data.password), login.hash)) {
+      const failed = login.failed + 1;
+      if (failed >= PASSWORD_MAX_TRIES) {
+        const lock = pinLockMs(login.lockouts);
+        await store.recordOrganiserFailure(0, iso(lock), login.lockouts + 1);
+        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+      }
+      await store.recordOrganiserFailure(failed, null, login.lockouts);
+      return c.json({ error: WRONG_PASSWORD }, 401);
+    }
+    if (login.failed > 0 || login.lockedUntil || login.lockouts > 0) await store.recordOrganiserFailure(0, null, 0);
+    const token = randomToken();
+    await store.createOrganiserSession(await sha256(token), {
+      createdAt: iso(),
+      lastSeenAt: iso(),
+      expiresAt: iso(ORGANISER_TTL_MS),
+      userAgent: c.req.header("user-agent") ?? null,
+    });
+    setCookie(c, ORGANISER_COOKIE, token, { httpOnly: true, secure, sameSite: "Strict", path: "/admin", maxAge: ORGANISER_TTL_MS / 1000 });
+    return c.json({ ok: true });
+  });
+
+  app.delete("/admin/api/session", async (c) => {
+    const token = getCookie(c, ORGANISER_COOKIE);
+    if (token) await store.deleteOrganiserSession(await sha256(token));
+    deleteCookie(c, ORGANISER_COOKIE, { path: "/admin", secure });
+    return c.json({ ok: true });
+  });
+
+  // Everything else under /admin/api is the panel, for the organiser only.
+  app.use("/admin/api/*", async (c, next) => {
+    if (!(await organiserSignedIn(c))) return c.json({ error: "unauthorized" }, 401);
+    await next();
+  });
+
+  // The panel's data straight from this database.
+  const panelData: PanelBackend = {
+    versions: () => store.panelVersions(),
+    async plan(id) {
+      const p = await store.panelPlan(id);
+      return p ? { entry: JSON.parse(p.entry) as PlanEntry, version: p.version } : null;
+    },
+    async save(id, entry, version) {
+      const text = entry ? JSON.stringify(entry) : null;
+      if (text && text.length > MAX_PANEL_ENTRY) throw new Error("Este viaje ocupa demasiado: descarta propuestas o fotos que no uses");
+      const v = await store.savePanelPlan(id, text, version, iso());
+      if (v === null) throw new StoreConflict(id);
+      return v;
+    },
+    invites: panelInvites,
+    async saveInvite(memberId, invite) {
+      await store.savePanelInvite(memberId, invite ? await (await sealed).seal(invite.token) : null, invite?.expiresAt ?? null);
+    },
+  };
+
+  const noAi = () => {
+    throw new Error(NO_AI);
+  };
+  const hosted = createPanel({
+    store: new PanelStore(panelData),
+    status: { research: "none", flights: "none", photos: ["wikimedia"], hosted: true, store: "site" },
+    research: { research: noAi, extract: async () => noAi() },
+    flights: { name: "duffel", search: noAi, verify: async () => null },
+    photos: [wikimedia()],
+    // The admin API, called in this same process.
+    site: siteClient(rp.origin, adminToken, async (input, init) => app.request(String(input), init)),
+    siteUrl: rp.origin,
+    now,
+  });
+  app.route("/admin", hosted);
+
+  // The panel's pages: its index.html for every address that isn't a file.
+  app.get("/admin", (c) => c.redirect("/admin/"));
+  app.get("/admin/*", async (c, next) => {
+    if (c.req.path.startsWith("/admin/api/")) return c.json({ error: "not found" }, 404);
+    // Its files (/admin/assets/…) come from the static server.
+    if (/\.[a-z0-9]+$/i.test(c.req.path)) return next();
+    return adminIndexHtml ? c.html(adminIndexHtml) : c.text("The panel isn't built into this site yet: npm run build -w @wanderlot/site", 503);
+  });
+
   return app;
 }
 

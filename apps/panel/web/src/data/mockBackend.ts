@@ -17,7 +17,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { DatesPage, MemberAccess, PanelBackend, PlanEntry, TripView, VoteView } from "./backend.ts";
+import type { DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PlanEntry, TripView, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -60,7 +60,8 @@ const photoQueries = (id: string) => {
   return l ? [l.hero, ...l.tiles.filter((t) => t !== "El piso")] : [];
 };
 
-export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number; verifyMs?: number } = {}): PanelBackend {
+// hosted: as the panel the site serves at /admin, without AI.
+export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: { tickMs?: number; verifyMs?: number; hosted?: boolean } = {}): PanelBackend {
   // Voting in the mocks is open on the site; here the plan is still being
   // curated, as in the Revisar and Comparativa designs.
   const entries = new Map<string, PlanEntry>(
@@ -101,6 +102,8 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
     const approved = e.proposals.filter((p) => p.review === "approved");
     return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null)]);
   };
+  // The panel at /admin: off until a password is set.
+  let organiser: OrganiserAccess = { enabled: false, setAt: null, url: `${SITE_URL}/admin/` };
   // Date votes on the site, per plan.
   const datesBy = new Map<string, DatesView>([[DATES_PLAN_ID, mockDates]]);
   const datesPage = (planId: string): DatesPage => {
@@ -186,7 +189,10 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
 
   return {
     now: () => MOCK_NOW,
-    status: async () => ({ research: "claude-cli", flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } }),
+    status: async () =>
+      hosted
+        ? { research: "none", flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
+        : { research: "claude-cli", flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } },
     settings: async () => settings,
     saveSettings: async (s) => (settings = s),
     plans: async () => [...entries.values()].map((e) => e.plan),
@@ -403,6 +409,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200 }: { tickMs?: number
         inviteUrl: null,
         invite: m?.invite?.status === "valid" ? { ...m.invite, status: "cancelled" } : (m?.invite ?? null),
       });
+    },
+    organiser: async () => organiser,
+    async setOrganiserPassword(password) {
+      if (password !== null && password.length < 10) throw new Error("Usa al menos 10 caracteres");
+      organiser = { ...organiser, enabled: password !== null, setAt: password ? MOCK_NOW.toISOString() : null };
+      return organiser;
     },
     dates: async (planId) => datesPage(planId),
     async proposeDates(planId, windows, deadline) {

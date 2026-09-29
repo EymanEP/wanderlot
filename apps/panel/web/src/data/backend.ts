@@ -26,6 +26,17 @@ export interface Status {
   photos: string[];
   // outdated: deployed from older code; some panel features need a redeploy.
   site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
+  // The panel the site serves at /admin (ROADMAP 3.1): no AI there.
+  hosted?: boolean;
+  // Where trips are kept: on the site, or (with an older site) on this laptop.
+  store?: "site" | "file";
+}
+
+// The panel at /admin: on or off, and where it is.
+export interface OrganiserAccess {
+  enabled: boolean;
+  setAt: string | null;
+  url: string;
 }
 
 export interface PlanEntry {
@@ -167,6 +178,9 @@ export interface PanelBackend {
   revoke(memberId: string): Promise<void>;
   // The site's data as JSON: one trip, or everything.
   exportData(planId?: string): Promise<unknown>;
+  // The panel at /admin (ROADMAP 3.1): its password; null turns it off.
+  organiser(): Promise<OrganiserAccess>;
+  setOrganiserPassword(password: string | null): Promise<OrganiserAccess>;
   // Cuándo (ROADMAP 2.1).
   dates(planId: string): Promise<DatesPage>;
   // Proposes (or changes) the windows; returns the message for the group.
@@ -185,8 +199,11 @@ export interface PanelBackend {
 // Something to show the organiser, in their words.
 export class BackendError extends Error {}
 
+// "/api" on the laptop; "/admin/api" in the panel the site serves (ROADMAP 3.1).
+const ROOT = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 async function call<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(ROOT + path, {
     method,
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -218,7 +235,7 @@ export const httpBackend: PanelBackend = {
   savePlan: (p) => call<Plan>(`/api/plans/${enc(p.id)}`, "PUT", p),
   setParticipants: (planId, ids) => call<PlanEntry>(`/api/plans/${enc(planId)}/participants`, "PUT", ids),
   async generate(planId, opts, onProposal, signal, onStep) {
-    const res = await fetch(`/api/plans/${enc(planId)}/generate`, {
+    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/generate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(opts),
@@ -268,13 +285,15 @@ export const httpBackend: PanelBackend = {
   invite: (id) => call<{ url: string; expiresAt: string }>(`/api/members/${enc(id)}/invite`, "POST"),
   closeSessions: async (id) => void (await call(`/api/members/${enc(id)}/sessions`, "DELETE")),
   revoke: async (id) => void (await call(`/api/members/${enc(id)}/revoke`, "POST")),
+  organiser: () => call<OrganiserAccess>("/api/organiser"),
+  setOrganiserPassword: (password) => call<OrganiserAccess>("/api/organiser", "PUT", { password }),
   dates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`),
   proposeDates: (planId, options, deadline) => call<DatesPage & { message: string }>(`/api/plans/${enc(planId)}/dates`, "PUT", { options, deadline }),
   chooseDates: (planId, optionId) => call<DatesPage & { plan: Plan }>(`/api/plans/${enc(planId)}/dates/choose`, "POST", { optionId }),
   cancelDates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`, "DELETE"),
   trip: (planId) => call<TripView>(`/api/plans/${enc(planId)}/trip`),
   async prepareTrip(planId, home, onStep) {
-    const res = await fetch(`/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });
+    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });
     if (!res.ok || !res.body) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       throw new BackendError(data.error ?? `Error ${res.status}`);

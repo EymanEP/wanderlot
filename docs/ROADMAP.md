@@ -13,8 +13,8 @@ What this roadmap covers:
 - **Later:** big changes that wait.
 
 **Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
-phase 1 (2.3) and the Tricount link (2.4), and the export (2.5). Everything
-else is still a plan.
+phase 1 (2.3) and the Tricount link (2.4), the export (2.5), the panel on the
+site (3.1) and one store (3.2). Everything else is still a plan.
 
 **Legend**
 
@@ -381,6 +381,15 @@ first reads back what's on the site.
 - The panel's pages at phone width, where they don't fit today.
 - The "AI is off" states.
 
+**Done** (site API 10, migration 0008), with the existing design system:
+- The site serves the panel at `/admin`: every page, on the same data as the
+  laptop. Generar, reading screenshots and "Preparar con Claude" say to use
+  the laptop.
+- Signing in is a password (10+ characters) set from the laptop's Personas,
+  "Panel en el móvil", with the PIN's lockouts and an organiser session only
+  `/admin` gets. A passkey for the organiser can come later.
+- Photos search Wikimedia; Unsplash and Pexels stay on the laptop for now.
+
 ### 3.2 One store: the panel's data moves to the site · L · ⚙️
 
 **What moves.** Everything the panel keeps in `data/panel.json` moves to the
@@ -406,6 +415,14 @@ so the phone sees them straight away.
 - Unpublished research is never visible to friends; it sits behind the
   organiser role.
 - The export (2.5) gains an option to include it.
+
+**Done**, with 3.1:
+- One JSON entry per trip in `panel_plans`, versioned: a save that raced
+  another device is refused and the page asks to reload.
+- Invite links are sealed with a key from the admin token.
+- The local panel moves `data/panel.json` to the site on first start and keeps
+  it as `panel.json.moved-to-site`; with an older site it keeps using the file.
+- Not yet: the export's option to include unpublished research.
 
 ### 3.3 Bring your own AI · M
 
@@ -485,11 +502,8 @@ Not planned in detail yet. They wait until the flows above are in use.
    (2.4).** One design for the trip page, built together.~~ Done, with the
    existing design system.
 4. **The panel from anywhere.**
-   - **3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
-     laptop overwrite each other.
-   - **3.3 (other AIs) alongside,** since it's independent.
-   - **Could come earlier** than 2.1–2.2 if managing from the phone matters
-     more than the new flows. It's the biggest piece, so decide the order
-     before starting either.
+   - ~~**3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
+     laptop overwrite each other.~~ Done, together.
+   - **3.3 (other AIs)** next: it's what the panel at `/admin` still lacks.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
 6. **Later:** languages and currency.

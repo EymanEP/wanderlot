@@ -1,7 +1,7 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
 import type { Ballot, Comment, DateAnswer, DateResponse, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
-import type { DatePoll, Flow, Invite, MemberPin, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
+import type { DatePoll, Flow, Invite, MemberPin, OrganiserLogin, OrganiserSession, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
 
 export type Row = Record<string, unknown>;
 export type Value = string | number | null;
@@ -423,6 +423,114 @@ export class SqlStore implements SiteStore {
       note,
       at,
     );
+  }
+
+  // --- the panel's data ------------------------------------------------------
+
+  async panelVersions() {
+    const rows = await this.all("select plan_id, version from panel_plans");
+    return Object.fromEntries(rows.map((r) => [r.plan_id as string, Number(r.version)]));
+  }
+
+  async panelPlan(planId: string) {
+    const r = await this.get("select entry, version from panel_plans where plan_id = ?", planId);
+    return r ? { entry: r.entry as string, version: Number(r.version) } : undefined;
+  }
+
+  async savePanelPlan(planId: string, entry: string | null, version: number, at: string): Promise<number | null> {
+    if (entry === null) {
+      const n = await this.run("delete from panel_plans where plan_id = ? and version = ?", planId, version);
+      return n > 0 || version === 0 ? 0 : null;
+    }
+    if (version === 0) {
+      const n = await this.run("insert into panel_plans (plan_id, entry, version, updated_at) values (?, ?, 1, ?) on conflict(plan_id) do nothing", planId, entry, at);
+      return n > 0 ? 1 : null;
+    }
+    const n = await this.run("update panel_plans set entry = ?, version = version + 1, updated_at = ? where plan_id = ? and version = ?", entry, at, planId, version);
+    return n > 0 ? version + 1 : null;
+  }
+
+  async panelInvites() {
+    return (await this.all("select member_id, sealed, expires_at from panel_invites")).map((r) => ({
+      memberId: r.member_id as string,
+      sealed: r.sealed as string,
+      expiresAt: r.expires_at as string,
+    }));
+  }
+
+  async savePanelInvite(memberId: string, sealed: string | null, expiresAt: string | null) {
+    if (!sealed || !expiresAt) await this.run("delete from panel_invites where member_id = ?", memberId);
+    else
+      await this.run(
+        "insert into panel_invites (member_id, sealed, expires_at) values (?, ?, ?) on conflict(member_id) do update set sealed = excluded.sealed, expires_at = excluded.expires_at",
+        memberId,
+        sealed,
+        expiresAt,
+      );
+  }
+
+  // --- the panel at /admin ------------------------------------------------------
+
+  async organiserLogin(): Promise<OrganiserLogin | undefined> {
+    const r = await this.get("select * from organiser where id = 1");
+    return r
+      ? {
+          hash: r.password_hash as string,
+          salt: r.salt as string,
+          setAt: r.set_at as string,
+          failed: Number(r.failed),
+          lockedUntil: (r.locked_until as string | null) ?? null,
+          lockouts: Number(r.lockouts),
+        }
+      : undefined;
+  }
+
+  async setOrganiserLogin(login: { hash: string; salt: string; setAt: string } | null) {
+    if (!login) {
+      await this.run("delete from organiser where id = 1");
+      return;
+    }
+    await this.run(
+      `insert into organiser (id, password_hash, salt, set_at, failed, locked_until, lockouts) values (1, ?, ?, ?, 0, null, 0)
+       on conflict(id) do update set password_hash = excluded.password_hash, salt = excluded.salt, set_at = excluded.set_at, failed = 0, locked_until = null, lockouts = 0`,
+      login.hash,
+      login.salt,
+      login.setAt,
+    );
+  }
+
+  async recordOrganiserFailure(failed: number, lockedUntil: string | null, lockouts: number) {
+    await this.run("update organiser set failed = ?, locked_until = ?, lockouts = ? where id = 1", failed, lockedUntil, lockouts);
+  }
+
+  async createOrganiserSession(hash: string, s: OrganiserSession) {
+    await this.run(
+      "insert into organiser_sessions (token_hash, created_at, last_seen_at, expires_at, user_agent) values (?, ?, ?, ?, ?)",
+      hash,
+      s.createdAt,
+      s.lastSeenAt,
+      s.expiresAt,
+      s.userAgent,
+    );
+  }
+
+  async organiserSession(hash: string): Promise<OrganiserSession | undefined> {
+    const r = await this.get("select * from organiser_sessions where token_hash = ?", hash);
+    return r
+      ? { createdAt: r.created_at as string, lastSeenAt: r.last_seen_at as string, expiresAt: r.expires_at as string, userAgent: (r.user_agent as string | null) ?? null }
+      : undefined;
+  }
+
+  async touchOrganiserSession(hash: string, lastSeenAt: string, expiresAt: string) {
+    await this.run("update organiser_sessions set last_seen_at = ?, expires_at = ? where token_hash = ?", lastSeenAt, expiresAt, hash);
+  }
+
+  async deleteOrganiserSession(hash: string) {
+    await this.run("delete from organiser_sessions where token_hash = ?", hash);
+  }
+
+  async deleteOrganiserSessions() {
+    await this.run("delete from organiser_sessions");
   }
 
   async commentLikes(planId: string) {

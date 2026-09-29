@@ -3,7 +3,9 @@
 Trip planning for one fixed group of friends, built as two halves that never
 blur into each other:
 
-- **Panel** — runs only on the organiser's machine. Research and curation.
+- **Panel** — for the organiser. Research and curation run on their machine;
+  the site also serves the panel at `/admin`, without AI, to manage the group
+  from a phone (§5, "The organiser on the site").
 - **Site** — published, used by the group. Reading, commenting, voting.
 
 Wanderlot is open source (MIT) and self-hosted: **one deployment serves one
@@ -115,7 +117,17 @@ approximate.
 ```
 
 - The panel binds to `127.0.0.1` only. API keys and the `claude` binary never
-  leave the machine. There is no hosted panel in v1 (§10).
+  leave the machine.
+- **The panel's data lives on the site** (ROADMAP 3.2): proposals, drafts,
+  notes, the last publish and unused invite links, in tables friends never
+  read (§9, `/api/admin/panel/*`). One JSON entry per trip, versioned, so the
+  laptop and the phone can't overwrite each other: a save names the version
+  it read and is refused (409) if someone saved first. Every panel request
+  reads what changed first and waits for its own writes. Invite links are
+  sealed (AES-GCM) with a key from the admin token.
+- With a site older than API version 10, the local panel keeps them in
+  `data/panel.json`; the first start against a newer site moves the trips it
+  doesn't have yet there and keeps the file as `panel.json.moved-to-site`.
 - **Publish** is the only way data crosses. It sends a **snapshot**: the plan
   plus its approved destinations, validated against one shared schema
   (`packages/core`). The site stores snapshots verbatim; it never computes
@@ -280,6 +292,24 @@ whoever wants it on a given device.
 
 "Cambiar mi PIN" in the account menu sets a new one while signed in
 (`PUT /api/session/pin`, same rules as a new PIN); the old one stops working.
+
+### The organiser on the site (`/admin`)
+- The site serves the panel itself at `/admin` (ROADMAP 3.1): the same pages
+  on the same data (§2), for the organiser's phone. There is no AI there: a
+  Worker can't run `claude`, so Generar, reading screenshots and "Preparar
+  con Claude" say to use the laptop, and prices are typed.
+- It's off until the organiser sets a password from the local panel
+  (Personas, "Panel en el móvil"), at least 10 characters. It's stored like a
+  PIN: an HMAC-SHA256 with a per-password salt, keyed by the PIN secret, so
+  the database alone can't test guesses (a slow hash wouldn't fit a free
+  Worker's CPU budget). Changing it signs every device out and lifts a
+  lockout; clearing it turns `/admin` off.
+- Signing in at `/admin` takes that password, with the PIN's growing
+  lockouts after five wrong ones. It starts an organiser session: a random
+  token in an http-only cookie limited to `/admin`, `SameSite=Strict`, 30
+  days. Members' sessions never reach the panel, and the admin token never
+  reaches a browser: the hosted panel calls the admin API inside the Worker.
+- Changes under `/admin/api` must come from the site's own origin, as JSON.
 
 ### Trips
 - Members belong to the group, and the organiser puts them on **trips**
@@ -514,6 +544,13 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`, only among those tied for first; or `{ destinationId, override: true, note? }`, any destination in the vote once closed (choosing the vote's own winner clears the note). Results carry `winnerId` (where they're going), `voteWinnerId` and `decidedNote`. Site API version 7 |
 | `GET` / `PUT` / `DELETE` | `/api/admin/plans/:planId/dates` | panel | the date vote (§4 Dates): `DatesView` `{ status: open \| closed, options: [{ id, dateFrom, dateTo }], deadline, chosenOptionId, responses: [{ memberId, answers: { optionId: yes \| maybe \| no }, note, updatedAt }] }` or `null` / `{ options: [{ dateFrom, dateTo }] (2–5), deadline? }` proposes or changes the windows, keeping answers to the ones that stay, and reopens it / removes it. Site API version 8 |
 | `POST` | `/api/admin/plans/:planId/dates/choose` | panel | `{ optionId }`: closes the date vote and sets the snapshot's `dateFrom`, `dateTo` and `nights` |
+| `GET` | `/api/admin/panel/plans` | panel | the panel's trips (§2): `{ planId: version }` |
+| `GET` / `PUT` | `/api/admin/panel/plans/:planId` | panel | `{ entry, version }` / `{ entry, version }` saves if the stored version is still `version` (0: new), `entry: null` deletes; `{ version }` or `409`. Site API version 10 |
+| `GET` / `PUT` | `/api/admin/panel/invites[/:memberId]` | panel | unused invite links, unsealed for the panel: `{ memberId: { token, expiresAt } }` / `{ invite }` (null removes) |
+| `GET` / `PUT` | `/api/admin/organiser` | panel | `{ enabled, setAt }` / `{ password }` sets the `/admin` password (null turns it off); signs every organiser session out |
+| `GET` / `POST` / `DELETE` | `/admin/api/session` | organiser | whether signed in (`404` while `/admin` is off) / `{ password }` starts an organiser session (`401`, `429` when locked) / signs out |
+| any | `/admin/api/*` | organiser | the panel's API (below), for the panel the site serves; `401` without an organiser session |
+| `GET` | `/admin/*` | anyone | the panel's page; it asks for the password |
 | `GET` | `/api/admin/export?plan=` | panel | everything the group made, one trip or all: `{ format: "wanderlot-export", version: 1, exportedAt, settings, members, trips }`, each trip its snapshot, status, winner, note, members, ballots, comments with likes and ideas. No PIN hashes, passkeys, sessions or invites. Site API version 7 |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |
 | `GET` / `PUT` | `/api/admin/plans/:planId/members` | panel | who is on the trip: `[memberId]` |
@@ -530,7 +567,8 @@ Member routes under `/api/plans/:planId` answer `404` to anyone not on the trip.
 The panel's own server, for its UI only. It listens on `127.0.0.1`, answers
 only requests whose `Host` is the panel itself, and takes changes only as
 JSON from its own origin (so other web pages the organiser opens can't drive
-it). Calls that touch the site go through the admin API above.
+it). Calls that touch the site go through the admin API above. The site
+serves the same API at `/admin/api` for the organiser (§5), without research.
 
 | method | path | notes |
 |---|---|---|
@@ -578,9 +616,8 @@ What's planned next is in [ROADMAP.md](ROADMAP.md): a date vote, the trip
 page, getting to the airport, export, the panel hosted on the site with other
 AI providers (or none), and later languages and currencies.
 
-- **A hosted panel.** v1's panel is local only. ROADMAP §3 plans serving it
-  from the site under `/admin` for the organiser, with its data moved to the
-  site's database and AI optional (a Worker can't run the `claude` binary).
+- **AI in the panel at `/admin`.** It has none yet; ROADMAP 3.3 plans API
+  keys (Anthropic, OpenAI or compatible) as Worker secrets.
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.
@@ -600,8 +637,10 @@ sleep, so the site answers instantly after weeks of silence between trips.
 Storage sits behind one interface, written once in SQL over two drivers:
 **D1** on Cloudflare and **`node:sqlite`** for tests, local development, and
 anyone running the Node server themselves. Both apply the same migrations
-(`apps/site/migrations/`). The Worker handles only `/api/*`; Cloudflare serves
-the built UI and falls back to it for page addresses.
+(`apps/site/migrations/`). The Worker handles `/api/*` and `/admin/*`;
+Cloudflare serves the built UI and falls back to it for page addresses. The
+site's build also builds the panel for `/admin` into `dist/web/admin`, which
+the Worker hands out through its `ASSETS` binding.
 
 Considered and not the default:
 - **Vercel Hobby + Neon Postgres.** Free, but Hobby is for non-commercial

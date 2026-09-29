@@ -11,7 +11,7 @@ import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
 
 import { SiteError, buildSnapshot, publishWarnings, shellSnapshot, snapshotFingerprint, type MemberStatus, type SiteClient } from "./publish.ts";
-import type { PanelStore } from "./store.ts";
+import { StoreConflict, type PanelStore } from "./store.ts";
 import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage, type PendingInvite } from "./announce.ts";
 
 // What this computer can do, found at startup (SPEC §8).
@@ -19,6 +19,11 @@ export interface PanelStatus {
   research: "claude-cli" | "anthropic-api" | "none";
   flights: "duffel" | "none";
   photos: ("wikimedia" | "unsplash" | "pexels")[];
+  // The panel served by the site at /admin (ROADMAP 3.1): no AI there.
+  hosted?: boolean;
+  // Where trips are kept: the site's database, or (with a site too old for
+  // that) the laptop's data/panel.json.
+  store?: "site" | "file";
 }
 
 export interface PanelOptions {
@@ -123,6 +128,24 @@ export function createPanel({
 
   const entryOr404 = (planId: string) => store.get(planId);
 
+  // Every request starts from what's saved now, so this device sees what
+  // another one changed, and ends once its own changes are saved.
+  app.use("/api/*", async (c, next) => {
+    try {
+      await store.refresh();
+    } catch (e) {
+      // Status still answers: it's how the UI learns the site is down.
+      if (c.req.path !== "/api/status" && !c.req.path.endsWith("/api/status")) throw new Error(`No se pudieron leer los viajes del sitio: ${(e as Error).message}`);
+    }
+    await next();
+    try {
+      await store.flush();
+    } catch (e) {
+      if (e instanceof StoreConflict) c.res = c.json({ error: e.message }, 409);
+      else throw e;
+    }
+  });
+
   // What's configured here, and whether the site answers as admin.
   app.get("/api/status", async (c) => {
     let reachable = true;
@@ -140,6 +163,18 @@ export function createPanel({
   });
 
   app.get("/api/settings", async (c) => c.json(await site.settings()));
+
+  // The panel on the site (ROADMAP 3.1): whether it's on, and its password.
+  app.get("/api/organiser", async (c) => c.json({ ...(await site.organiser()), url: new URL("/admin/", siteUrl).toString() }));
+
+  app.put("/api/organiser", async (c) => {
+    const body = z.object({ password: z.string().min(10, "Usa al menos 10 caracteres").max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {password}" }, 400);
+    if ((await site.version()) < 10) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe servir el panel. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
+    return c.json({ ...(await site.setOrganiserPassword(body.data.password)), url: new URL("/admin/", siteUrl).toString() });
+  });
 
   app.put("/api/settings", async (c) => {
     const body = GroupSettings.safeParse(await c.req.json().catch(() => null));
@@ -183,7 +218,7 @@ export function createPanel({
   });
 
   // What the group made on the site (votes, comments, ideas), as JSON to keep.
-  // Research and drafts live here in data/panel.json already.
+  // Research and drafts stay in the panel's own store.
   app.get("/api/export", async (c) => {
     if ((await site.version()) < 7) {
       return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe exportar. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);

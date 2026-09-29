@@ -33,7 +33,7 @@ import {
 } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
-import type { SearchStep, TripView } from "../data/backend.ts";
+import type { ScreenshotImage, SearchStep, TripView } from "../data/backend.ts";
 import { usePanel, usePlan } from "../data/store.tsx";
 
 const MODES: { value: TransportMode; label: string }[] = [
@@ -205,6 +205,8 @@ export function ViajePage() {
   }
 
   const checked = destination ? pricesChecked(destination, now) : false;
+  // Research runs where Claude is: the laptop, not the panel the site serves.
+  const claude = state.status?.research !== "none";
 
   return (
     <PanelShell>
@@ -220,7 +222,11 @@ export function ViajePage() {
                     Retirar del sitio
                   </Button>
                 )}
-                <Button disabled={!!preparing} onClick={() => setAsking(true)}>
+                <Button
+                  disabled={!!preparing || !claude}
+                  title={claude ? undefined : "Necesita Claude: prepáralo desde el panel de tu ordenador"}
+                  onClick={() => setAsking(true)}
+                >
                   {draft?.preparedAt ? "Volver a preparar" : "Preparar con Claude"}
                 </Button>
                 <Button variant="primary" disabled={!draft || busy || !!preparing} onClick={() => void publish(true)}>
@@ -329,7 +335,7 @@ export function ViajePage() {
         <PriceDialog
           proposal={pricing ? destination : undefined}
           plan={plan}
-          onExtract={(kind, images) => extract(destination.id, kind, images)}
+          {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(destination.id, kind, images) } : {})}
           onClose={() => setPricing(false)}
           onSave={async (prices) => {
             await setPrices(destination.id, prices);

@@ -9,8 +9,9 @@ export interface PriceDialogProps {
   plan: Plan;
   onSave: (prices: CheckedPrices) => Promise<void>;
   onClose: () => void;
-  // Claude reading screenshots of the flights or the stay.
-  onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
+  // Claude reading screenshots of the flights or the stay; without it (the
+  // panel the site serves has no Claude) the prices are typed.
+  onExtract?: (kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
 }
 
 const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
@@ -144,7 +145,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
     setPasted(null);
     setError(null);
     try {
-      const got = await onExtract(kind, await readImages(files));
+      const got = await onExtract!(kind, await readImages(files));
       const missing: string[] = [];
       if (got.kind === "flight") {
         if (got.flightCents !== null) setFlights(toEuros(got.flightCents));
@@ -169,7 +170,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
   // Ctrl/Cmd+V with an image: read it into the section being worked in.
   const onPaste = (e: ClipboardEvent) => {
     const images = [...e.clipboardData.files].filter((f) => f.type.startsWith("image/"));
-    if (!images.length || reading) return;
+    if (!images.length || reading || !onExtract) return;
     e.preventDefault();
     if (focus) void read(focus, images);
     else setPasted(images);
@@ -230,8 +231,10 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
     >
       <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-5">
         <span>
-          Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y Claude lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los {people}, como lo muestra
-          Airbnb. Revisa lo que lea antes de guardar. Se mostrarán como «Comprobado a mano» durante 72 horas.
+          {onExtract
+            ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y Claude lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
+            : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita Claude: hazlo desde el panel de tu ordenador.`}{" "}
+          Se mostrarán como «Comprobado a mano» durante 72 horas.
         </span>
 
         {pasted && (
@@ -249,7 +252,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
         <section aria-label="Vuelos" className="flex flex-col gap-3" onFocus={() => setFocus("flight")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Vuelos</strong>
-            <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />
+            {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
           </div>
           {p && (
             <a
@@ -284,7 +287,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
         <section aria-label="Alojamiento" className="flex flex-col gap-3 border-t border-line-faint pt-4" onFocus={() => setFocus("stay")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Alojamiento</strong>
-            <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />
+            {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nombre del alojamiento">

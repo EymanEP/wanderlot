@@ -5,7 +5,7 @@ import { PanelShell } from "../components/PanelShell.tsx";
 import { PhotoPicker } from "../components/PhotoPicker.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
-import type { PublishStatus } from "../data/backend.ts";
+import type { PublishStatus, ScreenshotImage } from "../data/backend.ts";
 import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
 
@@ -189,7 +189,7 @@ export function RevisarPage() {
       <PriceDialog
         proposal={state.proposals.find((p) => p.id === pricing)}
         plan={plan}
-        onExtract={(kind, images) => extract(pricing!, kind, images)}
+        {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(pricing!, kind, images) } : {})}
         onClose={() => setPricing(null)}
         onSave={async (prices) => {
           const city = state.proposals.find((p) => p.id === pricing)?.place.city;

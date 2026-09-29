@@ -313,5 +313,6 @@ export interface SuggestionView {
 // something new from the site, so it can tell the organiser to redeploy
 // (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
 // 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
-// 8: the date vote. 9: the trip page.
-export const SITE_API_VERSION = 9;
+// 8: the date vote. 9: the trip page. 10: the panel's data on the site, and
+// the panel at /admin.
+export const SITE_API_VERSION = 10;

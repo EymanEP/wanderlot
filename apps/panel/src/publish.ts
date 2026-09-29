@@ -1,8 +1,8 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
-import { createHash } from "node:crypto";
+import { sha256Hex } from "./sha256.ts";
 import { Snapshot, totalPerPersonCents, trustState, type DatesView, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
-import type { PlanEntry } from "./store.ts";
+import { StoreConflict, type PanelBackend, type PendingInvite, type PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
   const { plan } = entry;
@@ -38,7 +38,7 @@ export function shellSnapshot(entry: PlanEntry, now: Date): Snapshot {
 // the site already shows exactly this.
 export function snapshotFingerprint(entry: PlanEntry): string {
   const { publishedAt: _at, ...content } = buildSnapshot(entry, new Date(0));
-  return createHash("sha256").update(JSON.stringify(content)).digest("hex");
+  return sha256Hex(JSON.stringify(content));
 }
 
 export interface PublishWarning {
@@ -99,6 +99,15 @@ export interface SiteClient {
   putDates(planId: string, options: { dateFrom: string; dateTo: string }[], deadline: string | null): Promise<DatesView>;
   chooseDates(planId: string, optionId: string): Promise<DatesView>;
   deleteDates(planId: string): Promise<void>;
+  // The panel's own data, kept by the site (ROADMAP 3.2).
+  panelVersions(): Promise<Record<string, number>>;
+  panelPlan(planId: string): Promise<{ entry: PlanEntry; version: number } | null>;
+  savePanelPlan(planId: string, entry: PlanEntry | null, version: number): Promise<number>;
+  panelInvites(): Promise<Record<string, PendingInvite>>;
+  savePanelInvite(memberId: string, invite: PendingInvite | null): Promise<void>;
+  // The panel on the site, at /admin (ROADMAP 3.1): its password.
+  organiser(): Promise<{ enabled: boolean; setAt: string | null }>;
+  setOrganiserPassword(password: string | null): Promise<{ enabled: boolean; setAt: string | null }>;
 }
 
 // The site said no; the panel passes its answer on.
@@ -152,6 +161,39 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     putDates: (planId, options, deadline) => call<DatesView>(`/plans/${planId}/dates`, "PUT", { options, deadline }),
     chooseDates: (planId, optionId) => call<DatesView>(`/plans/${planId}/dates/choose`, "POST", { optionId }),
     deleteDates: async (planId) => void (await call(`/plans/${planId}/dates`, "DELETE")),
+    panelVersions: () => call<Record<string, number>>("/panel/plans", "GET"),
+    async panelPlan(planId) {
+      try {
+        return await call<{ entry: PlanEntry; version: number }>(`/panel/plans/${encodeURIComponent(planId)}`, "GET");
+      } catch (e) {
+        if (e instanceof SiteError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    async savePanelPlan(planId, entry, version) {
+      try {
+        return (await call<{ version: number }>(`/panel/plans/${encodeURIComponent(planId)}`, "PUT", { entry, version })).version;
+      } catch (e) {
+        if (e instanceof SiteError && e.status === 409) throw new StoreConflict(planId);
+        throw e;
+      }
+    },
+    panelInvites: () => call<Record<string, PendingInvite>>("/panel/invites", "GET"),
+    savePanelInvite: async (memberId, invite) => void (await call(`/panel/invites/${encodeURIComponent(memberId)}`, "PUT", { invite })),
+    organiser: () => call<{ enabled: boolean; setAt: string | null }>("/organiser", "GET"),
+    setOrganiserPassword: (password) => call<{ enabled: boolean; setAt: string | null }>("/organiser", "PUT", { password }),
     exportData: (planId) => call<unknown>(`/export${planId ? `?plan=${encodeURIComponent(planId)}` : ""}`, "GET"),
+  };
+}
+
+// The panel's data kept by the site, through its admin API: what the local
+// panel uses once the site can hold it (ROADMAP 3.2).
+export function sitePanelBackend(site: SiteClient): PanelBackend {
+  return {
+    versions: () => site.panelVersions(),
+    plan: (id) => site.panelPlan(id),
+    save: (id, entry, version) => site.savePanelPlan(id, entry, version),
+    invites: () => site.panelInvites(),
+    saveInvite: (memberId, invite) => site.savePanelInvite(memberId, invite),
   };
 }

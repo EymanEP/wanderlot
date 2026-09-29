@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -85,6 +85,8 @@ export interface PanelApi {
   proposeDates: (windows: DateWindow[], deadline: string | null) => Promise<DatesPage & { message: string }>;
   chooseDates: (optionId: string) => Promise<DatesPage>;
   cancelDates: () => Promise<DatesPage>;
+  organiser: () => Promise<OrganiserAccess>;
+  setOrganiserPassword: (password: string | null) => Promise<OrganiserAccess>;
   trip: () => Promise<TripView>;
   prepareTrip: (home: string, onStep?: (s: SearchStep) => void) => Promise<TripPage>;
   saveTrip: (trip: TripPage) => Promise<TripView>;
@@ -371,6 +373,8 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         return page;
       },
       cancelDates: () => backend.cancelDates(need()),
+      organiser: () => backend.organiser(),
+      setOrganiserPassword: (password) => backend.setOrganiserPassword(password),
       trip: () => backend.trip(need()),
       async prepareTrip(home, onStep) {
         const trip = await backend.prepareTrip(need(), home, onStep);
