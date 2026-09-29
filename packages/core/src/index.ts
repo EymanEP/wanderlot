@@ -4,3 +4,4 @@ export * from "./tally.ts";
 export * from "./trust.ts";
 export * from "./voting.ts";
 export * from "./display.ts";
+export * from "./dates.ts";

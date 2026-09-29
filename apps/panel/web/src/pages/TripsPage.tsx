@@ -41,9 +41,9 @@ export function TripsPage() {
   }, [state.plans]);
   useEffect(load, [load]);
 
-  const open = async (t: TripSummary) => {
+  const open = async (t: TripSummary, to = t.proposals ? "/revisar" : "/generar") => {
     await selectPlan(t.plan.id);
-    navigate(t.proposals ? "/revisar" : "/generar");
+    navigate(to);
   };
 
   // What the group made on the site, to keep: one trip or all of them.
@@ -137,6 +137,9 @@ export function TripsPage() {
                     <div className="mt-auto flex flex-wrap gap-2 border-t border-line-faint pt-3">
                       <Button variant="primary" onClick={() => void open(t)}>
                         Abrir
+                      </Button>
+                      <Button onClick={() => void open(t, "/fechas")} title="Proponer fechas y ver quién puede cuándo">
+                        Fechas
                       </Button>
                       <Button onClick={() => setEditing(t.plan)}>Editar</Button>
                       {t.publishedAt && (

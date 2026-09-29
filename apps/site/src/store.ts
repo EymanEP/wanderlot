@@ -1,6 +1,6 @@
 // What the site keeps, behind one async interface: node:sqlite implements it
 // (sqlite.ts) and Cloudflare D1 (d1.ts) implement it, from the same migrations/.
-import type { Ballot, Comment, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { Ballot, Comment, DateAnswer, DateOption, DateResponse, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
 
 export interface StoredPlan {
   snapshot: Snapshot;
@@ -65,6 +65,14 @@ export interface Flow {
   purpose: "register" | "login";
   inviteId: string | null;
   expiresAt: string;
+}
+
+export interface DatePoll {
+  options: DateOption[];
+  deadline: string | null;
+  status: "open" | "closed";
+  chosenOptionId: string | null;
+  updatedAt: string;
 }
 
 export interface SiteStore {
@@ -143,6 +151,14 @@ export interface SiteStore {
   setLike(commentId: string, memberId: string, on: boolean, at: string): Promise<void>;
   // Like counts for a plan's comments, and which ones this member liked.
   likes(planId: string, memberId: string): Promise<Map<string, { count: number; mine: boolean }>>;
+  // The date vote (ROADMAP 2.1).
+  datePoll(planId: string): Promise<DatePoll | undefined>;
+  putDatePoll(planId: string, poll: DatePoll): Promise<void>;
+  // Removes the vote and its answers.
+  deleteDatePoll(planId: string): Promise<void>;
+  dateResponses(planId: string): Promise<DateResponse[]>;
+  putDateResponse(planId: string, memberId: string, answers: Record<string, DateAnswer>, note: string | null, at: string): Promise<void>;
+
   // Who liked what in a plan, for the export.
   commentLikes(planId: string): Promise<{ commentId: string; memberId: string; createdAt: string }[]>;
 }

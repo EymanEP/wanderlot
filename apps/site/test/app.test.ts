@@ -456,6 +456,86 @@ describe("with everyone signed in", () => {
     });
   });
 
+  describe("the trip page", () => {
+    it("reaches the trip's people once published, and only for a published destination", async () => {
+      const trip = { destinationId: "lis", intro: "Lisboa en noviembre", food: [{ title: "Pastel de nata", where: "Belém" }], tricountUrl: "https://tricount.com/abc" };
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).trip).toBeNull();
+      expect((await admin(`/plans/${PLAN}`, "PUT", { ...snapshot(four()), trip: { ...trip, destinationId: "xyz" } })).status).toBe(400);
+      expect((await admin(`/plans/${PLAN}`, "PUT", { ...snapshot(four()), trip })).status).toBe(200);
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.trip).toMatchObject({ destinationId: "lis", intro: "Lisboa en noviembre", food: [{ title: "Pastel de nata", detail: "", where: "Belém" }], todo: [], tricountUrl: "https://tricount.com/abc" });
+      expect(((await (await as("ana", "")).json()) as any[])[0].tripReady).toBe(true);
+    });
+  });
+
+  describe("dates", () => {
+    const A = "2026-11-03_2026-11-07";
+    const B = "2026-11-12_2026-11-16";
+    const windows = [
+      { dateFrom: "2026-11-12", dateTo: "2026-11-16" },
+      { dateFrom: "2026-11-03", dateTo: "2026-11-07" },
+    ];
+
+    it("lets the group say who can go when, and the organiser choose", async () => {
+      // No date vote: nothing changes for the trip.
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).dates).toBeNull();
+      expect((await as("ana", `/${PLAN}/dates`, "PUT", { answers: {} })).status).toBe(404);
+
+      expect((await admin(`/plans/${PLAN}/dates`, "PUT", { options: windows.slice(0, 1) })).status).toBe(400);
+      const opened = (await (await admin(`/plans/${PLAN}/dates`, "PUT", { options: windows, deadline: "2026-10-20T20:00:00Z" })).json()) as any;
+      expect(opened).toMatchObject({ status: "open", deadline: "2026-10-20T20:00:00Z", chosenOptionId: null, responses: [] });
+      expect(opened.options.map((o: any) => o.id)).toEqual([A, B]);
+
+      // Every window, one of three answers.
+      expect((await as("ana", `/${PLAN}/dates`, "PUT", { answers: { [A]: "yes" } })).status).toBe(400);
+      expect((await as("ana", `/${PLAN}/dates`, "PUT", { answers: { [A]: "yes", [B]: "perhaps" } })).status).toBe(400);
+      expect((await as("ana", `/${PLAN}/dates`, "PUT", { answers: { [A]: "yes", [B]: "maybe" }, note: "Tengo que pedirlo antes del 15" })).status).toBe(200);
+      await as("bea", `/${PLAN}/dates`, "PUT", { answers: { [A]: "no", [B]: "yes" } });
+
+      // Everyone on the trip sees everyone's answers.
+      const seen = ((await (await as("carlos", `/${PLAN}`)).json()) as any).dates;
+      expect(seen.responses).toEqual([
+        { memberId: "ana", answers: { [A]: "yes", [B]: "maybe" }, note: "Tengo que pedirlo antes del 15", updatedAt: clock.toISOString() },
+        { memberId: "bea", answers: { [A]: "no", [B]: "yes" }, note: null, updatedAt: clock.toISOString() },
+      ]);
+      const trips = (await (await as("ana", "")).json()) as any[];
+      expect(trips[0]).toMatchObject({ datesOpen: true, datesAnsweredByMe: true });
+      expect(((await (await as("carlos", "")).json()) as any[])[0]).toMatchObject({ datesOpen: true, datesAnsweredByMe: false });
+
+      // Changing the windows keeps the answers to the ones that stay.
+      const C = "2026-11-20_2026-11-24";
+      const changed = (await (await admin(`/plans/${PLAN}/dates`, "PUT", { options: [windows[1], { dateFrom: "2026-11-20", dateTo: "2026-11-24" }] })).json()) as any;
+      expect(changed.options.map((o: any) => o.id)).toEqual([A, C]);
+      expect(changed.deadline).toBeNull();
+      expect(((await (await as("ana", "")).json()) as any[])[0].datesAnsweredByMe).toBe(false);
+
+      // Choosing: the vote closes and the trip takes those dates.
+      expect((await admin(`/plans/${PLAN}/dates/choose`, "POST", { optionId: B })).status).toBe(400);
+      const chosen = (await (await admin(`/plans/${PLAN}/dates/choose`, "POST", { optionId: A })).json()) as any;
+      expect(chosen).toMatchObject({ status: "closed", chosenOptionId: A });
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.plan).toMatchObject({ dateFrom: "2026-11-03", dateTo: "2026-11-07", nights: 4 });
+      expect((await as("ana", `/${PLAN}/dates`, "PUT", { answers: { [A]: "yes", [C]: "no" } })).status).toBe(409);
+      expect(((await (await as("ana", "")).json()) as any[])[0]).toMatchObject({ dateFrom: "2026-11-03", datesOpen: false });
+
+      // The export carries it; deleting the trip takes it away.
+      expect(((await (await admin("/export", "GET")).json()) as any).trips[0].dates).toMatchObject({ chosenOptionId: A });
+      await admin(`/plans/${PLAN}`, "DELETE");
+      expect(await store.datePoll(PLAN)).toBeUndefined();
+      expect(await store.dateResponses(PLAN)).toEqual([]);
+    });
+
+    it("counts only who is on the trip, and can be taken away", async () => {
+      await admin(`/plans/${PLAN}/dates`, "PUT", { options: windows });
+      await as("ana", `/${PLAN}/dates`, "PUT", { answers: { [A]: "yes", [B]: "no" } });
+      await admin(`/plans/${PLAN}/members`, "PUT", FRIENDS.filter((f) => f !== "ana"));
+      expect(((await (await admin(`/plans/${PLAN}/dates`, "GET")).json()) as any).responses).toEqual([]);
+      expect(await (await admin(`/plans/${PLAN}/dates`, "DELETE")).json()).toEqual({ ok: true });
+      expect(await (await admin(`/plans/${PLAN}/dates`, "GET")).json()).toBeNull();
+      expect((await admin("/plans/nope/dates", "GET")).status).toBe(404);
+    });
+  });
+
   describe("comments", () => {
     it("threads one level deep and lists the three most recent across the plan", async () => {
       const post = async (member: string, body: unknown) => (await (await as(member, `/${PLAN}/comments`, "POST", body)).json()) as any;

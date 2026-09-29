@@ -158,11 +158,66 @@ export const Plan = z.object({
 });
 export type Plan = z.infer<typeof Plan>;
 
+// --- El viaje (ROADMAP 2.2–2.4) -------------------------------------------
+
+// One way to cover a stretch: home → departure airport, or arrival airport →
+// the stay. Prices per person, estimated by research unless the organiser
+// changes them.
+export const TransportMode = z.enum(["car", "bus", "train", "metro", "taxi", "shuttle", "walk", "other"]);
+export type TransportMode = z.infer<typeof TransportMode>;
+
+export const TransportOption = z.object({
+  mode: TransportMode,
+  title: z.string().min(1).max(120), // "Coche hasta Bilbao"
+  detail: z.string().max(600).default(""), // "250 km por la AP-68 · 2 coches · 32 € de peaje · parking P3"
+  minutes: z.number().int().positive().nullable().default(null),
+  priceCents: cents.nullable().default(null),
+});
+export type TransportOption = z.infer<typeof TransportOption>;
+
+// One entry in the guide: something to do, eat, see, or know before going.
+export const GuideItem = z.object({
+  title: z.string().min(1).max(120),
+  detail: z.string().max(600).default(""),
+  // Qué hacer: roughly what it costs a person; null when free or unknown.
+  priceCents: cents.nullable().optional(),
+  // Qué comer: where it's typical to try it.
+  where: z.string().max(200).optional(),
+});
+export type GuideItem = z.infer<typeof GuideItem>;
+
+// The trip page, once the destination is decided: what the group needs in
+// one place. Research drafts the guide and how to get there; the organiser
+// edits it and adds the stay's details and the Tricount link.
+export const TripPage = z.object({
+  destinationId: id,
+  intro: z.string().max(1000).default(""),
+  todo: z.array(GuideItem).max(15).default([]),
+  food: z.array(GuideItem).max(15).default([]),
+  sights: z.array(GuideItem).max(15).default([]),
+  beforeYouGo: z.array(GuideItem).max(15).default([]),
+  // Cómo llegar: from the group's home town to the airport, and from the
+  // destination's airport to the stay.
+  home: z.string().max(60).default(""),
+  toAirport: z.array(TransportOption).max(6).default([]),
+  fromAirport: z.array(TransportOption).max(6).default([]),
+  stay: z
+    .object({ address: z.string().max(200).default(""), checkIn: z.string().max(60).default(""), checkOut: z.string().max(60).default("") })
+    .default({ address: "", checkIn: "", checkOut: "" }),
+  tricountUrl: webUrl.nullable().default(null),
+  // Where the guide's facts and prices came from.
+  sources: z.array(Source).default([]),
+  preparedAt: isoDateTime.nullable().default(null),
+});
+export type TripPage = z.infer<typeof TripPage>;
+
 // Panel → site. The only thing that ever crosses the boundary (§2).
 export const Snapshot = z
   .object({
     plan: Plan.omit({ status: true, winnerDestinationId: true, decidedNote: true }),
     destinations: z.array(Destination),
+    // The trip page, once published; older snapshots don't have one.
+    trip: TripPage.optional(),
     publishedAt: isoDateTime,
   })
   .superRefine((s, ctx) => {
@@ -175,6 +230,9 @@ export const Snapshot = z
       if (d.stays.filter((st) => st.recommended).length > 1) {
         ctx.addIssue({ code: "custom", message: `${d.id}: more than one recommended stay` });
       }
+    }
+    if (s.trip && !ids.has(s.trip.destinationId)) {
+      ctx.addIssue({ code: "custom", message: `trip page for ${s.trip.destinationId}, which isn't published` });
     }
   });
 export type Snapshot = z.infer<typeof Snapshot>;
@@ -206,6 +264,8 @@ export const GroupSettings = z.object({
   groupName: z.string().trim().min(1).max(60),
   organiserName: z.string().trim().min(1).max(60),
   defaultOrigin: iata.optional(),
+  // "Salimos desde": the group's home town, for Cómo llegar (ROADMAP 2.3).
+  homeTown: z.string().trim().max(60).optional(),
 });
 export type GroupSettings = z.infer<typeof GroupSettings>;
 
@@ -225,6 +285,11 @@ export const PlanSummary = z.object({
   destinations: z.number().int().optional(),
   voteDeadline: isoDateTime.nullable().optional(),
   votedByMe: z.boolean().optional(),
+  // A date vote is open (ROADMAP 2.1), and whether this person has answered it.
+  datesOpen: z.boolean().optional(),
+  datesAnsweredByMe: z.boolean().optional(),
+  // The trip page is published (ROADMAP 2.2).
+  tripReady: z.boolean().optional(),
 });
 export type PlanSummary = z.infer<typeof PlanSummary>;
 
@@ -248,4 +313,5 @@ export interface SuggestionView {
 // something new from the site, so it can tell the organiser to redeploy
 // (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
 // 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
-export const SITE_API_VERSION = 7;
+// 8: the date vote. 9: the trip page.
+export const SITE_API_VERSION = 9;

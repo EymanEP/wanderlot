@@ -1,6 +1,6 @@
 // v1 has no email or push: the panel writes the message the organiser pastes
 // into the group chat (SPEC §7).
-import type { Plan } from "@wanderlot/core";
+import { rangeLabel, type DateOption, type Plan } from "@wanderlot/core";
 
 export interface PendingInvite {
   name: string;
@@ -57,4 +57,37 @@ export function voteClosedMessage(plan: Pick<Plan, "id" | "name">, winnerCity: s
   return winnerCity
     ? `Votación de ${plan.name} cerrada: nos vamos a ${winnerCity}. Recuento completo en ${url}`
     : `Votación de ${plan.name} cerrada con empate. Decido yo y os cuento. Recuento en ${url}`;
+}
+
+const list = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} o ${items.at(-1)}` : (items[0] ?? ""));
+
+// The date vote is open (ROADMAP 2.1): which windows, until when, and the
+// invites of whoever hasn't joined yet.
+export function datesOpenedMessage(
+  plan: Pick<Plan, "id" | "name">,
+  options: DateOption[],
+  deadline: string | null,
+  siteUrl: string,
+  pending: PendingInvite[],
+): string {
+  const lines = [
+    `¿Cuándo nos vamos? (${plan.name})`,
+    `Decid qué fechas os vienen bien: ${list(options.map((o) => rangeLabel(o.dateFrom, o.dateTo)))}. Para cada una: sí, si hace falta o no.`,
+    ...(deadline ? [`Responded antes del ${formatDeadline(deadline)}, así podemos pedir los días.`] : []),
+    "",
+    `Entrad en ${new URL(`/p/${plan.id}/fechas`, siteUrl)}`,
+  ];
+  if (pending.length) {
+    lines.push("", "Si aún no habéis entrado nunca, vuestra invitación (sirve una vez, no la reenviéis):", ...pending.map((p) => `• ${p.name}: ${p.url}`));
+  }
+  return lines.join("\n");
+}
+
+export function datesReminderMessage(plan: Pick<Plan, "id" | "name">, siteUrl: string, missing: string[]): string {
+  const who = missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`;
+  return `${who} por decir qué fechas le vienen bien para ${plan.name}. Es un minuto: ${new URL(`/p/${plan.id}/fechas`, siteUrl)}`;
+}
+
+export function datesChosenMessage(plan: Pick<Plan, "id" | "name">, option: DateOption, siteUrl: string): string {
+  return `Fechas de ${plan.name} decididas: ${rangeLabel(option.dateFrom, option.dateTo)}. Ya podéis pedir los días. ${new URL(`/p/${plan.id}/fechas`, siteUrl)}`;
 }

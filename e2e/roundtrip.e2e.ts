@@ -39,10 +39,22 @@ const steps = [
 ];
 writeFileSync(join(dir, "steps.ndjson"), steps.map((l) => JSON.stringify(l)).join("\n") + "\n");
 writeFileSync(join(dir, "result.ndjson"), JSON.stringify(canned) + "\n");
+// What "Preparar el viaje" gets back: a short guide.
+const guide = {
+  intro: "Buen destino para noviembre.",
+  todo: [{ title: "Paseo por el centro", detail: "Sin prisa", priceEuros: null }],
+  food: [{ title: "Plato típico", detail: "", where: "El mercado" }],
+  sights: [{ title: "El mirador", detail: "Al atardecer" }],
+  beforeYouGo: [{ title: "Dinero", detail: "Euro" }],
+  toAirport: [{ mode: "bus", title: "Autobús a Barajas", detail: "", minutes: 240, priceEuros: 32 }],
+  fromAirport: [{ mode: "metro", title: "Metro al centro", detail: "", minutes: 25, priceEuros: 2 }],
+  sources: [{ label: "Turismo", url: "https://example.org/" }],
+};
+writeFileSync(join(dir, "guide.ndjson"), JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: guide }) + "\n");
 const fakeClaude = join(dir, "claude");
 writeFileSync(
   fakeClaude,
-  `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "steps.ndjson")}"\nsleep 1\ncat "${join(dir, "result.ndjson")}"\n`,
+  `#!/bin/sh\n[ "$1" = "--version" ] && { echo "0.0.0 (stand-in)"; exit 0; }\ncat "${join(dir, "steps.ndjson")}"\nsleep 1\ncase "$2" in *"guía del viaje"*) cat "${join(dir, "guide.ndjson")}" ;; *) cat "${join(dir, "result.ndjson")}" ;; esac\n`,
 );
 chmodSync(fakeClaude, 0o755);
 
@@ -168,6 +180,38 @@ try {
   await org.getByText("Idea de Ana").first().waitFor();
   console.log("✓ site → panel: Ana's idea researched and credited");
 
+  // 6c. When: the organiser proposes two date windows, Ana answers on her
+  // phone, and the organiser chooses one; the trip takes those dates.
+  await org.getByRole("link", { name: "Fechas" }).first().click();
+  await org.getByRole("heading", { name: "Elige unas fechas" }).waitFor();
+  await org.getByRole("button", { name: "Mes siguiente" }).click();
+  for (const [from, to] of [[3, 7], [17, 21]]) {
+    await org.getByRole("button", { name: day(from!), exact: true }).click();
+    await org.getByRole("button", { name: day(to!), exact: true }).click();
+    await org.getByRole("button", { name: "Añadir estas fechas" }).click();
+  }
+  await org.getByRole("button", { name: "Proponer fechas" }).click();
+  assert.match(await org.getByLabel("Mensaje para el grupo").inputValue(), new RegExp(`${SITE}/p/noviembre-2026/fechas`));
+  await org.getByRole("button", { name: "Cerrar" }).click();
+  await ana.goto(`${SITE}/p/noviembre-2026/fechas`);
+  await ana.getByRole("heading", { level: 1, name: "¿Cuándo nos vamos?" }).waitFor();
+  const [first, second] = await ana.getByRole("radiogroup").all();
+  await first!.getByLabel("Sí").check();
+  await second!.getByLabel("No").check();
+  await ana.getByRole("button", { name: "Responder" }).click();
+  await ana.getByText("Respuesta guardada").waitFor();
+  await org.getByRole("button", { name: "Actualizar" }).click();
+  const answers = org.getByRole("table", { name: "Quién puede cuándo" });
+  await answers.getByRole("row", { name: /^Ana/ }).getByText("Sí").waitFor();
+  await answers.getByRole("button", { name: /^Elegir / }).first().click();
+  await org.getByRole("button", { name: "Elegir estas fechas" }).click();
+  await org.getByText("Fechas elegidas", { exact: true }).waitFor();
+  await ana.reload();
+  await ana.getByRole("heading", { level: 1, name: "Fechas decididas" }).waitFor();
+  await ana.goto(`${SITE}/p/noviembre-2026`);
+  await ana.getByText(new RegExp(`^Del \\S+ ${3} al \\S+ ${7} · salida`)).waitFor();
+  console.log("✓ panel ↔ site: dates proposed, answered and chosen");
+
   // 7. Ana votes on her phone; the organiser follows it and closes early.
   await ana.getByRole("link", { name: "Repartir mis puntos" }).click();
   for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();
@@ -190,6 +234,25 @@ try {
   await ana.goto(`${SITE}/p/noviembre-2026`);
   await ana.getByText(`Votación cerrada · ganó ${winner}`).waitFor();
   console.log("✓ site: Ana sees the result");
+
+  // 9. El viaje: the organiser prepares the trip page with Claude, adds the
+  // Tricount and publishes it; Ana sees it first in her trip.
+  await org.getByRole("button", { name: "Cerrar" }).click();
+  await org.getByRole("link", { name: "Preparar el viaje" }).click();
+  await org.getByRole("button", { name: "Preparar con Claude" }).click();
+  await org.getByLabel("Salís desde (opcional)").fill("Logroño");
+  await org.getByRole("button", { name: "Preparar", exact: true }).click();
+  await org.getByText("Guía preparada: revísala antes de publicarla").waitFor();
+  await org.getByLabel("Enlace del Tricount (opcional)").fill("https://tricount.com/e2e");
+  await org.getByRole("button", { name: "Publicar el viaje" }).click();
+  await org.getByText("Página del viaje publicada").waitFor();
+  await ana.goto(`${SITE}/`);
+  await ana.getByText("El viaje está listo").waitFor();
+  await ana.getByRole("link", { name: /Noviembre 2026/ }).click();
+  await ana.getByRole("heading", { level: 1, name: winner }).waitFor();
+  assert.equal(await ana.getByRole("link", { name: /Abrir el Tricount/ }).getAttribute("href"), "https://tricount.com/e2e");
+  await ana.getByText("Autobús a Barajas").waitFor();
+  console.log("✓ panel → site: trip page prepared, published and seen");
 } finally {
   await browser.close();
   site.kill();

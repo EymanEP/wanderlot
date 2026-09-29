@@ -4,9 +4,11 @@ import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
 import { PanelShell } from "./components/PanelShell.tsx";
 import { usePanel } from "./data/store.tsx";
 import { ComparativaPage } from "./pages/ComparativaPage.tsx";
+import { FechasPage } from "./pages/FechasPage.tsx";
 import { GenerarPage } from "./pages/GenerarPage.tsx";
 import { NewPlanPage } from "./pages/NewPlanPage.tsx";
 import { VotacionPage } from "./pages/VotacionPage.tsx";
+import { ViajePage } from "./pages/ViajePage.tsx";
 import { PersonasPage } from "./pages/PersonasPage.tsx";
 import { RevisarPage } from "./pages/RevisarPage.tsx";
 import { TripsPage } from "./pages/TripsPage.tsx";
@@ -58,10 +60,12 @@ export function App() {
   return (
     <Routes>
       <Route index element={<TripsPage />} />
+      <Route path="/fechas" element={<RequirePlan><FechasPage /></RequirePlan>} />
       <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
       <Route path="/revisar" element={<RequirePlan><RevisarPage /></RequirePlan>} />
       <Route path="/comparativa" element={<RequirePlan><ComparativaPage /></RequirePlan>} />
       <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
+      <Route path="/viaje" element={<RequirePlan><ViajePage /></RequirePlan>} />
       <Route path="/personas" element={<PersonasPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

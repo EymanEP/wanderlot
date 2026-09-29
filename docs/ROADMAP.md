@@ -12,8 +12,9 @@ What this roadmap covers:
 - **The panel from anywhere:** hosting the panel, and other AI providers.
 - **Later:** big changes that wait.
 
-**Done:** the fixes (§1) and the export (2.5). Everything else is still a
-plan.
+**Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
+phase 1 (2.3) and the Tricount link (2.4), and the export (2.5). Everything
+else is still a plan.
 
 **Legend**
 
@@ -176,6 +177,20 @@ People need to know early so they can ask for days off.
   and desktop.
 - Panel: proposing windows and following the answers.
 
+**Done** (site API 8, migration 0007), built from the existing design system
+instead of new designs:
+- Panel: a **Fechas** page (and a "Fechas" button on each trip in Viajes).
+  Windows are picked on the same calendar as a new trip; the answers show as a
+  people-by-windows table with the best windows marked, "Elegir" per window,
+  and messages for proposing, reminding and announcing.
+- Site: the **Fechas** tab, laid out like Votación: your answer per window on
+  the left, "Quién puede cuándo" on the right (below on phones). Tus viajes
+  shows "Te falta decir fechas" and "Fechas por decidir".
+- Tables: `date_polls` and `date_answers` (one row per person, with their
+  answers as JSON), rather than `date_options`.
+- A trip that isn't published yet goes up without destinations when dates are
+  proposed, so the group can answer first.
+
 ### 2.2 El viaje: the trip page · L · 🎨 · ⚙️
 
 **Why.** After deciding, the group needs one place with the plan: where
@@ -223,6 +238,20 @@ decided; the vote result stays one tap away):
 - Site: the trip page on phone and desktop.
 - Panel: the "Preparar el viaje" editor.
 
+**Done** (site API 9; no migration: the trip page travels inside the
+snapshot), built from the existing design system:
+- Panel: an **El viaje** page (and "Preparar el viaje" from Votación once the
+  destination is decided). A checklist (destination, checked prices with the
+  price dialog, guide, published), "Preparar con Claude" with its steps live,
+  an editor for every section, and "Publicar el viaje" / "Retirar del sitio".
+- Site: an **El viaje** tab, first once published, laid out like a
+  destination page: flights and stay with the checked prices, the stay's
+  address and times, Cómo llegar, Qué hacer, Qué comer, Sitios que ver,
+  Antes de ir, who's going, and the guide labelled as Claude's with its
+  sources. Destinos and Tus viajes point to it.
+- Research: `guide` on both providers (the `claude` command and the API),
+  same tools and rules as research.
+
 ### 2.3 Cómo llegar: to the airport and from it · L · 🎨 (part of 2.2's screens) · ⚙️ (for phase 2)
 
 **Why.** The group lives in Logroño. Flying from Bilbao or Madrid means a car,
@@ -254,6 +283,9 @@ specific to Logroño.
   per-person total the group votes on, so it waits until phase 1 has been used
   on a real trip.
 
+**Phase 1 done**, as part of El viaje: "Salís desde" is asked when preparing
+and kept as the group's `homeTown` setting for next time.
+
 ### 2.4 Money: link Tricount, don't rebuild it · S
 
 **Why not build it.** The group already splits costs in Tricount without
@@ -264,6 +296,9 @@ already works.
 - An optional "Enlace del Tricount" on the trip, shown on the trip page (2.2).
 - The per-person shares Wanderlot already knows (flight, stay) are listed
   there, ready to enter in Tricount.
+
+**Done:** "Lo que pone cada uno" at the top of the trip page, with "Abrir el
+Tricount".
 
 ### 2.5 Export the group's data · S–M
 
@@ -444,9 +479,11 @@ Not planned in detail yet. They wait until the flows above are in use.
 
 1. ~~**Fixes 1.1–1.6.** Small, and they close the gaps the first trip hit. 1.1
    and the export (2.5) change the site, so they go out in one deploy.~~ Done.
-2. **Cuándo (2.1).** The next trip needs dates agreed early. Design first.
-3. **El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
-   (2.4).** One design for the trip page, built together.
+2. ~~**Cuándo (2.1).** The next trip needs dates agreed early. Design first.~~
+   Done, with the existing design system.
+3. ~~**El viaje (2.2) with Cómo llegar phase 1 (2.3) and the Tricount link
+   (2.4).** One design for the trip page, built together.~~ Done, with the
+   existing design system.
 4. **The panel from anywhere.**
    - **3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
      laptop overwrite each other.
