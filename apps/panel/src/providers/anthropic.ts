@@ -5,7 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { extractPrompt, extractSchemas } from "./extract.ts";
 import { GuideOutput, guidePrompt } from "./guide.ts";
-import { ResearchOutput, buildPrompt, toResults } from "./research.ts";
+import { ResearchOutput, SYSTEM, buildPrompt, toResults } from "./research.ts";
 import type { ResearchProvider } from "./types.ts";
 
 export const MODEL = "claude-opus-5";
@@ -13,9 +13,6 @@ export const MODEL = "claude-opus-5";
 // A long search can pause server-side; resume it at most this many times.
 const MAX_CONTINUATIONS = 5;
 
-const SYSTEM =
-  "Planificas viajes para un grupo de amigos. Buscas en la web vuelos, alojamientos y precios reales y citas las páginas de donde salen. " +
-  "Respondes en español de España.";
 
 // Only what research needs from the client, so tests can pass a fake.
 export type MessagesClient = Pick<Anthropic["beta"]["messages"], "stream">;

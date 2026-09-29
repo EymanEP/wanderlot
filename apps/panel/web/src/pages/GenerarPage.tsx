@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { addDaysIso, type SuggestionView } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
 import { IdeasCard } from "../components/IdeasCard.tsx";
@@ -98,12 +99,12 @@ export function GenerarPage() {
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
           {status?.hosted ? (
             <Notice tone="neutral">
-              Buscar destinos necesita Claude, y el panel del sitio no lo tiene. Busca desde el panel de tu ordenador: lo que encuentre aparecerá aquí también. Desde aquí puedes
-              ver las ideas del grupo y descartarlas.
+              Buscar destinos tarda varios minutos y desde el panel del sitio aún no se puede. Busca desde el panel de tu ordenador: lo que encuentre aparecerá aquí también. Desde
+              aquí puedes ver las ideas del grupo, descartarlas o añadir un destino a mano en Revisar.
             </Notice>
           ) : (
             // Keyed so switching plans resets the form to the new plan.
-            <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+            <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} {...(status?.ai ? { ai: status.ai } : {})} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
           )}
         </div>
 
@@ -129,7 +130,7 @@ export function GenerarPage() {
             )}
           </div>
 
-          {generation && running && <GenerationProgress generation={generation} onStop={stopGeneration} />}
+          {generation && running && <GenerationProgress generation={generation} onStop={stopGeneration} aiName={status?.ai?.name ?? "Claude"} />}
 
           <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 
@@ -145,7 +146,14 @@ export function GenerarPage() {
           )}
           {status?.research === "none" && !status.hosted && (
             <Notice tone="neutral">
-              No encuentro el comando <code>claude</code> ni una clave de Anthropic en este ordenador. Ejecuta <code>npm run setup</code> para configurarlo.
+              No hay ninguna IA configurada en este ordenador. Mira en <Link to="/ajustes">Ajustes</Link> cómo añadir una, o añade destinos a mano en{" "}
+              <Link to="/revisar">Revisar</Link>.
+            </Notice>
+          )}
+          {status?.ai?.search === false && !status.hosted && (
+            <Notice tone="neutral">
+              {status.ai.name} no busca en la web: sus precios y horarios salen de lo que sabe y llegan al sitio como «Estimado por {status.ai.name}». Compruébalos antes de
+              publicar.
             </Notice>
           )}
 

@@ -14,7 +14,8 @@ What this roadmap covers:
 
 **Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
 phase 1 (2.3) and the Tricount link (2.4), the export (2.5), the panel on the
-site (3.1) and one store (3.2). Everything else is still a plan.
+site (3.1), one store (3.2) and the first part of other AIs (3.3). Everything
+else is still a plan.
 
 **Legend**
 
@@ -466,6 +467,26 @@ the panel says so when the provider is chosen.
 - It may need to run in the background (a Queue or a Durable Object) and
   report progress, instead of streaming over one long request.
 
+**First part done** (site API 11; no migration), with the existing design
+system:
+- **Ajustes**, a new page in the panel's top bar: the AIs set up, what each
+  can do (web search, screenshots), which one is in use, and for the others
+  where their keys go. The laptop's choice is kept in `.env`.
+- **OpenAI** (Responses API with web search, streamed) and **any
+  OpenAI-compatible endpoint** (chat completions, no web search), in plain
+  `fetch` so they also run on the Worker. The compatible one's research and
+  guide are estimates: no sources, "Estimado por …" on the site.
+- Research names its AI: "Lo escribió OpenAI" on the site, and the panel's
+  screens say which AI is working.
+- **Añadir a mano** in Revisar: city, country, airport, type, and the flight
+  and stay prices seen. It goes in approved and "Comprobado a mano", with no
+  flight times until the price dialog adds them.
+- **The panel at `/admin` reads screenshots** with a key shared from the
+  laptop (`npm run setup` asks; `npm run deploy:site` stores it as Worker
+  secrets). It still doesn't search or prepare the guide.
+- Not yet: `codex` and `opencode` as local commands (each needs checking
+  first), and research running on the site in the background.
+
 ---
 
 ## 4. Later
@@ -504,6 +525,8 @@ Not planned in detail yet. They wait until the flows above are in use.
 4. **The panel from anywhere.**
    - ~~**3.2 (one store) before 3.1 (hosted management).** Otherwise phone and
      laptop overwrite each other.~~ Done, together.
-   - **3.3 (other AIs)** next: it's what the panel at `/admin` still lacks.
+   - **3.3 (other AIs).** First part done: Ajustes, OpenAI and compatible
+     endpoints, adding by hand, screenshots at `/admin`. Next, research on
+     the site in the background.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
 6. **Later:** languages and currency.

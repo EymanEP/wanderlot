@@ -67,10 +67,19 @@ export const Provenance = z.discriminatedUnion("kind", [
     // The trip's dates changed after this check: the price was for others.
     forOtherDates: z.boolean().optional(),
   }),
-  z.object({
-    kind: z.literal("claude"),
-    sources: z.array(Source).min(1),
-  }),
+  // Researched by an AI: Claude, or another the organiser chose (ROADMAP
+  // 3.3). The kind keeps its first name so older data still reads.
+  z
+    .object({
+      kind: z.literal("claude"),
+      sources: z.array(Source),
+      // Which AI, as friends see it ("OpenAI"); absent means Claude.
+      by: z.string().min(1).max(40).optional(),
+      // It couldn't search the web: the prices are what the model knows, not
+      // quotes from a page, so there's nothing to cite.
+      estimate: z.boolean().optional(),
+    })
+    .refine((p) => p.estimate === true || p.sources.length > 0, { message: "cite at least one source", path: ["sources"] }),
 ]);
 export type Provenance = z.infer<typeof Provenance>;
 
@@ -207,6 +216,8 @@ export const TripPage = z.object({
   tricountUrl: webUrl.nullable().default(null),
   // Where the guide's facts and prices came from.
   sources: z.array(Source).default([]),
+  // Which AI drafted it, when not Claude (ROADMAP 3.3).
+  by: z.string().min(1).max(40).optional(),
   preparedAt: isoDateTime.nullable().default(null),
 });
 export type TripPage = z.infer<typeof TripPage>;
@@ -314,5 +325,6 @@ export interface SuggestionView {
 // (npm run deploy:site). 5: trips, PINs, suggestions, vote state with ballots.
 // 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
 // 8: the date vote. 9: the trip page. 10: the panel's data on the site, and
-// the panel at /admin.
-export const SITE_API_VERSION = 10;
+// the panel at /admin. 11: research by other AIs, including estimates
+// without sources.
+export const SITE_API_VERSION = 11;

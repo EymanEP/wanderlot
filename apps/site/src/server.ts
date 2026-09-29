@@ -35,6 +35,8 @@ const app = createApp({
   ...(process.env.WANDERLOT_PIN_SECRET ? { pinSecret: process.env.WANDERLOT_PIN_SECRET } : {}),
   // Generous for a group of friends, tight enough to stop a flood of writes.
   limit: memoryLimiter(60, 60_000),
+  // AI keys for the panel at /admin (ROADMAP 3.3).
+  ai: process.env,
   ...(indexHtml ? { indexHtml } : {}),
   ...(adminIndexHtml ? { adminIndexHtml } : {}),
 });

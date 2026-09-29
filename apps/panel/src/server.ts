@@ -1,12 +1,15 @@
 import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPanel, type PanelStatus } from "./app.ts";
 import { panelHosts } from "./guard.ts";
+import Anthropic from "@anthropic-ai/sdk";
 import { anthropicProvider } from "./providers/anthropic.ts";
 import { claudeProvider } from "./providers/claude.ts";
+import { AI_IDS, AiChoice, apiEntries, type AiId } from "./providers/ai.ts";
 import { pexels, unsplash, wikimedia, type PhotoSource } from "./providers/photos.ts";
 import { duffelProvider } from "./providers/duffel.ts";
 import { siteClient, sitePanelBackend } from "./publish.ts";
@@ -14,9 +17,22 @@ import { PanelStore } from "./store.ts";
 import { fileBackend, moveFileToSite } from "./file-store.ts";
 
 // Settings from `npm run setup`, unless already set in the environment.
+const envFile = fileURLToPath(new URL("../../../.env", import.meta.url));
 try {
-  process.loadEnvFile(fileURLToPath(new URL("../../../.env", import.meta.url)));
+  process.loadEnvFile(envFile);
 } catch {}
+
+// Keeps one setting in .env, leaving the rest as it is.
+function saveEnv(key: string, value: string) {
+  const lines = existsSync(envFile) ? readFileSync(envFile, "utf8").split("\n") : [];
+  const at = lines.findIndex((l) => l.startsWith(`${key}=`));
+  if (at >= 0) lines[at] = `${key}=${value}`;
+  else lines.splice(lines.at(-1) === "" ? -1 : lines.length, 0, `${key}=${value}`);
+  writeFileSync(envFile, lines.join("\n"));
+  try {
+    chmodSync(envFile, 0o600);
+  } catch {}
+}
 
 const siteUrl = process.env.WANDERLOT_SITE_URL ?? "http://localhost:8787";
 const adminToken = process.env.WANDERLOT_ADMIN_TOKEN ?? "";
@@ -49,9 +65,30 @@ if (onSite) {
   console.warn(`Keeping trips in ${dataFile}. Run npm run deploy:site to keep them on the site and manage them from your phone.`);
 }
 
+// The AIs set up here (ROADMAP 3.3). The command first: it runs on the
+// organiser's Claude plan, with no API bill. Ajustes picks another.
+const ai = new AiChoice(
+  [
+    {
+      option: {
+        id: "claude-cli",
+        name: "Claude (comando claude)",
+        model: null,
+        ready: hasClaude,
+        setup: "Instala Claude Code (el comando claude) y reinicia el panel.",
+        search: true,
+        images: true,
+      },
+      make: () => claudeProvider(),
+    },
+    ...apiEntries(process.env, (key) => anthropicProvider(new Anthropic({ apiKey: key }).beta.messages), "local"),
+  ],
+  (AI_IDS as readonly string[]).includes(process.env.WANDERLOT_AI ?? "") ? (process.env.WANDERLOT_AI as AiId) : null,
+  (id) => saveEnv("WANDERLOT_AI", id),
+);
+
 const status: PanelStatus = {
-  // The command first: it runs on the organiser's Claude plan, with no API bill.
-  research: hasClaude ? "claude-cli" : process.env.ANTHROPIC_API_KEY ? "anthropic-api" : "none",
+  research: "none",
   // The Duffel provider is still a stub (providers/duffel.ts): until it's
   // wired up, a key doesn't make flight search work, so don't offer it.
   flights: "none",
@@ -63,7 +100,7 @@ const app = createPanel({
   status,
   store: new PanelStore(onSite ? sitePanelBackend(site) : fileBackend(dataFile)),
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
-  research: status.research === "anthropic-api" ? anthropicProvider() : claudeProvider(),
+  ai,
   photos,
   // This server, and Vite's dev server in front of it.
   hosts: panelHosts([port, 5174]),

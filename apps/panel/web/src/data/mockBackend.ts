@@ -17,7 +17,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PlanEntry, TripView, VoteView } from "./backend.ts";
+import type { AiOption, AiView, DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PlanEntry, Status, TripView, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -183,16 +183,62 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: {
     entries.set(planId, { ...e, plan: { ...e.plan, ...patch } });
   };
 
+  // Ajustes: the laptop has the claude command; the site, no key yet.
+  const aiOptions: AiOption[] = [
+    ...(hosted ? [] : [{ id: "claude-cli" as const, name: "Claude (comando claude)", model: null, ready: true, setup: "", search: true, images: true }]),
+    { id: "anthropic-api", name: "Claude (API de Anthropic)", model: null, ready: false, setup: hosted ? "Guárdala en el sitio: npx wrangler secret put ANTHROPIC_API_KEY (en apps/site)." : "Añade ANTHROPIC_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true },
+    { id: "openai-api", name: "OpenAI", model: "gpt-5", ready: !hosted, setup: "Añade OPENAI_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true },
+    { id: "compatible-api", name: "Otra IA compatible con OpenAI", model: null, ready: false, setup: "Añade AI_BASE_URL, AI_API_KEY y AI_MODEL a .env (OpenRouter, por ejemplo: https://openrouter.ai/api/v1) y reinicia el panel.", search: false, images: true },
+  ];
+  let aiActive: AiView["active"] = hosted ? null : "claude-cli";
+  const aiView = (): AiView => ({ options: aiOptions, active: aiActive, canChoose: !hosted });
+
   const patchMember = (id: string, patch: Partial<MemberAccess>) => {
     members = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
   };
 
   return {
     now: () => MOCK_NOW,
-    status: async () =>
-      hosted
-        ? { research: "none", flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
-        : { research: "claude-cli", flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } },
+    async status(): Promise<Status> {
+      const a = aiOptions.find((o) => o.id === aiActive);
+      const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
+      const ai = a && name ? { research: a.id, ai: { name, search: a.search, images: a.images } } : { research: "none" as const };
+      return hosted
+        ? { ...ai, flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
+        : { ...ai, flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
+    },
+    ai: async () => aiView(),
+    async chooseAi(id) {
+      if (hosted || !aiOptions.find((o) => o.id === id)?.ready) throw new Error("Esa IA no está configurada");
+      aiActive = id;
+      return aiView();
+    },
+    async addProposal(planId, { place, category, ...prices }) {
+      const e = entry(planId);
+      const base = slugify(place.city) || place.iata.toLowerCase();
+      let id = base;
+      for (let n = 2; e.proposals.some((p) => p.id === id); n++) id = `${base}-${n}`;
+      const leg = (from: string, to: string, day: string) => ({ from, to, departAt: `${day}T12:00:00Z`, arriveAt: `${day}T12:00:00Z`, carrier: "Por confirmar", flightNumber: "—", stops: 0, priceCents: 0 });
+      const proposal: Proposal = applyCheckedPrices(
+        {
+          id,
+          planId,
+          place,
+          category,
+          outbound: leg(e.plan.origin, place.iata, e.plan.dateFrom),
+          inbound: leg(place.iata, e.plan.origin, e.plan.dateTo),
+          stays: [],
+          todo: [],
+          see: [],
+          provenance: { kind: "organiser", checkedAt: MOCK_NOW.toISOString(), sources: [], ...(prices.outbound ? { flightDetails: true } : {}) },
+          review: "approved",
+        },
+        prices,
+        e.plan.nights,
+      );
+      entries.set(planId, { ...e, proposals: [...e.proposals, proposal], editorial: { ...e.editorial, [id]: { photoQueries: [place.city] } } });
+      return proposal;
+    },
     settings: async () => settings,
     saveSettings: async (s) => (settings = s),
     plans: async () => [...entries.values()].map((e) => e.plan),

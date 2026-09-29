@@ -23,11 +23,30 @@ const ResearchProposal = z.object({
 export const ResearchOutput = z.object({ proposals: z.array(ResearchProposal) });
 export type ResearchOutput = z.infer<typeof ResearchOutput>;
 
+// An AI that can't search the web has nothing to cite (ROADMAP 3.3).
+export const EstimateOutput = z.object({ proposals: z.array(ResearchProposal.extend({ sources: z.array(Source).default([]) })) });
+
+// Who's researching, for provenance: absent means Claude, searching the web.
+export interface Researcher {
+  by?: string;
+  // No web search: prices from what the model knows, marked as estimates.
+  estimate?: boolean;
+}
+
+export const SYSTEM =
+  "Planificas viajes para un grupo de amigos. Buscas en la web vuelos, alojamientos y precios reales y citas las páginas de donde salen. " +
+  "Respondes en español de España.";
+
+// For an AI that can't search the web (ROADMAP 3.3).
+export const SYSTEM_ESTIMATE =
+  "Planificas viajes para un grupo de amigos. No puedes buscar en la web: estimas vuelos, alojamientos y precios realistas con lo que sabes, sin inventar rutas que no existan. " +
+  "Respondes en español de España.";
+
 // Draft-07: the `claude` command validates --json-schema with a validator
 // that doesn't know draft 2020-12, zod's default, and refuses to start.
 export const outputSchema = z.toJSONSchema(ResearchOutput, { target: "draft-7" });
 
-export function buildPrompt(req: SearchRequest): string {
+export function buildPrompt(req: SearchRequest, who: Researcher = {}): string {
   const scope =
     req.scope.kind === "anywhere"
       ? "cualquier destino"
@@ -62,12 +81,14 @@ export function buildPrompt(req: SearchRequest): string {
     "Clasifica cada destino como ciudad, escapada, playa o naturaleza. Todos los precios en céntimos de euro, por persona para los vuelos. Fechas ISO 8601 con zona horaria.",
     "Para comparar: hasta 3 pros y 2 contras breves pensando en este grupo y estas fechas, y el tiempo esperado en una línea (por ejemplo «17 °C · lluvioso»).",
     "En photoSubjects, 3 cosas concretas del destino que valga la pena fotografiar, como términos de búsqueda (por ejemplo «Alfama Lisboa», «Torre de Belém»). No des URLs de imágenes.",
-    "Cada propuesta debe citar las páginas de donde salen los números en sources. No inventes vuelos: si no encuentras uno real, omite la propuesta.",
+    who.estimate
+      ? "No puedes buscar en la web: da precios y horarios realistas según lo que sabes, solo en rutas que alguna aerolínea opere de verdad, y deja sources vacío. Se marcarán como estimados."
+      : "Cada propuesta debe citar las páginas de donde salen los números en sources. No inventes vuelos: si no encuentras uno real, omite la propuesta.",
   ].join("\n");
 }
 
 // One result per proposal, with ids stable within a search.
-export function toResults(req: SearchRequest, output: ResearchOutput): ResearchResult[] {
+export function toResults(req: SearchRequest, output: ResearchOutput | z.infer<typeof EstimateOutput>, who: Researcher = {}): ResearchResult[] {
   return output.proposals.map((p, i) => {
     const { sources, pros, cons, weather, photoSubjects, ...rest } = p;
     return {
@@ -75,7 +96,7 @@ export function toResults(req: SearchRequest, output: ResearchOutput): ResearchR
         ...rest,
         id: `${p.place.iata.toLowerCase()}-${i + 1}`,
         planId: req.planId,
-        provenance: { kind: "claude", sources },
+        provenance: { kind: "claude", sources, ...(who.by ? { by: who.by } : {}), ...(who.estimate ? { estimate: true } : {}) },
       },
       notes: { pros, cons, weather, photoSubjects },
     };

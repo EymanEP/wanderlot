@@ -126,7 +126,7 @@ describe("Panel en el móvil", () => {
     expect(await within(card).findByText("Desactivado")).toBeTruthy();
   });
 
-  it("says what needs Claude when the site serves the panel", async () => {
+  it("says what needs the laptop, or an AI, when the site serves the panel", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/generar"]}>
@@ -137,15 +137,16 @@ describe("Panel en el móvil", () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/Buscar destinos necesita Claude/)).toBeTruthy();
+    expect(await screen.findByText(/desde el panel del sitio aún no se puede/)).toBeTruthy();
+    expect(screen.getByText("sin IA: busca desde tu ordenador")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Generar/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Salir" })).toBeTruthy();
-    // Prices are typed: no screenshots without Claude.
+    // Prices are typed: no screenshots without an AI on the site.
     await user.click(within(screen.getByRole("navigation", { name: "Dónde" })).getByRole("link", { name: /^Revisar/ }));
     const card = await screen.findByRole("article", { name: "Cracovia" });
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
-    expect(dialog.getByText(/Leer capturas necesita Claude/)).toBeTruthy();
+    expect(dialog.getByText(/Leer capturas necesita una IA/)).toBeTruthy();
     expect(dialog.queryByLabelText("Leer captura del vuelo")).toBeNull();
   });
 });
@@ -156,7 +157,7 @@ describe("Navigation", () => {
     renderAt("/revisar");
     await screen.findByRole("button", { name: /^Publicar/ });
     const top = screen.getAllByRole("navigation", { name: "Panel" })[0]!;
-    expect(within(top).getAllByRole("link").map((l) => l.textContent)).toEqual(["Viajes", "Personas", "Ver sitio"]);
+    expect(within(top).getAllByRole("link").map((l) => l.textContent)).toEqual(["Viajes", "Personas", "Ajustes", "Ver sitio"]);
 
     const steps = screen.getByRole("navigation", { name: "Pasos del viaje" });
     expect(within(steps).getAllByRole("link").map((l) => l.textContent)).toEqual(["1Cuándo", "2Dónde", "3El viaje"]);
@@ -718,5 +719,47 @@ describe("Nuevo plan", () => {
     await user.click(within(trip).getByRole("checkbox", { name: "Diego" }));
     await user.click(within(trip).getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("Guardado: 6 personas van a Puente de diciembre")).toBeTruthy();
+  });
+});
+
+describe("Ajustes", () => {
+  it("picks the AI among the ones set up, and says where the others' keys go", async () => {
+    const user = userEvent.setup();
+    renderAt("/ajustes");
+    const inUse = await screen.findByRole("radiogroup", { name: "IA en uso" });
+    const radios = within(inUse).getAllByRole("radio");
+    expect(radios.map((r) => (r as HTMLInputElement).checked)).toEqual([true, false]);
+    expect(within(inUse).getByText("OpenAI · gpt-5")).toBeTruthy();
+    expect(screen.getByText(/Añade ANTHROPIC_API_KEY a .env/)).toBeTruthy();
+    expect(screen.getByText(/Añade AI_BASE_URL, AI_API_KEY y AI_MODEL/)).toBeTruthy();
+
+    await user.click(within(inUse).getByLabelText(/OpenAI/));
+    expect(await screen.findByText("Ahora usa OpenAI")).toBeTruthy();
+    // The status dot and Generar follow the choice.
+    expect(await screen.findByText("OpenAI", { selector: "span" })).toBeTruthy();
+  });
+});
+
+describe("Añadir a mano", () => {
+  it("adds a destination the organiser found, approved and checked by hand", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(screen.getByRole("button", { name: "Añadir a mano" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    await user.type(dialog.getByLabelText("Ciudad"), "Sevilla");
+    await user.type(dialog.getByLabelText("País"), "España");
+    await user.type(dialog.getByLabelText("Aeropuerto de llegada"), "sv");
+    await user.type(dialog.getByLabelText(/Vuelo, ida y vuelta/), "95");
+    await user.click(dialog.getByRole("button", { name: "Añadir y aprobar" }));
+    expect(await dialog.findByText(/código de 3 letras/)).toBeTruthy();
+
+    await user.type(dialog.getByLabelText("Aeropuerto de llegada"), "q");
+    await user.type(dialog.getByLabelText("Alojamiento (opcional)"), "Piso en Triana");
+    await user.type(dialog.getByLabelText(/€ en total, las 7 noches/), "1050");
+    await user.click(dialog.getByRole("button", { name: "Añadir y aprobar" }));
+    expect(await screen.findByText("Sevilla añadido y aprobado")).toBeTruthy();
+    const card = await screen.findByRole("article", { name: "Sevilla" });
+    expect(within(card).getByText("Comprobado a mano")).toBeTruthy();
   });
 });

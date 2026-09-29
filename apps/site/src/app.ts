@@ -34,8 +34,12 @@ import {
   type PlanSummary,
 } from "@wanderlot/core";
 import { base64url, fromBase64url, passwordHasher, pinHasher, randomToken, safeEqual, sealer, sha256 } from "./crypto.ts";
-// The panel itself, served at /admin without AI (ROADMAP 3.1).
+// The panel itself, served at /admin (ROADMAP 3.1), with an AI when the site
+// has a key for one (3.3).
+import Anthropic from "@anthropic-ai/sdk";
 import { createPanel } from "../../panel/src/app.ts";
+import { AiChoice, apiEntries, type AiEnv } from "../../panel/src/providers/ai.ts";
+import { anthropicProvider } from "../../panel/src/providers/anthropic.ts";
 import { siteClient } from "../../panel/src/publish.ts";
 import { wikimedia } from "../../panel/src/providers/photos.ts";
 import { PanelStore, StoreConflict, type PanelBackend, type PlanEntry } from "../../panel/src/store.ts";
@@ -49,7 +53,6 @@ const ORGANISER_TTL_MS = 30 * 86_400_000;
 const PASSWORD_MAX_TRIES = 5;
 // A panel entry must fit in one database row (D1: 2 MB).
 const MAX_PANEL_ENTRY = 1_900_000;
-const NO_AI = "Esto necesita Claude, y el panel del sitio no lo tiene: hazlo desde el panel de tu ordenador.";
 const RECENT_COMMENTS = 3;
 const DAY = 86_400_000;
 export const INVITE_TTL_MS = 7 * DAY;
@@ -78,6 +81,9 @@ export interface SiteOptions {
   // The panel's built index.html, served at /admin/* (the Node server; on
   // Cloudflare the Worker hands it out from the static assets).
   adminIndexHtml?: string;
+  // AI keys for the panel at /admin (ROADMAP 3.3): Worker secrets or the
+  // Node server's environment.
+  ai?: AiEnv;
 }
 
 type Env = { Variables: { member: Member } };
@@ -138,7 +144,7 @@ export const MAX_OPEN_SUGGESTIONS = 5;
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
-export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, adminIndexHtml, limit, pinSecret }: SiteOptions) {
+export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, adminIndexHtml, limit, pinSecret, ai = {} }: SiteOptions) {
   const app = new Hono<Env>();
   const hashPin = pinHasher(pinSecret || adminToken);
   const hashPassword = passwordHasher(pinSecret || adminToken);
@@ -1122,14 +1128,16 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     },
   };
 
-  const noAi = () => {
-    throw new Error(NO_AI);
+  const noFlights = () => {
+    throw new Error("No hay ninguna API de vuelos conectada");
   };
   const hosted = createPanel({
     store: new PanelStore(panelData),
     status: { research: "none", flights: "none", photos: ["wikimedia"], hosted: true, store: "site" },
-    research: { research: noAi, extract: async () => noAi() },
-    flights: { name: "duffel", search: noAi, verify: async () => null },
+    // The keys set on the site, never the browser. Only screenshots are read
+    // here for now: research takes minutes, longer than a request may.
+    ai: new AiChoice(apiEntries(ai, (key) => anthropicProvider(new Anthropic({ apiKey: key }).beta.messages), "site")),
+    flights: { name: "duffel", search: noFlights, verify: async () => null },
     photos: [wikimedia()],
     // The admin API, called in this same process.
     site: siteClient(rp.origin, adminToken, async (input, init) => app.request(String(input), init)),

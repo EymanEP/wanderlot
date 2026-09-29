@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { euros, googleFlightsUrl, standardImageUrl } from "@wanderlot/core";
+import { euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
@@ -53,7 +53,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             <Badge tone="white" size="md">
               {CATEGORY_LABEL[p.category]}
             </Badge>
-            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : p.provenance.kind === "organiser" ? "Comprobado a mano" : "long"} size="md" withIcon />
+            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : p.provenance.kind === "organiser" ? "Comprobado a mano" : (researchLabel(p.provenance) ?? "long")} size="md" withIcon />
           </>
         }
       />
@@ -76,10 +76,16 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         <div className="flex flex-col gap-[5px] text-sm text-ink-2">
           <span>{flightLine(p)}</span>
           {stayLine(p, plan) && <span>{stayLine(p, plan)}</span>}
-          <span>{thingsLine(p)}</span>
+          {p.todo.length + p.see.length > 0 && <span>{thingsLine(p)}</span>}
         </div>
 
-        {trust === "unverified" && <Notice>Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar.</Notice>}
+        {trust === "unverified" && (
+          <Notice>
+            {p.provenance.kind === "claude" && p.provenance.estimate
+              ? `Precio y horarios son estimaciones de ${p.provenance.by ?? "la IA"}, sin buscar en la web. Contrástalos antes de publicar.`
+              : "Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar."}
+          </Notice>
+        )}
         {trust === "stale" &&
           (p.provenance.kind !== "claude" && p.provenance.forOtherDates ? (
             <Notice tone="neutral">Este precio se comprobó para otras fechas: el viaje ha cambiado de días. Vuelve a comprobarlo.</Notice>
@@ -108,16 +114,21 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         <div className="mt-auto flex flex-wrap items-center justify-between gap-3.5 border-t border-line-faint pt-3.5">
           <span className="text-xs text-muted">
             {sourceLine(p)} ·{" "}
-            <button
-              type="button"
-              aria-expanded={showSources}
-              aria-controls={`${p.id}-sources`}
-              onClick={() => setShowSources((x) => !x)}
-              className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover"
-            >
-              {p.provenance.kind === "api" ? "ver respuesta" : "ver enlaces"}
-            </button>{" "}
-            ·{" "}
+            {/* Nothing to show for one added by hand or estimated. */}
+            {(p.provenance.kind === "api" || p.provenance.sources.length > 0) && (
+              <>
+                <button
+                  type="button"
+                  aria-expanded={showSources}
+                  aria-controls={`${p.id}-sources`}
+                  onClick={() => setShowSources((x) => !x)}
+                  className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover"
+                >
+                  {p.provenance.kind === "api" ? "ver respuesta" : "ver enlaces"}
+                </button>{" "}
+                ·{" "}
+              </>
+            )}
             <button type="button" onClick={onEditPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
               {p.provenance.kind === "organiser" ? "cambiar precios" : "poner precios reales"}
             </button>{" "}

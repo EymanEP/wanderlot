@@ -62,14 +62,28 @@ try {
   console.log(`! Couldn't reach ${siteUrl} (${e.message}). You can carry on and fix it later.`);
 }
 
-// 4. Research: the local claude command, or an API key.
+// 4. The AI (ROADMAP 3.3): the local claude command, or API keys. The panel's
+// Ajustes page picks among the ones set up.
 const claude = spawnSync(env.CLAUDE_BIN ?? "claude", ["--version"], { encoding: "utf8" });
 console.log(
   claude.status === 0
     ? `\n✓ Found Claude Code (${claude.stdout.trim()}): research will use your Claude plan.`
-    : "\n! Can't find the `claude` command. Install Claude Code or enter an Anthropic API key.",
+    : "\n! Can't find the `claude` command. Install Claude Code, or enter an API key below. Without any, add destinations by hand.",
 );
 const anthropic = await ask("Anthropic API key (optional, pay per use)", env.ANTHROPIC_API_KEY ?? "");
+const openai = await ask("OpenAI API key (optional, pay per use)", env.OPENAI_API_KEY ?? "");
+let compatible = { AI_BASE_URL: env.AI_BASE_URL, AI_API_KEY: env.AI_API_KEY, AI_MODEL: env.AI_MODEL };
+if (await yes("Use another OpenAI-compatible endpoint (OpenRouter, a local model…)? It can't search the web, so its prices are estimates", !!env.AI_BASE_URL)) {
+  compatible = {
+    AI_BASE_URL: await ask("  Base URL (e.g. https://openrouter.ai/api/v1)", env.AI_BASE_URL ?? ""),
+    AI_API_KEY: await ask("  API key", env.AI_API_KEY ?? ""),
+    AI_MODEL: await ask("  Model name", env.AI_MODEL ?? ""),
+  };
+}
+// The panel at /admin can read screenshots with the same keys, stored as
+// secrets on Cloudflare; npm run deploy:site copies them there.
+const apiKeys = anthropic || openai || compatible.AI_API_KEY;
+const siteAi = apiKeys ? await yes("Also let the panel on your site (/admin) use these keys to read screenshots? They're stored as Cloudflare secrets", env.WANDERLOT_SITE_AI === "1") : false;
 
 // 5. Optional providers.
 console.log("\nOptional: everything works without these, but prices stay labelled as written by Claude and photos come from Wikimedia only.");
@@ -82,9 +96,13 @@ writeEnv({
   WANDERLOT_SITE_URL: siteUrl,
   WANDERLOT_ADMIN_TOKEN: token,
   ANTHROPIC_API_KEY: anthropic,
+  OPENAI_API_KEY: openai,
+  ...compatible,
+  WANDERLOT_SITE_AI: siteAi ? "1" : "",
   DUFFEL_API_KEY: duffel,
   UNSPLASH_ACCESS_KEY: unsplash,
   PEXELS_API_KEY: pexels,
 });
 console.log(`\n✓ Saved to ${ENV_PATH}`);
+if (siteAi) console.log("  Run npm run deploy:site to give the keys to the site's panel.");
 console.log("  Next: npm run panel  →  http://127.0.0.1:5151  →  Personas (add your friends)");

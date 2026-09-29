@@ -1,5 +1,5 @@
 // Spanish display helpers shared by the panel and the site.
-import type { Destination, FlightLeg, Proposal, Stay } from "./model.ts";
+import type { Destination, FlightLeg, Proposal, Provenance, Stay } from "./model.ts";
 import { baseStay } from "./pricing.ts";
 
 const TZ = "Europe/Madrid";
@@ -51,6 +51,13 @@ export function flightDetailsKnown(p: Pick<Proposal, "provenance">): boolean {
   // Checked for dates the trip no longer has: those were other flights.
   if (p.provenance.forOtherDates) return false;
   return p.provenance.kind === "api" || p.provenance.flightDetails === true;
+}
+
+// Who wrote research's figures, as a badge says it: "Lo escribió Claude",
+// "Estimado por OpenAI" (ROADMAP 3.3). null for checked prices.
+export function researchLabel(p: Provenance): string | null {
+  if (p.kind !== "claude") return null;
+  return p.estimate ? `Estimado por ${p.by ?? "Claude"}` : `Lo escribió ${p.by ?? "Claude"}`;
 }
 
 // "Directo · 1 h 20 m"

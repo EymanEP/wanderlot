@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { AiId, AiView, ManualProposal, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -65,6 +65,9 @@ export interface PanelApi {
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
   setPrices: (id: string, prices: CheckedPrices) => Promise<void>;
+  addProposal: (p: ManualProposal) => Promise<Proposal>;
+  ai: () => Promise<AiView>;
+  chooseAi: (id: AiId) => Promise<AiView>;
   extract: (id: string, kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
   suggestions: () => Promise<SuggestionView[]>;
   dismissSuggestion: (id: string) => Promise<SuggestionView[]>;
@@ -303,6 +306,18 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
         return removed;
       },
       extract: (id, kind, images) => backend.extract(need(), id, kind, images),
+      async addProposal(p) {
+        const added = await backend.addProposal(need(), p);
+        patch((s) => ({ proposals: [...s.proposals, added], editorial: { ...s.editorial, [added.id]: { ...EMPTY_EDITORIAL, photoQueries: [added.place.city] } } }));
+        return added;
+      },
+      ai: () => backend.ai(),
+      async chooseAi(id) {
+        const view = await backend.chooseAi(id);
+        const status = await backend.status();
+        patch(() => ({ status }));
+        return view;
+      },
       async setPrices(id, prices) {
         const updated = await backend.setPrices(need(), id, prices);
         patch((s) => ({ proposals: s.proposals.map((p) => (p.id === id ? updated : p)) }));

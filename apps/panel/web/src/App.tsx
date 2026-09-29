@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes } from "react-router";
 import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
 import { PanelShell } from "./components/PanelShell.tsx";
 import { usePanel } from "./data/store.tsx";
+import { AjustesPage } from "./pages/AjustesPage.tsx";
 import { ComparativaPage } from "./pages/ComparativaPage.tsx";
 import { FechasPage } from "./pages/FechasPage.tsx";
 import { GenerarPage } from "./pages/GenerarPage.tsx";
@@ -67,6 +68,7 @@ export function App() {
       <Route path="/votacion" element={<RequirePlan><VotacionPage /></RequirePlan>} />
       <Route path="/viaje" element={<RequirePlan><ViajePage /></RequirePlan>} />
       <Route path="/personas" element={<PersonasPage />} />
+      <Route path="/ajustes" element={<AjustesPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
