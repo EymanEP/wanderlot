@@ -6,6 +6,7 @@ import {
   flightDetailsKnown,
   flightPriceCents,
   longDate,
+  researchLabel,
   shortDate,
   standardImageUrl,
   stayShareCents,
@@ -106,7 +107,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
       <div className="flex flex-col gap-8 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-8">
           <section aria-labelledby="vuelos" className="flex flex-col gap-3">
-            <SectionHeader id="vuelos" title="Vuelos" aside={<ProvenanceBadge trust={trustOf(d, now)} size="md" />} />
+            <SectionHeader id="vuelos" title="Vuelos" aside={<ProvenanceBadge trust={trustOf(d, now)} size="md" label={researchLabel(d.provenance) ?? "short"} />} />
             {flightDetailsKnown(d) ? (
               <>
                 <FlightLegRow label="Ida" leg={d.outbound} price={false} />
@@ -195,10 +196,12 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
           </Card>
           <Card variant="muted" className="flex flex-col gap-2">
             <span className="flex items-center gap-2">
-              <Badge tone="claude">Lo escribió Claude</Badge>
+              <Badge tone="claude">Lo escribió {trip.by ?? "Claude"}</Badge>
             </span>
             <span className="text-[13px] text-ink-2">
-              La guía y cómo llegar los preparó Claude buscando en la web{trip.preparedAt ? ` el ${longDate(trip.preparedAt)}` : ""} y los revisó {group.organiserName}. Los precios
+              La guía y cómo llegar los preparó {trip.by ?? "Claude"}
+              {trip.sources.length > 0 ? " buscando en la web" : " con lo que sabe, sin buscar en la web"}
+              {trip.preparedAt ? ` el ${longDate(trip.preparedAt)}` : ""} y los revisó {group.organiserName}. Los precios
               de vuelos y alojamiento son los comprobados; el resto, aproximados.
             </span>
             {trip.sources.length > 0 && (

@@ -141,6 +141,30 @@ describe("the panel at /admin", () => {
     expect(await store.panelVersions()).toEqual({});
   });
 
+  it("uses an AI key set on the site to read screenshots, but leaves searching to the laptop", async () => {
+    site = createApp({ store, adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => clock, ai: { OPENAI_API_KEY: "sk-test" } });
+    const client = siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init));
+    laptop = createPanel({ store: new PanelStore(sitePanelBackend(client)), flights: {} as FlightProvider, research: {} as ResearchProvider, site: client, siteUrl: ORIGIN, now: () => clock });
+    const cookie = await signIn();
+    await onLaptop("/api/plans/noviembre", "PUT", plan("noviembre", "Noviembre 2026"));
+
+    expect(await (await onPhone("/api/status", { cookie })).json()).toMatchObject({ hosted: true, research: "openai-api", ai: { name: "OpenAI", search: true } });
+    const ai = (await (await onPhone("/api/ai", { cookie })).json()) as any;
+    expect(ai).toMatchObject({ active: "openai-api", canChoose: false });
+    expect(ai.options.find((o: any) => o.id === "anthropic-api").setup).toMatch(/wrangler secret put ANTHROPIC_API_KEY/);
+    // Keys never reach the browser.
+    expect(JSON.stringify(ai)).not.toContain("sk-test");
+    expect((await onPhone("/api/ai", { method: "PUT", cookie, body: { id: "openai-api" } })).status).toBe(409);
+
+    const research = await onPhone("/api/plans/noviembre/generate", {
+      method: "POST",
+      cookie,
+      body: { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: false, suggestThings: false },
+    });
+    expect(research.status).toBe(409);
+    expect(((await research.json()) as any).error).toMatch(/panel de tu ordenador/);
+  });
+
   it("keeps invite links sealed in the database, and both panels can copy them", async () => {
     const cookie = await signIn();
     await onLaptop("/api/members", "PUT", [{ id: "ana", name: "Ana" }]);

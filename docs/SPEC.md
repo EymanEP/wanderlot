@@ -474,7 +474,23 @@ sources). `guide` uses the same tools and settings as research.
 | provider | how | cost to the hoster |
 |---|---|---|
 | `claude-cli` (default) | the local `claude` binary: `claude -p --output-format stream-json --verbose --json-schema <draft-07 schema> --tools WebSearch,WebFetch --allowedTools WebSearch,WebFetch` (only web search and fetch, pre-approved, since a headless run can't ask) | their Claude subscription, no API bill |
-| `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY`; used when the command isn't installed | pay per use |
+| `anthropic-api` | Anthropic API (`claude-opus-5`, web search, structured output), `ANTHROPIC_API_KEY` | pay per use |
+| `openai-api` | OpenAI's Responses API with its web search tool and a JSON schema, `OPENAI_API_KEY` (model `OPENAI_MODEL`, default `gpt-5`); streamed, so each search shows in Generar | pay per use |
+| `compatible-api` | any endpoint that speaks OpenAI's chat completions (OpenRouter, a local model…): `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, and `AI_NAME` for how friends see it. It can't search the web, so research answers from what the model knows and every proposal is an **estimate** (below) | whatever the endpoint charges |
+
+Which one runs is chosen in **Ajustes** (ROADMAP 3.3), among those set up;
+the choice is kept in `.env` as `WANDERLOT_AI`. Without a choice, the first
+set up in the order above. Keys are never typed in the browser: they live in
+the panel's `.env`, or as Worker secrets for the panel at `/admin`, where
+`npm run deploy:site` copies them only if `npm run setup` was told to
+(`WANDERLOT_SITE_AI=1`). There, the AI only reads screenshots: research and
+the guide take minutes, longer than one Worker request, and still run from
+the laptop.
+
+With no AI at all the panel still works: **Añadir a mano** in Revisar takes a
+destination (city, country, airport, type) with the flight and stay prices
+the organiser saw, and adds it approved, with `organiser` provenance and no
+flight times until the price dialog adds them.
 
 A Claude search takes minutes and its proposals arrive together at the end, so
 the provider also reports progress as it goes: what Claude says it is doing,
@@ -482,9 +498,14 @@ each web search (the query) and each page it reads (the host). The panel relays
 these as `{progress}` lines and Generar shows them live, with the elapsed time
 and a Detener button.
 
-Other providers can implement the same interface later. Whatever the provider,
-research always yields `claude` provenance (§3): it is labelled as written by
-AI until a flight API confirms it, even when it quotes an airline's price.
+Whatever the provider, research always yields `claude` provenance (§3; the
+kind keeps its first name): it is labelled as written by AI until a flight API
+or the organiser confirms it, even when it quotes an airline's price. It
+carries `by` ("OpenAI") when the AI isn't Claude, so the site says "Lo
+escribió OpenAI". An AI without web search sets `estimate: true` and cites no
+sources, which the model allows only then; the site says "Estimado por …".
+Sites before API version 11 refuse sourceless research, so the panel asks for
+a redeploy before publishing an estimate to one.
 
 ### Flights (optional)
 `FlightProvider` searches and verifies fares; it is the only way to `api`
@@ -616,8 +637,9 @@ What's planned next is in [ROADMAP.md](ROADMAP.md): a date vote, the trip
 page, getting to the airport, export, the panel hosted on the site with other
 AI providers (or none), and later languages and currencies.
 
-- **AI in the panel at `/admin`.** It has none yet; ROADMAP 3.3 plans API
-  keys (Anthropic, OpenAI or compatible) as Worker secrets.
+- **Research in the panel at `/admin`.** Its AI reads screenshots only;
+  searching takes minutes and would need to run in the background (ROADMAP
+  3.3, second part).
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.
@@ -678,12 +700,15 @@ Node with `node:sqlite` (`WANDERLOT_ORIGIN`, `WANDERLOT_ADMIN_TOKEN`,
 | secret | lives in | used for |
 |---|---|---|
 | `ADMIN_TOKEN` | Worker secret + panel `.env` (as `WANDERLOT_ADMIN_TOKEN`) | panel → site publishing and invites |
-| `ANTHROPIC_API_KEY` | panel `.env`, optional | `anthropic-api` research |
+| `ANTHROPIC_API_KEY` | panel `.env`, optional; Worker secret if shared | `anthropic-api` research |
+| `OPENAI_API_KEY` (+ `OPENAI_MODEL`) | panel `.env`, optional; Worker secret if shared | `openai-api` research |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` (+ `AI_NAME`) | panel `.env`, optional; Worker secrets if shared | `compatible-api` research |
 | `DUFFEL_API_KEY` | panel `.env`, optional | flight search and verification |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel `.env`, optional | photo search |
 
-The site holds no provider keys at all: photos are picked in the panel and
-published as plain URLs with their credits.
+The site holds no provider keys unless the organiser shares the AI keys with
+the panel at `/admin` (`npm run setup`, then `npm run deploy:site`). Photos
+are picked in the panel and published as plain URLs with their credits.
 
 ---
 

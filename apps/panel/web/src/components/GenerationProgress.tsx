@@ -18,12 +18,14 @@ function stepText(step: SearchStep): string {
 export interface GenerationProgressProps {
   generation: GenerationState;
   onStop: () => void;
+  // Which AI is researching: "Claude", "OpenAI".
+  aiName?: string;
 }
 
 // While a search runs: how long it's been, what research is doing right now,
 // and what it has looked at. A Claude search takes minutes and its proposals
 // arrive at the end, so this is what the organiser watches meanwhile.
-export function GenerationProgress({ generation: g, onStop }: GenerationProgressProps) {
+export function GenerationProgress({ generation: g, onStop, aiName = "Claude" }: GenerationProgressProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -36,7 +38,7 @@ export function GenerationProgress({ generation: g, onStop }: GenerationProgress
   const recent = g.steps.slice(-7, -1).reverse();
   // Claude researching takes minutes, with steps; a flight API, seconds.
   const source = g.source;
-  const title = g.idea ? `Investigando ${g.idea}` : source === "claude" ? "Claude está buscando destinos" : "Consultando la API de vuelos";
+  const title = g.idea ? `Investigando ${g.idea}` : source === "claude" ? `${aiName} está buscando destinos` : "Consultando la API de vuelos";
 
   return (
     <Card as="section" variant="raised" aria-label="Búsqueda en curso" className="flex flex-col gap-4">

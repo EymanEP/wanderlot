@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
-import { ArrowUpIcon, Button, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, TrashIcon, useToast } from "@wanderlot/ui";
+import { ArrowUpIcon, Button, PlusIcon, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, TrashIcon, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PhotoPicker } from "../components/PhotoPicker.tsx";
+import { ManualDialog } from "../components/ManualDialog.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
 import type { PublishStatus, ScreenshotImage } from "../data/backend.ts";
@@ -13,7 +14,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -25,6 +26,7 @@ export function RevisarPage() {
   const [picking, setPicking] = useState<string | null>(null);
   const [pricing, setPricing] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const unapproved = counts.pending + counts.discarded;
   const doClear = async () => {
     setClearing(false);
@@ -125,6 +127,9 @@ export function RevisarPage() {
           subtitle={`${counts.all} propuestas generadas · ${counts.approved} aprobadas · ${counts.discarded} descartadas · ${counts.pending} por revisar`}
           actions={
             <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
+              <Button icon={<PlusIcon size={16} />} onClick={() => setAdding(true)}>
+                Añadir a mano
+              </Button>
               <Button icon={<TrashIcon size={16} />} disabled={unapproved === 0} onClick={() => setClearing(true)}>
                 Borrar las no aprobadas{unapproved ? ` · ${unapproved}` : ""}
               </Button>
@@ -162,7 +167,11 @@ export function RevisarPage() {
         </section>
 
         {list.length === 0 ? (
-          <EmptyState title="Nada que enseñar con estos filtros">Cambia el filtro de arriba para ver el resto de propuestas.</EmptyState>
+          counts.all === 0 ? (
+            <EmptyState title="Todavía no hay propuestas">Búscalas en Generar, o añade a mano un destino que hayas mirado tú.</EmptyState>
+          ) : (
+            <EmptyState title="Nada que enseñar con estos filtros">Cambia el filtro de arriba para ver el resto de propuestas.</EmptyState>
+          )
         ) : (
           <section className="grid gap-6 md:grid-cols-2">
             {list.map((p) => (
@@ -186,9 +195,22 @@ export function RevisarPage() {
         )}
       </main>
 
+      <ManualDialog
+        open={adding}
+        plan={plan}
+        onClose={() => setAdding(false)}
+        onSave={async (p) => {
+          const added = await addProposal(p);
+          setAdding(false);
+          setFilter("all");
+          toast(`${added.place.city} añadido y aprobado`);
+        }}
+      />
+
       <PriceDialog
         proposal={state.proposals.find((p) => p.id === pricing)}
         plan={plan}
+        aiName={state.status?.ai?.name ?? "Claude"}
         {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(pricing!, kind, images) } : {})}
         onClose={() => setPricing(null)}
         onSave={async (prices) => {

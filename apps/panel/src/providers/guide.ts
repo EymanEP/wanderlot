@@ -43,10 +43,13 @@ export const GuideOutput = z.object({
 });
 export type GuideOutput = z.infer<typeof GuideOutput>;
 
+// From an AI without web search: nothing to cite (ROADMAP 3.3).
+export const GuideEstimate = GuideOutput.extend({ sources: z.array(Source).default([]) });
+
 // Draft-07, as for research: the `claude` command's validator needs it.
 export const guideJsonSchema = z.toJSONSchema(GuideOutput, { target: "draft-7" });
 
-export function guidePrompt(req: GuideRequest): string {
+export function guidePrompt(req: GuideRequest, estimate = false): string {
   return [
     `Un grupo de ${req.partySize} amigos va a ${req.city} (${req.country}) del ${req.dateFrom} al ${req.dateTo} (${req.nights} noches). Vuelan desde ${req.origin} a ${req.iata}.`,
     req.stay ? `Se alojan en «${req.stay.name}»${req.stay.description ? ` (${req.stay.description})` : ""}${req.stay.url ? `, ${req.stay.url}` : ""}.` : "Aún no sabemos dónde se alojan; supón el centro.",
@@ -60,7 +63,9 @@ export function guidePrompt(req: GuideRequest): string {
       ? `- toAirport (cómo llegar al aeropuerto): desde ${req.home} hasta el aeropuerto ${req.origin} en las fechas del viaje. Opciones: coche (kilómetros y tiempo, gasolina por persona repartida en los coches necesarios con un consumo medio y el precio actual del combustible, peajes y parking en el aeropuerto durante los días del viaje, con dónde aparcar), autobús y tren (operador, salidas típicas esos días, tiempo, precio por persona y dónde para respecto a la terminal). Pon el total por persona en priceEuros y el desglose en detail.`
       : "- toAirport: déjalo vacío.",
     `- fromAirport (del aeropuerto al alojamiento): metro, autobús, tren, taxi o lanzadera desde ${req.iata}, con tiempo y precio por persona, y cuál conviene a un grupo con maletas (menciónalo en el detalle).`,
-    "Los horarios y precios cambian: da cifras aproximadas y realistas. Cita en sources las páginas de donde salen. Todo en español de España.",
+    estimate
+      ? "No puedes buscar en la web: escribe con lo que sabes, con cifras aproximadas y realistas, y deja sources vacío. Todo en español de España."
+      : "Los horarios y precios cambian: da cifras aproximadas y realistas. Cita en sources las páginas de donde salen. Todo en español de España.",
   ].join("\n");
 }
 
@@ -68,7 +73,7 @@ const toCents = (euros: number | null) => (euros === null ? null : Math.round(eu
 
 // Research's answer → the trip page's guide, keeping what the organiser
 // already added (stay details, Tricount).
-export function toTripPage(destinationId: string, home: string, out: GuideOutput, now: Date, keep?: Partial<TripPage>): TripPage {
+export function toTripPage(destinationId: string, home: string, out: z.infer<typeof GuideEstimate>, now: Date, keep?: Partial<TripPage>, by?: string): TripPage {
   const transport = (t: GuideOutput["toAirport"][number]) => ({ mode: t.mode, title: t.title, detail: t.detail, minutes: t.minutes, priceCents: toCents(t.priceEuros) });
   return {
     destinationId,
@@ -83,6 +88,7 @@ export function toTripPage(destinationId: string, home: string, out: GuideOutput
     stay: keep?.stay ?? { address: "", checkIn: "", checkOut: "" },
     tricountUrl: keep?.tricountUrl ?? null,
     sources: out.sources,
+    ...(by ? { by } : {}),
     preparedAt: now.toISOString(),
   };
 }

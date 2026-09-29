@@ -3,9 +3,10 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { DateWindows, FlightLeg, GroupSettings, Photo, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
+import { Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
-import { GuideOutput, toTripPage } from "./providers/guide.ts";
+import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
+import { AI_IDS, AiChoice, type AiId, type AiView } from "./providers/ai.ts";
 import type { FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
@@ -16,10 +17,13 @@ import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, inviteUrl
 
 // What this computer can do, found at startup (SPEC §8).
 export interface PanelStatus {
-  research: "claude-cli" | "anthropic-api" | "none";
+  // The AI in use (ROADMAP 3.3), and what it can do.
+  research: AiId | "none";
+  ai?: { name: string; search: boolean; images: boolean };
   flights: "duffel" | "none";
   photos: ("wikimedia" | "unsplash" | "pexels")[];
-  // The panel served by the site at /admin (ROADMAP 3.1): no AI there.
+  // The panel served by the site at /admin (ROADMAP 3.1). An AI there reads
+  // screenshots; searching still happens on the laptop.
   hosted?: boolean;
   // Where trips are kept: the site's database, or (with a site too old for
   // that) the laptop's data/panel.json.
@@ -30,7 +34,9 @@ export interface PanelOptions {
   store: PanelStore;
   status?: PanelStatus;
   flights: FlightProvider;
-  research: ResearchProvider;
+  // The AI, fixed (tests), or chosen among those set up (ROADMAP 3.3).
+  research?: ResearchProvider;
+  ai?: AiChoice;
   photos?: PhotoSource[];
   site: SiteClient;
   // Host:port values the panel answers to (see guard.ts); unset in tests.
@@ -102,6 +108,13 @@ const NewPlan = z.object({
   participants: z.array(z.string().min(1)).max(100).default([]),
 });
 
+// "Añadir a mano" (ROADMAP 3.3): a destination the organiser found
+// themselves, with the prices they saw. No AI needed.
+const ManualBody = PricesBody.extend({
+  place: Place,
+  category: Category,
+});
+
 async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
   for await (const proposal of it) yield { proposal };
 }
@@ -110,6 +123,7 @@ export function createPanel({
   store,
   flights,
   research,
+  ai: aiChoice,
   photos = [],
   hosts,
   site,
@@ -127,6 +141,18 @@ export function createPanel({
   });
 
   const entryOr404 = (planId: string) => store.get(planId);
+
+  // The AI in use now: the one chosen in Ajustes, or the one given.
+  const currentAi = (): ResearchProvider | null => (aiChoice ? aiChoice.provider() : (research ?? null));
+  const statusNow = (): PanelStatus => {
+    if (!aiChoice) return status;
+    const a = aiChoice.active?.option;
+    const { ai: _was, ...rest } = status;
+    // As the screens say it: "Preparar con Claude", "OpenAI está buscando".
+    const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
+    return { ...rest, research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images } } : {}) };
+  };
+  const HOSTED_SEARCH = "Buscar tarda varios minutos y desde el panel del sitio aún no se puede: hazlo desde el panel de tu ordenador.";
 
   // Every request starts from what's saved now, so this device sees what
   // another one changed, and ends once its own changes are saved.
@@ -159,7 +185,26 @@ export function createPanel({
       reachable = false;
       error = (e as Error).message;
     }
-    return c.json({ ...status, site: { url: siteUrl, reachable, outdated, ...(error ? { error } : {}) } });
+    return c.json({ ...statusNow(), site: { url: siteUrl, reachable, outdated, ...(error ? { error } : {}) } });
+  });
+
+  // Ajustes: the AIs set up here, and which one is in use (ROADMAP 3.3).
+  app.get("/api/ai", (c) => {
+    const s = statusNow();
+    const view: AiView = aiChoice?.view() ?? { options: [], active: s.research === "none" ? null : s.research, canChoose: false };
+    return c.json(view);
+  });
+
+  app.put("/api/ai", async (c) => {
+    const body = z.object({ id: z.enum(AI_IDS) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {id}" }, 400);
+    if (!aiChoice) return c.json({ error: "Aquí no se puede cambiar la IA" }, 409);
+    try {
+      aiChoice.choose(body.data.id);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 409);
+    }
+    return c.json(aiChoice.view());
   });
 
   app.get("/api/settings", async (c) => c.json(await site.settings()));
@@ -305,6 +350,11 @@ export function createPanel({
     if (body.data.source === "api" && status.flights === "none") {
       return c.json({ error: "No hay ninguna API de vuelos conectada. Busca con Claude, o añade la clave con npm run setup." }, 409);
     }
+    const ai = currentAi();
+    if (body.data.source === "claude") {
+      if (status.hosted) return c.json({ error: HOSTED_SEARCH }, 409);
+      if (!ai) return c.json({ error: "No hay ninguna IA configurada: mira en Ajustes cómo añadir una." }, 409);
+    }
     // Research's steps, relayed as they happen for Generar's live view.
     const progress: ResearchProgress[] = [];
     let relay: ((p: ResearchProgress) => void) | undefined;
@@ -312,7 +362,7 @@ export function createPanel({
     let source: AsyncIterable<ResearchResult>;
     try {
       source =
-        body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : research.research(req, c.req.raw.signal, onProgress);
+        body.data.source === "api" ? fromFlights(flights.search(req, c.req.raw.signal)) : ai!.research(req, c.req.raw.signal, onProgress);
     } catch (e) {
       // e.g. no flight provider configured
       return c.json({ error: (e as Error).message }, 409);
@@ -479,6 +529,45 @@ export function createPanel({
     return c.json(updated);
   });
 
+  // "Añadir a mano" (ROADMAP 3.3): a destination the organiser found and
+  // priced themselves goes straight in as approved, checked by hand. Without
+  // flight times, the site shows the price alone (flightDetailsKnown).
+  app.post("/api/plans/:planId/proposals", async (c) => {
+    const planId = c.req.param("planId");
+    const entry = store.get(planId);
+    if (!entry) return c.json({ error: "not found" }, 404);
+    const body = ManualBody.safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "propuesta no válida", issues: body.error.issues }, 400);
+    if (!body.data.outbound !== !body.data.inbound) return c.json({ error: "outbound and inbound go together" }, 400);
+    const { place, category, ...prices } = body.data;
+    const { plan } = entry;
+    const taken = new Set(entry.proposals.map((p) => p.id));
+    const base = slugify(place.city) || place.iata.toLowerCase();
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+    // Placeholders until real times are known: the trip's dates, never shown.
+    const leg = (from: string, to: string, day: string) => ({ from, to, departAt: `${day}T12:00:00Z`, arriveAt: `${day}T12:00:00Z`, carrier: "Por confirmar", flightNumber: "—", stops: 0, priceCents: 0 });
+    const blank: Proposal = {
+      id,
+      planId,
+      place,
+      category,
+      outbound: leg(plan.origin, place.iata, plan.dateFrom),
+      inbound: leg(place.iata, plan.origin, plan.dateTo),
+      stays: [],
+      todo: [],
+      see: [],
+      provenance: { kind: "organiser", checkedAt: now().toISOString(), sources: [], ...(prices.outbound ? { flightDetails: true } : {}) },
+      review: "approved",
+    };
+    const proposal = applyCheckedPrices(blank, prices, plan.nights);
+    store.update(planId, (e) => ({
+      entry: { ...e!, proposals: [...e!.proposals, proposal], editorial: { ...e!.editorial, [id]: { photoQueries: [place.city] } } },
+      result: null,
+    }));
+    return c.json(proposal, 201);
+  });
+
   // "Leer captura": Claude reads a screenshot of the flights or the stay and
   // the price dialog fills in what it found, for the organiser to review.
   // Nothing is saved here.
@@ -489,9 +578,10 @@ export function createPanel({
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
-    if (status.research === "none") return c.json({ error: "Para leer capturas hace falta Claude: ejecuta npm run setup" }, 409);
+    const ai = currentAi();
+    if (!ai || statusNow().research === "none") return c.json({ error: "Para leer capturas hace falta una IA: mira en Ajustes cómo añadir una." }, 409);
     const { plan } = entry;
-    const raw = await research.extract(
+    const raw = await ai.extract(
       {
         kind: body.data.kind,
         images: body.data.images,
@@ -533,6 +623,10 @@ export function createPanel({
     const warnings = publishWarnings(entry, now());
     if (warnings.length && !confirm) return c.json({ needsConfirmation: true, warnings }, 409);
     const snapshot = buildSnapshot(entry, now());
+    // Estimates cite no sources, which a site before version 11 refuses.
+    if (snapshot.destinations.some((d) => d.provenance.kind === "claude" && d.provenance.estimate) && (await site.version()) < 11) {
+      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe mostrar precios estimados. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+    }
     // Nothing approved empties a trip that's on the site; one never published
     // has nothing to send.
     if (snapshot.destinations.length === 0 && !entry.published) return c.json({ error: "no hay propuestas aprobadas" }, 409);
@@ -732,13 +826,16 @@ export function createPanel({
     if (!entry) return c.json({ error: "not found" }, 404);
     const destination = decided(planId);
     if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
-    if (!research.guide) return c.json({ error: "Preparar el viaje necesita Claude: conecta el comando claude o una clave de la API." }, 409);
+    if (status.hosted) return c.json({ error: HOSTED_SEARCH }, 409);
+    const ai = currentAi();
+    if (!ai?.guide) return c.json({ error: "Preparar el viaje necesita una IA: mira en Ajustes cómo añadir una." }, 409);
     const body = z.object({ home: z.string().trim().max(60).default("") }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "expected {home?}" }, 400);
     const { home } = body.data;
     const stay = baseStay(destination.stays);
     const { plan } = entry;
-    const guide = research.guide;
+    const guide = ai.guide.bind(ai);
+    const who = ai.who ?? {};
 
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
@@ -761,9 +858,9 @@ export function createPanel({
           c.req.raw.signal,
           (p) => void write({ progress: p }),
         );
-        const out = GuideOutput.parse(raw);
+        const out = (who.estimate ? GuideEstimate : GuideOutput).parse(raw);
         const previous = store.get(planId)!.trip;
-        const trip = TripPage.parse(toTripPage(destination.id, home, out, now(), previous?.destinationId === destination.id ? previous : undefined));
+        const trip = TripPage.parse(toTripPage(destination.id, home, out, now(), previous?.destinationId === destination.id ? previous : undefined, who.by));
         store.update(planId, (e) => ({ entry: { ...e!, trip }, result: null }));
         // Remember where the group lives for next time; best effort.
         if (home) {

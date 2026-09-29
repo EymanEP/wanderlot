@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router";
-import { baseStay, euros, flightDetailsKnown, flightPriceCents, longDate, pointsFor, tripLabel } from "@wanderlot/core";
+import { baseStay, euros, flightDetailsKnown, flightPriceCents, longDate, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
 import {
   BulletList,
   Card,
@@ -81,7 +81,7 @@ export function DestinoPage() {
         <StatTile label={`Alojamiento · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"}`} value={stayShareLabel(d, plan) ?? "—"} />
         <StatTile label={month[0]!.toUpperCase() + month.slice(1)} value={d.weather} />
         {trust === "unverified" ? (
-          <StatTile label="Datos de vuelo" value="Los escribió Claude" tone="claude" />
+          <StatTile label="Datos de vuelo" value={researchLabel(d.provenance)!.replace("Lo escribió", "Los escribió").replace("Estimado", "Estimados")} tone="claude" />
         ) : (
           <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : d.provenance.kind === "organiser" ? "Comprobados a mano" : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
         )}

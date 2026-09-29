@@ -205,8 +205,11 @@ export function ViajePage() {
   }
 
   const checked = destination ? pricesChecked(destination, now) : false;
-  // Research runs where Claude is: the laptop, not the panel the site serves.
-  const claude = state.status?.research !== "none";
+  // Research needs an AI, and runs on the laptop, not the panel the site
+  // serves (it takes minutes).
+  const hosted = !!state.status?.hosted;
+  const claude = state.status?.research !== "none" && !hosted;
+  const ai = state.status?.ai?.name ?? "Claude";
 
   return (
     <PanelShell>
@@ -224,10 +227,10 @@ export function ViajePage() {
                 )}
                 <Button
                   disabled={!!preparing || !claude}
-                  title={claude ? undefined : "Necesita Claude: prepáralo desde el panel de tu ordenador"}
+                  title={claude ? undefined : hosted ? "Prepáralo desde el panel de tu ordenador" : "Necesita una IA: mira en Ajustes"}
                   onClick={() => setAsking(true)}
                 >
-                  {draft?.preparedAt ? "Volver a preparar" : "Preparar con Claude"}
+                  {draft?.preparedAt ? "Volver a preparar" : `Preparar con ${ai}`}
                 </Button>
                 <Button variant="primary" disabled={!draft || busy || !!preparing} onClick={() => void publish(true)}>
                   {view?.published ? (dirty ? "Guardar y publicar" : "Publicar de nuevo") : "Publicar el viaje"}
@@ -251,7 +254,7 @@ export function ViajePage() {
                 detail={
                   checked
                     ? "La página del viaje los muestra tal cual."
-                    : "Ahora son los de Claude o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas."
+                    : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
                 }
                 action={
                   <Button size="sm" variant={checked ? "ghost" : "secondary"} onClick={() => setPricing(true)}>
@@ -265,7 +268,7 @@ export function ViajePage() {
                 detail={
                   draft
                     ? "Revísala abajo: quita lo que no encaje y añade la dirección, la hora de entrada y el Tricount."
-                    : "Claude busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice."
+                    : `${ai} busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice.`
                 }
                 action={
                   !draft && (
@@ -282,8 +285,8 @@ export function ViajePage() {
 
         {preparing && (
           <Card variant="raised" role="region" aria-label="Preparando el viaje" className="flex flex-col gap-2">
-            <Heading size="subheading">Claude está preparando el viaje</Heading>
-            <span className="text-sm text-muted">Busca en la web; tarda unos minutos.</span>
+            <Heading size="subheading">{ai} está preparando el viaje</Heading>
+            <span className="text-sm text-muted">{state.status?.ai?.search === false ? "Escribe con lo que sabe; tarda un poco." : "Busca en la web; tarda unos minutos."}</span>
             <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px] text-ink-2">
               {preparing.slice(-6).map((s, i) => (
                 <li key={i}>{stepText(s)}</li>
@@ -315,14 +318,14 @@ export function ViajePage() {
 
       <Dialog
         open={asking}
-        title={draft?.preparedAt ? "¿Volver a preparar la guía?" : "Preparar el viaje con Claude"}
+        title={draft?.preparedAt ? "¿Volver a preparar la guía?" : `Preparar el viaje con ${ai}`}
         confirmLabel="Preparar"
         onConfirm={() => void prepare()}
         onClose={() => setAsking(false)}
       >
         <div className="flex flex-col gap-3.5">
           <span>
-            Claude busca qué hacer, qué comer, qué ver y qué saber antes de ir a {destination?.place.city}, y cómo llegar: de vuestra ciudad al aeropuerto y del aeropuerto al
+            {ai} busca qué hacer, qué comer, qué ver y qué saber antes de ir a {destination?.place.city}, y cómo llegar: de vuestra ciudad al aeropuerto y del aeropuerto al
             alojamiento. {draft?.preparedAt ? "Sustituye la guía de ahora; la dirección, las horas y el Tricount se quedan." : ""}
           </span>
           <Field label="Salís desde (opcional)" aside="Para ir al aeropuerto">
@@ -335,6 +338,7 @@ export function ViajePage() {
         <PriceDialog
           proposal={pricing ? destination : undefined}
           plan={plan}
+          aiName={state.status?.ai?.name ?? "Claude"}
           {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(destination.id, kind, images) } : {})}
           onClose={() => setPricing(false)}
           onSave={async (prices) => {
@@ -387,7 +391,7 @@ function TripEditor({ trip, city, origin, iata, onChange }: { trip: TripPage; ci
         </Field>
       </Section>
 
-      <Section title="Alojamiento y dinero" hint="Lo que Claude no sabe: dónde está exactamente, a qué hora se entra y el Tricount del grupo.">
+      <Section title="Alojamiento y dinero" hint="Lo que la IA no sabe: dónde está exactamente, a qué hora se entra y el Tricount del grupo.">
         <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
           <Field label="Dirección">
             {({ inputId }) => (
@@ -445,7 +449,7 @@ function TripEditor({ trip, city, origin, iata, onChange }: { trip: TripPage; ci
 
       {trip.sources.length > 0 && (
         <p className="m-0 text-[13px] text-muted">
-          Fuentes de Claude:{" "}
+          Fuentes de {trip.by ?? "Claude"}:{" "}
           {trip.sources.map((s, i) => (
             <span key={s.url}>
               {i > 0 && " · "}

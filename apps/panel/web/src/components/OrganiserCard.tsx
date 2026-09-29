@@ -52,7 +52,7 @@ export function OrganiserCard() {
         <div className="flex max-w-[640px] flex-col gap-1">
           <Heading size="subheading">Panel en el móvil</Heading>
           <Text tone="muted" size="sm">
-            El sitio también sirve este panel, sin Claude: para revisar, publicar, abrir votaciones o invitar a alguien desde el móvil. Comparte los viajes con el de tu
+            El sitio también sirve este panel, sin buscar destinos: para revisar, publicar, abrir votaciones o invitar a alguien desde el móvil. Comparte los viajes con el de tu
             ordenador. Entra con una contraseña que solo sepas tú.
           </Text>
         </div>

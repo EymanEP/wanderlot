@@ -20,16 +20,46 @@ export interface MemberAccess extends Access {
   name: string;
 }
 
+export type AiId = "claude-cli" | "anthropic-api" | "openai-api" | "compatible-api";
+
 export interface Status {
-  research: "claude-cli" | "anthropic-api" | "none";
+  // The AI in use (ROADMAP 3.3), and what it can do.
+  research: AiId | "none";
+  ai?: { name: string; search: boolean; images: boolean };
   flights: "duffel" | "none";
   photos: string[];
   // outdated: deployed from older code; some panel features need a redeploy.
   site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
-  // The panel the site serves at /admin (ROADMAP 3.1): no AI there.
+  // The panel the site serves at /admin (ROADMAP 3.1): an AI there only
+  // reads screenshots; searching happens on the laptop.
   hosted?: boolean;
   // Where trips are kept: on the site, or (with an older site) on this laptop.
   store?: "site" | "file";
+}
+
+// Ajustes (ROADMAP 3.3): the AIs this panel knows, and the one in use.
+export interface AiOption {
+  id: AiId;
+  name: string;
+  model: string | null;
+  ready: boolean;
+  // How to set it up, when it isn't.
+  setup: string;
+  search: boolean;
+  images: boolean;
+}
+
+export interface AiView {
+  options: AiOption[];
+  active: AiId | null;
+  // The site's panel can't switch: it uses the first one set up there.
+  canChoose: boolean;
+}
+
+// "Añadir a mano": a destination and the prices the organiser saw.
+export interface ManualProposal extends CheckedPrices {
+  place: Proposal["place"];
+  category: Proposal["category"];
 }
 
 // The panel at /admin: on or off, and where it is.
@@ -158,6 +188,10 @@ export interface PanelBackend {
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
   setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
+  // Added by hand, approved and checked from now.
+  addProposal(planId: string, p: ManualProposal): Promise<Proposal>;
+  ai(): Promise<AiView>;
+  chooseAi(id: AiId): Promise<AiView>;
   // Claude reads screenshots of the flights or the stay; nothing is saved.
   extract(planId: string, id: string, kind: "flight" | "stay", images: ScreenshotImage[]): Promise<Extracted>;
   suggestions(planId: string): Promise<SuggestionView[]>;
@@ -269,6 +303,9 @@ export const httpBackend: PanelBackend = {
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
+  addProposal: (planId, p) => call<Proposal>(`/api/plans/${enc(planId)}/proposals`, "POST", p),
+  ai: () => call<AiView>("/api/ai"),
+  chooseAi: (id) => call<AiView>("/api/ai", "PUT", { id }),
   extract: (planId, id, kind, images) => call<Extracted>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/extract`, "POST", { kind, images }),
   suggestions: (planId) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions`),
   setSuggestion: (planId, id, status) => call<SuggestionView[]>(`/api/plans/${enc(planId)}/suggestions/${enc(id)}`, "PUT", { status }),

@@ -99,6 +99,20 @@ export async function deploySite() {
     console.log(`  ${origin}`);
   }
 
+  step("AI keys for the panel at /admin");
+  // Only when the organiser said so in npm run setup (WANDERLOT_SITE_AI=1):
+  // the site's panel reads screenshots with them (ROADMAP 3.3).
+  const local = readEnv();
+  if (local.WANDERLOT_SITE_AI !== "1") {
+    console.log("  not shared with the site (npm run setup to change it)");
+  } else {
+    const names = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_MODEL", "AI_BASE_URL", "AI_API_KEY", "AI_MODEL", "AI_NAME"].filter((k) => local[k]);
+    for (const name of names) {
+      if (!wrangler(["secret", "put", name], { input: local[name], quiet: true }).ok) fail(`Couldn't save ${name}.`);
+    }
+    console.log(names.length ? `  ${names.join(", ")}` : "  no API keys in .env to share");
+  }
+
   console.log(`\n✓ Site deployed${url ? `: ${url}` : ""}`);
   console.log("  Passkeys are tied to this address: if you'll use your own domain, set it up before inviting anyone.");
   return url;

@@ -182,7 +182,11 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `WANDERLOT_PIN_SECRET` | site | the admin token; keys the PIN hashes (on Cloudflare, the `PIN_SECRET` secret) |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
 | `WANDERLOT_PANEL_DATA` | panel | `data/panel.json`: only with a site older than API version 10; the trips are kept on the site otherwise, and this file is moved there once |
-| `ANTHROPIC_API_KEY` | panel | — (research through the API when the `claude` command isn't installed) |
+| `ANTHROPIC_API_KEY` | panel | — (research through Anthropic's API) |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | panel | — / `gpt-5` (research through OpenAI, with web search) |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, `AI_NAME` | panel | — (any OpenAI-compatible endpoint; no web search, so prices are estimates) |
+| `WANDERLOT_AI` | panel | the first AI set up; Ajustes changes it |
+| `WANDERLOT_SITE_AI` | `deploy:site` | — (`1`: copy the AI keys to the site, so the panel at `/admin` reads screenshots) |
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
@@ -193,10 +197,12 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - Both UIs run on their servers: plans are created and researched in the
   panel, published to the site, and voted on by the friends on each trip, who sign in with a PIN. The
   whole path is covered end to end.
-- Research runs through `claude -p --json-schema` or, without the command, the
-  Anthropic API with web search; both return proposals plus pros, cons,
-  weather and photo subjects. Neither has been run against the real service
-  from CI; they're tested with recorded shapes.
+- Research runs through `claude -p --json-schema`, the Anthropic API or
+  OpenAI's, each with web search, or any OpenAI-compatible endpoint without
+  it (estimates); Ajustes picks one. All return proposals plus pros, cons,
+  weather and photo subjects. None has been run against the real service
+  from CI; they're tested with recorded shapes. With no AI, destinations can
+  be added by hand.
 - Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
   (with keys) and publishes the chosen ones with their credits (SPEC §6).
 - The organiser follows the vote in the panel: who has voted, a reminder for

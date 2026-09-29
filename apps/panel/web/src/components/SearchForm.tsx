@@ -82,9 +82,11 @@ export interface SearchFormProps {
   flightsConnected: boolean;
   // First day that can be picked.
   min: string;
+  // The AI that researches (ROADMAP 3.3), and whether it searches the web.
+  ai?: { name: string; search: boolean };
 }
 
-export function SearchForm({ initial, onSubmit, count = 12, existing = 0, running, flightsConnected, min }: SearchFormProps) {
+export function SearchForm({ initial, onSubmit, count = 12, existing = 0, running, flightsConnected, min, ai = { name: "Claude", search: true } }: SearchFormProps) {
   const [v, setV] = useState(initial);
   const set = <K extends keyof SearchValues>(k: K, value: SearchValues[K]) => setV((s) => ({ ...s, [k]: value }));
 
@@ -183,7 +185,7 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
             className={flightsConnected ? undefined : "cursor-not-allowed opacity-50"}
             onChange={() => set("source", "api")}
           />
-          <RadioCard name="fuente" title="Claude" description="Con fuentes a verificar" checked={v.source === "claude"} onChange={() => set("source", "claude")} />
+          <RadioCard name="fuente" title={ai.name} description={ai.search ? "Con fuentes a verificar" : "Precios estimados"} checked={v.source === "claude"} onChange={() => set("source", "claude")} />
         </div>
         <div className="flex items-center gap-2">
           <Select

@@ -14,6 +14,14 @@ export interface Env {
   PIN_SECRET?: string;
   // Cloudflare's rate limiter (wrangler.jsonc), for sign-in attempts.
   AUTH_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  // AI keys for the panel at /admin (ROADMAP 3.3), set with wrangler secret.
+  ANTHROPIC_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  AI_BASE_URL?: string;
+  AI_API_KEY?: string;
+  AI_MODEL?: string;
+  AI_NAME?: string;
   // The built files (wrangler.jsonc), for the panel's under /admin.
   ASSETS?: { fetch(request: Request | string): Promise<Response> };
 }
@@ -49,6 +57,7 @@ export default {
       adminToken: env.ADMIN_TOKEN,
       rp: { name: "Wanderlot", origin: env.ORIGIN },
       ...(env.PIN_SECRET ? { pinSecret: env.PIN_SECRET } : {}),
+      ai: env,
       ...(limiter ? { limit: async (key: string) => (await limiter.limit({ key })).success } : {}),
     });
     return app.fetch(request);

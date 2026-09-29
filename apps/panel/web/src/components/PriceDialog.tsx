@@ -9,14 +9,16 @@ export interface PriceDialogProps {
   plan: Plan;
   onSave: (prices: CheckedPrices) => Promise<void>;
   onClose: () => void;
-  // Claude reading screenshots of the flights or the stay; without it (the
-  // panel the site serves has no Claude) the prices are typed.
+  // An AI reading screenshots of the flights or the stay; without one set up,
+  // the prices are typed.
   onExtract?: (kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
+  // Which AI reads them: "Claude", "OpenAI".
+  aiName?: string;
 }
 
 const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
 // "1044", "1044,50", "1.044,50" or "1044.5" → cents; null if it isn't a price.
-const toCents = (text: string): number | null => {
+export const toCents = (text: string): number | null => {
   let t = text.trim().replace(/\s|€/g, "");
   // "1.044,50": the dot groups thousands.
   if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
@@ -101,7 +103,7 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
 // group pays for the stay. From then on the proposal shows as checked by hand
 // (SPEC §3). Without a screenshot of the flights, the site shows their price
 // alone: research's times would sit beside a real price.
-export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: PriceDialogProps) {
+export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiName = "Claude" }: PriceDialogProps) {
   const stay = p ? baseStay(p.stays) : undefined;
   const people = plan.partySize;
   const [flights, setFlights] = useState("");
@@ -232,8 +234,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract }: P
       <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-5">
         <span>
           {onExtract
-            ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y Claude lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
-            : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita Claude: hazlo desde el panel de tu ordenador.`}{" "}
+            ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y ${aiName} lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
+            : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita una IA: mira en Ajustes cómo añadir una.`}{" "}
           Se mostrarán como «Comprobado a mano» durante 72 horas.
         </span>
 

@@ -13,6 +13,7 @@ const PREVIEW_SITE_URL = import.meta.env.VITE_SITE_URL as string | undefined;
 const NAV = [
   { to: "/", label: "Viajes" },
   { to: "/personas", label: "Personas" },
+  { to: "/ajustes", label: "Ajustes" },
 ];
 
 // Dónde, step by step: find, review, compare, vote.
@@ -148,15 +149,16 @@ function TripBar({ end }: { end?: ReactNode }) {
   );
 }
 
-// "claude conectado", or what's missing.
+// "claude conectado", the AI in use, or what's missing (ROADMAP 3.3).
 function Status() {
   const { status } = usePanel().state;
   if (!status) return null;
-  if (status.hosted) return <StatusDot>sin Claude: búscalo desde tu ordenador</StatusDot>;
+  if (status.hosted) return status.ai ? <StatusDot tone="on">{status.ai.name}: lee capturas</StatusDot> : <StatusDot>sin IA: busca desde tu ordenador</StatusDot>;
   if (!status.site.reachable) return <StatusDot>sitio sin conexión</StatusDot>;
   if (status.research === "claude-cli") return <StatusDot tone="on">claude conectado</StatusDot>;
   if (status.research === "anthropic-api") return <StatusDot tone="on">API de Anthropic</StatusDot>;
-  return <StatusDot>claude sin conectar</StatusDot>;
+  if (status.ai) return <StatusDot tone="on">{status.ai.name}</StatusDot>;
+  return <StatusDot>sin IA</StatusDot>;
 }
 
 // The site runs older code than this panel: say so everywhere, since several
