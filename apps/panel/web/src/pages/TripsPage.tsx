@@ -72,7 +72,7 @@ export function TripsPage() {
   };
 
   return (
-    <PanelShell showPlan={false}>
+    <PanelShell trip={false}>
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 py-8 sm:px-8">
         <PageHeader
           title="Viajes"

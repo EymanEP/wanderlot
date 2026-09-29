@@ -116,8 +116,10 @@ try {
   await org.getByText("Guardado: 2 personas van a Noviembre 2026").waitFor();
   console.log("✓ panel: group named; Ana and Bea on the trip, Carla not");
 
-  // 3. Research with Claude (the stand-in), then approve and publish.
-  await org.getByRole("link", { name: "Generar" }).first().click();
+  // 3. Research with Claude (the stand-in), then approve and publish. The
+  // trip opens from Viajes, on Dónde's first step.
+  await org.getByRole("link", { name: "Viajes" }).first().click();
+  await org.getByRole("article", { name: "Noviembre 2026" }).getByRole("button", { name: "Abrir" }).click();
   await org.getByLabel("Claude").check();
   await org.getByRole("button", { name: "Generar 12 propuestas" }).click();
   await org.getByText("Buscando «vuelos Madrid Lisboa noviembre»").waitFor();
@@ -172,7 +174,9 @@ try {
   await ana.getByLabel("Por qué (opcional)").fill("Naturaleza a lo bestia");
   await ana.getByRole("button", { name: "Enviar idea" }).click();
   await ana.getByText("Idea enviada. Eyman la verá en el panel.").waitFor();
-  await org.getByRole("link", { name: "Generar" }).first().click();
+  await org.getByRole("link", { name: "Viajes" }).first().click();
+  await org.getByRole("article", { name: "Noviembre 2026" }).getByRole("button", { name: "Abrir" }).click();
+  await org.getByRole("link", { name: "Generar" }).click();
   const idea = org.getByRole("listitem", { name: "Azores" });
   await idea.getByText("«Naturaleza a lo bestia»").waitFor();
   await idea.getByRole("button", { name: "Investigar" }).click();
@@ -182,7 +186,7 @@ try {
 
   // 6c. When: the organiser proposes two date windows, Ana answers on her
   // phone, and the organiser chooses one; the trip takes those dates.
-  await org.getByRole("link", { name: "Fechas" }).first().click();
+  await org.getByRole("link", { name: "Cuándo" }).click();
   await org.getByRole("heading", { name: "Elige unas fechas" }).waitFor();
   await org.getByRole("button", { name: "Mes siguiente" }).click();
   for (const [from, to] of [[3, 7], [17, 21]]) {
@@ -217,7 +221,8 @@ try {
   for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();
   await ana.getByRole("button", { name: "Votar" }).click();
   await ana.getByText("Reparto guardado").waitFor();
-  await org.getByRole("link", { name: "Votación" }).first().click();
+  await org.getByRole("link", { name: "Dónde" }).click();
+  await org.getByRole("link", { name: "Votación" }).click();
   await org.getByText("1 de 2").waitFor();
   // The organiser sees her ballot and the running count before anyone else.
   await org.getByRole("table", { name: "Recuento provisional" }).waitFor();
