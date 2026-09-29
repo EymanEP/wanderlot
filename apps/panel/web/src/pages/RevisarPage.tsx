@@ -118,7 +118,7 @@ export function RevisarPage() {
   );
 
   return (
-    <PanelShell showPlan={false} end={publishButton}>
+    <PanelShell end={publishButton}>
       <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-[26px] px-4 py-8 sm:px-8 xl:px-14">
         <PageHeader
           title={plan.name}

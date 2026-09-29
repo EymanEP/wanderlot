@@ -46,7 +46,7 @@ export function NewPlanPage() {
   };
 
   return (
-    <PanelShell showPlan={state.plans.length > 0}>
+    <PanelShell trip={false}>
       <main className="mx-auto flex w-full max-w-[720px] flex-col gap-[26px] px-4 py-8 sm:px-8">
         <PageHeader title="Nuevo plan" subtitle="Una ventana de viaje con sus fechas, quién va y cuánto gastar. Luego generas propuestas para ella." />
         <Card as="form" variant="flat" onSubmit={submit} className="flex flex-col gap-5">

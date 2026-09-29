@@ -28,7 +28,7 @@ function RequirePlan({ children }: { children: ReactNode }) {
   }
   if (state.error) {
     return (
-      <PanelShell showPlan={false}>
+      <PanelShell trip={false}>
         <main className="mx-auto w-full max-w-[720px] px-4 py-12">
           <EmptyState title="El panel no arranca">{state.error}</EmptyState>
         </main>
@@ -37,7 +37,7 @@ function RequirePlan({ children }: { children: ReactNode }) {
   }
   if (!state.plan) {
     return (
-      <PanelShell showPlan={false}>
+      <PanelShell trip={false}>
         <main className="mx-auto w-full max-w-[720px] px-4 py-12">
           <EmptyState
             title="Todavía no hay ningún plan"

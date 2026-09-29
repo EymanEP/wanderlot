@@ -101,6 +101,32 @@ describe("Viajes · exportar", () => {
   });
 });
 
+describe("Navigation", () => {
+  it("keeps the group's pages on top and each trip's steps in its own bar", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    await screen.findByRole("button", { name: /^Publicar/ });
+    const top = screen.getAllByRole("navigation", { name: "Panel" })[0]!;
+    expect(within(top).getAllByRole("link").map((l) => l.textContent)).toEqual(["Viajes", "Personas", "Ver sitio"]);
+
+    const steps = screen.getByRole("navigation", { name: "Pasos del viaje" });
+    expect(within(steps).getAllByRole("link").map((l) => l.textContent)).toEqual(["1Cuándo", "2Dónde", "3El viaje"]);
+    expect(within(steps).getByRole("link", { name: /Dónde/ }).getAttribute("aria-current")).toBe("page");
+    // Dónde's own steps, with how many proposals wait for review.
+    const donde = screen.getByRole("navigation", { name: "Dónde" });
+    expect(within(donde).getAllByRole("link").map((l) => l.textContent)).toEqual(["Generar", "Revisar6", "Comparativa", "Votación"]);
+    expect((screen.getByRole("button", { name: "Viaje" }) as HTMLElement).textContent).toContain("Noviembre 2026");
+
+    await user.click(within(steps).getByRole("link", { name: /Cuándo/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Fechas" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Dónde" })).toBeNull();
+    // The group's pages have no trip bar.
+    await user.click(within(screen.getAllByRole("navigation", { name: "Panel" })[0]!).getByRole("link", { name: "Personas" }));
+    await screen.findByRole("heading", { level: 1, name: "Personas" });
+    expect(screen.queryByRole("navigation", { name: "Pasos del viaje" })).toBeNull();
+  });
+});
+
 describe("Fechas", () => {
   it("follows who can go when, chooses, and proposes dates for another trip", async () => {
     const user = userEvent.setup();

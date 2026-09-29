@@ -52,7 +52,7 @@ export function PersonasPage() {
   const who = state.members.find((m) => m.id === revoking);
 
   return (
-    <PanelShell>
+    <PanelShell trip={false}>
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-[26px] px-4 py-8 sm:px-8">
         <PageHeader
           title="Personas"
