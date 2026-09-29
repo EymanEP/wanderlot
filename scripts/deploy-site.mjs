@@ -50,8 +50,8 @@ export async function deploySite() {
     console.log("  already set up");
   }
 
-  step("Building the web UI");
-  const build = spawnSync("npx", ["vite", "build"], { cwd: SITE, stdio: "inherit", env: process.env });
+  step("Building the web UI and the panel for /admin");
+  const build = spawnSync("npm", ["run", "build"], { cwd: SITE, stdio: "inherit", env: process.env });
   if (build.status !== 0) fail("The build failed.");
 
   step("Applying migrations");

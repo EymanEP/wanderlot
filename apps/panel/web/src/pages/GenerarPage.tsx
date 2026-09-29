@@ -96,8 +96,15 @@ export function GenerarPage() {
     <PanelShell>
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
-          {/* Keyed so switching plans resets the form to the new plan. */}
-          <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+          {status?.hosted ? (
+            <Notice tone="neutral">
+              Buscar destinos necesita Claude, y el panel del sitio no lo tiene. Busca desde el panel de tu ordenador: lo que encuentre aparecerá aquí también. Desde aquí puedes
+              ver las ideas del grupo y descartarlas.
+            </Notice>
+          ) : (
+            // Keyed so switching plans resets the form to the new plan.
+            <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+          )}
         </div>
 
         <section aria-labelledby="resultados" className="flex min-w-0 flex-1 flex-col gap-[18px] bg-canvas p-4 sm:p-7">
@@ -136,7 +143,7 @@ export function GenerarPage() {
               {generation.idea ? `No se encontró nada para ${generation.idea}.` : "La búsqueda terminó sin propuestas nuevas."} Prueba con otras fechas, más presupuesto o escalas.
             </Notice>
           )}
-          {status?.research === "none" && (
+          {status?.research === "none" && !status.hosted && (
             <Notice tone="neutral">
               No encuentro el comando <code>claude</code> ni una clave de Anthropic en este ordenador. Ejecuta <code>npm run setup</code> para configurarlo.
             </Notice>
@@ -145,7 +152,7 @@ export function GenerarPage() {
           <div className="flex flex-col gap-2.5" aria-live="polite">
             {proposals.length === 0 && !running && (
               <p className="m-0 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
-                Todavía no hay propuestas para {plan.name}. Ajusta la búsqueda y pulsa «Generar».
+                Todavía no hay propuestas para {plan.name}. {status?.hosted ? "Búscalas desde el panel de tu ordenador." : "Ajusta la búsqueda y pulsa «Generar»."}
               </p>
             )}
             {proposals.map((p) => (
@@ -164,7 +171,7 @@ export function GenerarPage() {
           </div>
 
           <p className="m-0 text-[13px] text-muted">
-            Todo esto vive solo en tu máquina. El sitio no ve nada hasta que pulses <strong className="font-bold text-ink">Publicar</strong> en Revisar.
+            Solo tú ves esto: la cuadrilla no ve nada hasta que pulses <strong className="font-bold text-ink">Publicar</strong> en Revisar.
           </p>
         </section>
       </div>

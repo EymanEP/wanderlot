@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router";
 import { rangeLabel } from "@wanderlot/core";
 import { Brand, CheckIcon, ExternalIcon, Page, Select, StatusDot, TopBar, chipClasses, cn, useToast } from "@wanderlot/ui";
 import { usePanel } from "../data/store.tsx";
+import { signOutHosted } from "./HostedGate.tsx";
 
 // The preview build points "Ver sitio" at the site preview; otherwise the
 // site's own address comes from the panel's status.
@@ -151,6 +152,7 @@ function TripBar({ end }: { end?: ReactNode }) {
 function Status() {
   const { status } = usePanel().state;
   if (!status) return null;
+  if (status.hosted) return <StatusDot>sin Claude: búscalo desde tu ordenador</StatusDot>;
   if (!status.site.reachable) return <StatusDot>sitio sin conexión</StatusDot>;
   if (status.research === "claude-cli") return <StatusDot tone="on">claude conectado</StatusDot>;
   if (status.research === "anthropic-api") return <StatusDot tone="on">API de Anthropic</StatusDot>;
@@ -173,10 +175,11 @@ function SiteOutdated() {
 export function PanelShell({ end, trip = true, children, tone = "white" }: PanelShellProps) {
   const { state } = usePanel();
   const withTrip = trip && !!state.plan;
+  const hosted = !!state.status?.hosted;
   return (
     <Page className={tone === "canvas" ? "bg-canvas" : undefined}>
       <TopBar
-        brand={<Brand sub={<span className="hidden sm:inline">Panel local</span>} />}
+        brand={<Brand sub={<span className="hidden sm:inline">{hosted ? "Panel" : "Panel local"}</span>} />}
         nav={<PanelNav className="hidden md:flex" />}
         end={
           <>
@@ -184,6 +187,11 @@ export function PanelShell({ end, trip = true, children, tone = "white" }: Panel
               <Status />
             </span>
             {!withTrip && end}
+            {hosted && (
+              <button type="button" onClick={() => void signOutHosted()} className={chipClasses("nav", false)}>
+                Salir
+              </button>
+            )}
           </>
         }
       />

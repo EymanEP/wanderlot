@@ -7,12 +7,12 @@
     "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch src/server.ts",
     "dev:web": "vite",
-    "build": "vite build",
+    "build": "vite build && npm --prefix ../panel run build:hosted",
     "start": "tsx src/server.ts",
     "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-sitio.html",
-    "test:e2e": "vite build && tsx e2e/access.e2e.ts",
-    "test:e2e:worker": "vite build && tsx e2e/access.e2e.ts --worker",
-    "dev:worker": "vite build && wrangler d1 migrations apply wanderlot --local && wrangler dev"
+    "test:e2e": "npm run build && tsx e2e/access.e2e.ts",
+    "test:e2e:worker": "npm run build && tsx e2e/access.e2e.ts --worker",
+    "dev:worker": "npm run build && wrangler d1 migrations apply wanderlot --local && wrangler dev"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",

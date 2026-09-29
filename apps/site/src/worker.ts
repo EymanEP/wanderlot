@@ -1,7 +1,8 @@
 // The site on Cloudflare Workers (SPEC §11). Static assets (the built UI) are
-// served by Cloudflare directly; only /api/* reaches this code.
+// served by Cloudflare directly; /api/* and the panel at /admin reach this code.
 import { createApp } from "./app.ts";
 import { D1Store, type D1Like } from "./d1.ts";
+import { SECURITY_HEADERS } from "./headers.ts";
 
 export interface Env {
   DB: D1Like;
@@ -13,6 +14,21 @@ export interface Env {
   PIN_SECRET?: string;
   // Cloudflare's rate limiter (wrangler.jsonc), for sign-in attempts.
   AUTH_LIMIT?: { limit(o: { key: string }): Promise<{ success: boolean }> };
+  // The built files (wrangler.jsonc), for the panel's under /admin.
+  ASSETS?: { fetch(request: Request | string): Promise<Response> };
+}
+
+// The panel's pages and files (ROADMAP 3.1): its files as they are, and its
+// index.html for every other address under /admin (its API aside).
+async function adminAsset(request: Request, env: Env): Promise<Response | null> {
+  const url = new URL(request.url);
+  if (!env.ASSETS || request.method !== "GET" || url.pathname.startsWith("/admin/api/")) return null;
+  if (url.pathname === "/admin") return Response.redirect(new URL("/admin/", url).toString(), 302);
+  const isFile = /\.[a-z0-9]+$/i.test(url.pathname);
+  const res = await env.ASSETS.fetch(isFile ? request : new URL("/admin/index.html", url).toString());
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  return out;
 }
 
 export default {
@@ -25,6 +41,8 @@ export default {
     if (!env.ORIGIN) {
       return new Response("Missing ORIGIN, the site's public address: run npm run deploy:site again", { status: 500 });
     }
+    const asset = new URL(request.url).pathname.startsWith("/admin") ? await adminAsset(request, env) : null;
+    if (asset) return asset;
     const limiter = env.AUTH_LIMIT;
     const app = createApp({
       store: new D1Store(env.DB),

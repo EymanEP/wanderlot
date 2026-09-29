@@ -23,9 +23,13 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 |---|---|
 | ![A plan on the site: four destinations with prices, and the latest comments](docs/screenshots/site-plan.png) | ![Votación on a phone: the vote so far and your three picks](docs/screenshots/site-votacion-phone.png) |
 
-| The organiser's panel: reviewing proposals | Following the vote |
+| The trip page, once decided | Agreeing on dates |
 |---|---|
-| ![Revisar: proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![Votación in the panel: who has voted, remind, close early](docs/screenshots/panel-votacion.png) |
+| ![El viaje: flights and stay with checked prices, each person's share, the Tricount link, getting there and what to know](docs/screenshots/site-viaje.png) | ![Fechas on a phone: yes, if need be or no for each date option](docs/screenshots/site-fechas-phone.png) |
+
+| The organiser's panel: reviewing proposals | The panel on a phone, at /admin |
+|---|---|
+| ![Revisar: the trip's steps (Cuándo, Dónde, El viaje), proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![The panel at phone width: the trip bar and Revisar](docs/screenshots/panel-phone.png) |
 
 <sub>Screenshots use the demo data, so photos appear as labelled placeholders.</sub>
 
@@ -110,7 +114,8 @@ The panel and the site share one contract, the `Snapshot` schema in
 ## Hosting your own
 
 One deployment serves one group. The site runs free on Cloudflare Workers + D1;
-the panel runs on the organiser's computer.
+the panel runs on the organiser's computer, and the site serves it too at
+`/admin` (without AI) once you set a password in Personas → "Panel en el móvil".
 
 ```sh
 git clone https://github.com/EymanEP/wanderlot && cd wanderlot
@@ -176,7 +181,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `WANDERLOT_ORIGIN` | site | `http://localhost:$PORT`; passkeys belong to this address, so set the final public one |
 | `WANDERLOT_PIN_SECRET` | site | the admin token; keys the PIN hashes (on Cloudflare, the `PIN_SECRET` secret) |
 | `WANDERLOT_SITE_URL` | panel | `http://localhost:8787` |
-| `WANDERLOT_PANEL_DATA` | panel | `data/panel.json` |
+| `WANDERLOT_PANEL_DATA` | panel | `data/panel.json`: only with a site older than API version 10; the trips are kept on the site otherwise, and this file is moved there once |
 | `ANTHROPIC_API_KEY` | panel | — (research through the API when the `claude` command isn't installed) |
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
@@ -197,6 +202,8 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - The organiser follows the vote in the panel: who has voted, a reminder for
   the rest, closing early, breaking a tie, going somewhere other than the
   winner, and the result message.
+- The panel's trips are kept on the site, and the site serves the panel at
+  `/admin` for the organiser's phone, with everything but the AI.
 - Dates can be agreed first: the organiser proposes a few windows, each friend
   says yes, if need be or no, and the chosen one becomes the trip's dates.
 - Once the destination is decided, the trip gets its own page: flights and

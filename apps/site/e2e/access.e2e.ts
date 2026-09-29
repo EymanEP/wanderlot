@@ -188,6 +188,24 @@ try {
   await laptop.getByRole("button", { name: "Entrar", exact: true }).click();
   await laptop.getByText("Nombre o PIN incorrectos").waitFor();
   console.log("✓ removed access: PIN refused");
+
+  // 8. The panel at /admin (ROADMAP 3.1): off until a password is set; then
+  // the organiser signs in on a phone and sees the trips the panel keeps here.
+  const admin404 = await fetch(`${ORIGIN}/admin/api/session`);
+  assert.equal(admin404.status, 404);
+  await admin("/organiser", "PUT", { password: "una contraseña larga" });
+  const entry = { plan: { id: "noviembre-2026", name: "Noviembre 2026", origin: "MAD", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, flexDays: 0, partySize: 2, maxPriceCents: null, status: "voting" }, proposals: [], editorial: {}, participants: ["ana", "bea"] };
+  await admin("/panel/plans/noviembre-2026", "PUT", { entry, version: 0 });
+  const organiser = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await organiser.goto(`${ORIGIN}/admin`);
+  await organiser.getByLabel("Contraseña del panel").fill("una contraseña larga");
+  await organiser.getByRole("button", { name: "Entrar" }).click();
+  await organiser.getByRole("article", { name: "Noviembre 2026" }).waitFor();
+  await organiser.getByRole("link", { name: "Personas" }).first().click();
+  await organiser.getByRole("listitem", { name: "Bea" }).waitFor();
+  await organiser.reload();
+  await organiser.getByRole("heading", { level: 1, name: "Personas" }).waitFor();
+  console.log("✓ panel at /admin: password, trips kept on the site, session survives a reload");
 } finally {
   await browser.close();
   stop();

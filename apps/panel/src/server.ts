@@ -9,8 +9,9 @@ import { anthropicProvider } from "./providers/anthropic.ts";
 import { claudeProvider } from "./providers/claude.ts";
 import { pexels, unsplash, wikimedia, type PhotoSource } from "./providers/photos.ts";
 import { duffelProvider } from "./providers/duffel.ts";
-import { siteClient } from "./publish.ts";
+import { siteClient, sitePanelBackend } from "./publish.ts";
 import { PanelStore } from "./store.ts";
+import { fileBackend, moveFileToSite } from "./file-store.ts";
 
 // Settings from `npm run setup`, unless already set in the environment.
 try {
@@ -30,6 +31,24 @@ const photos: PhotoSource[] = [
   ...(process.env.PEXELS_API_KEY ? [pexels(process.env.PEXELS_API_KEY)] : []),
 ];
 
+// Where trips are kept (ROADMAP 3.2): on the site, so the panel it serves at
+// /admin and this one share them. A site too old for that (or not answering
+// yet, with trips still only in the file) keeps them in data/panel.json.
+const site = siteClient(siteUrl, adminToken);
+const dataFile = process.env.WANDERLOT_PANEL_DATA ?? "data/panel.json";
+let onSite = false;
+try {
+  onSite = (await site.version()) >= 10;
+} catch (e) {
+  console.warn(`The site at ${siteUrl} didn't answer (${(e as Error).message}).`);
+}
+if (onSite) {
+  const moved = await moveFileToSite(dataFile, sitePanelBackend(site));
+  if (moved) console.log(`Moved ${moved} trip${moved === 1 ? "" : "s"} from ${dataFile} to the site; the file is kept as ${dataFile}.moved-to-site.`);
+} else {
+  console.warn(`Keeping trips in ${dataFile}. Run npm run deploy:site to keep them on the site and manage them from your phone.`);
+}
+
 const status: PanelStatus = {
   // The command first: it runs on the organiser's Claude plan, with no API bill.
   research: hasClaude ? "claude-cli" : process.env.ANTHROPIC_API_KEY ? "anthropic-api" : "none",
@@ -37,17 +56,18 @@ const status: PanelStatus = {
   // wired up, a key doesn't make flight search work, so don't offer it.
   flights: "none",
   photos: photos.map((s) => s.name),
+  store: onSite ? "site" : "file",
 };
 
 const app = createPanel({
   status,
-  store: new PanelStore(process.env.WANDERLOT_PANEL_DATA ?? "data/panel.json"),
+  store: new PanelStore(onSite ? sitePanelBackend(site) : fileBackend(dataFile)),
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
   research: status.research === "anthropic-api" ? anthropicProvider() : claudeProvider(),
   photos,
   // This server, and Vite's dev server in front of it.
   hosts: panelHosts([port, 5174]),
-  site: siteClient(siteUrl, adminToken),
+  site,
   siteUrl,
 });
 

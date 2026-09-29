@@ -168,6 +168,24 @@ try {
   await org.getByRole("listitem", { name: "Ana" }).getByText("Dentro").waitFor();
   console.log("✓ panel: Ana is inside");
 
+  // 6a. The panel on the phone (ROADMAP 3.1): the organiser turns it on here,
+  // then signs in at the site's /admin and finds the trip researched on the
+  // laptop, since both keep it on the site (ROADMAP 3.2).
+  const mobile = org.getByRole("region", { name: "Panel en el móvil" });
+  await mobile.getByLabel("Contraseña", { exact: true }).fill("una contraseña larga");
+  await mobile.getByLabel("Repítela").fill("una contraseña larga");
+  await mobile.getByRole("button", { name: "Activar" }).click();
+  await mobile.getByText("Activado").waitFor();
+  const pocket = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await pocket.goto(`${SITE}/admin/`);
+  await pocket.getByLabel("Contraseña del panel").fill("una contraseña larga");
+  await pocket.getByRole("button", { name: "Entrar" }).click();
+  await pocket.getByRole("article", { name: "Noviembre 2026" }).getByRole("button", { name: "Abrir" }).click();
+  await pocket.getByRole("article", { name: "Lisboa" }).waitFor();
+  await pocket.getByRole("link", { name: "Personas" }).first().click();
+  await pocket.getByRole("listitem", { name: "Ana" }).getByText("Dentro").waitFor();
+  console.log("✓ panel at /admin: signed in on the phone, same trips as the laptop");
+
   // 6b. Ana suggests a destination; the organiser researches it from Generar.
   await ana.getByRole("button", { name: "Proponer un destino" }).click();
   await ana.getByLabel("Destino", { exact: true }).fill("Azores");

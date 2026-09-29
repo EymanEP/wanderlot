@@ -101,6 +101,55 @@ describe("Viajes · exportar", () => {
   });
 });
 
+describe("Panel en el móvil", () => {
+  it("turns on the panel at /admin with a password typed twice", async () => {
+    const user = userEvent.setup();
+    renderAt("/personas");
+    const card = await screen.findByRole("region", { name: "Panel en el móvil" });
+    expect(await within(card).findByText("Desactivado")).toBeTruthy();
+    await user.type(within(card).getByLabelText("Contraseña"), "corta");
+    await user.type(within(card).getByLabelText("Repítela"), "corta");
+    await user.click(within(card).getByRole("button", { name: "Activar" }));
+    expect(within(card).getByRole("alert").textContent).toBe("Usa al menos 10 caracteres");
+    await user.clear(within(card).getByLabelText("Contraseña"));
+    await user.clear(within(card).getByLabelText("Repítela"));
+    await user.type(within(card).getByLabelText("Contraseña"), "una contraseña larga");
+    await user.type(within(card).getByLabelText("Repítela"), "otra contraseña larga");
+    await user.click(within(card).getByRole("button", { name: "Activar" }));
+    expect(within(card).getByRole("alert").textContent).toBe("Las dos contraseñas no coinciden");
+    await user.clear(within(card).getByLabelText("Repítela"));
+    await user.type(within(card).getByLabelText("Repítela"), "una contraseña larga");
+    await user.click(within(card).getByRole("button", { name: "Activar" }));
+    expect(await within(card).findByText("Activado")).toBeTruthy();
+    expect(within(card).getByRole("link", { name: "https://wanderlot-grupo51.workers.dev/admin/" }).getAttribute("href")).toContain("/admin/");
+    await user.click(within(card).getByRole("button", { name: "Desactivar" }));
+    expect(await within(card).findByText("Desactivado")).toBeTruthy();
+  });
+
+  it("says what needs Claude when the site serves the panel", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/generar"]}>
+        <ToastProvider>
+          <PanelProvider backend={mockBackend({ tickMs: 2, verifyMs: 2, hosted: true })}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Buscar destinos necesita Claude/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Generar/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Salir" })).toBeTruthy();
+    // Prices are typed: no screenshots without Claude.
+    await user.click(within(screen.getByRole("navigation", { name: "Dónde" })).getByRole("link", { name: /^Revisar/ }));
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    expect(dialog.getByText(/Leer capturas necesita Claude/)).toBeTruthy();
+    expect(dialog.queryByLabelText("Leer captura del vuelo")).toBeNull();
+  });
+});
+
 describe("Navigation", () => {
   it("keeps the group's pages on top and each trip's steps in its own bar", async () => {
     const user = userEvent.setup();

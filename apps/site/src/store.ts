@@ -75,6 +75,23 @@ export interface DatePoll {
   updatedAt: string;
 }
 
+// The /admin password (ROADMAP 3.1) and its lockouts, like a PIN's.
+export interface OrganiserLogin {
+  hash: string;
+  salt: string;
+  setAt: string;
+  failed: number;
+  lockedUntil: string | null;
+  lockouts: number;
+}
+
+export interface OrganiserSession {
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent: string | null;
+}
+
 export interface SiteStore {
   // settings
   settings(): Promise<Partial<GroupSettings>>;
@@ -158,6 +175,25 @@ export interface SiteStore {
   deleteDatePoll(planId: string): Promise<void>;
   dateResponses(planId: string): Promise<DateResponse[]>;
   putDateResponse(planId: string, memberId: string, answers: Record<string, DateAnswer>, note: string | null, at: string): Promise<void>;
+
+  // The panel's own data (ROADMAP 3.2): one JSON entry per trip, versioned.
+  panelVersions(): Promise<Record<string, number>>;
+  panelPlan(planId: string): Promise<{ entry: string; version: number } | undefined>;
+  // Writes if the stored version is still `version` (0: not there yet);
+  // null deletes. Resolves to the new version, or null on a conflict.
+  savePanelPlan(planId: string, entry: string | null, version: number, at: string): Promise<number | null>;
+  panelInvites(): Promise<{ memberId: string; sealed: string; expiresAt: string }[]>;
+  savePanelInvite(memberId: string, sealed: string | null, expiresAt: string | null): Promise<void>;
+
+  // The panel at /admin (ROADMAP 3.1).
+  organiserLogin(): Promise<OrganiserLogin | undefined>;
+  setOrganiserLogin(login: { hash: string; salt: string; setAt: string } | null): Promise<void>;
+  recordOrganiserFailure(failed: number, lockedUntil: string | null, lockouts: number): Promise<void>;
+  createOrganiserSession(hash: string, s: OrganiserSession): Promise<void>;
+  organiserSession(hash: string): Promise<OrganiserSession | undefined>;
+  touchOrganiserSession(hash: string, lastSeenAt: string, expiresAt: string): Promise<void>;
+  deleteOrganiserSession(hash: string): Promise<void>;
+  deleteOrganiserSessions(): Promise<void>;
 
   // Who liked what in a plan, for the export.
   commentLikes(planId: string): Promise<{ commentId: string; memberId: string; createdAt: string }[]>;

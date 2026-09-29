@@ -8,6 +8,7 @@
     "dev:api": "tsx watch src/server.ts",
     "dev:web": "vite",
     "build": "vite build",
+    "build:hosted": "VITE_HOSTED=1 vite build --outDir ../../site/dist/web/admin --emptyOutDir",
     "start": "tsx src/server.ts",
     "build:preview": "VITE_PREVIEW=1 vite build --outDir ../dist/preview && node ../../scripts/inline-preview.mjs dist/preview dist/wanderlot-panel.html"
   },

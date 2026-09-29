@@ -23,6 +23,9 @@ if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
 const webDir = join(dirname(fileURLToPath(import.meta.url)), "../dist/web");
 const indexPath = join(webDir, "index.html");
 const indexHtml = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : undefined;
+// The panel, built into dist/web/admin (ROADMAP 3.1).
+const adminIndexPath = join(webDir, "admin/index.html");
+const adminIndexHtml = existsSync(adminIndexPath) ? readFileSync(adminIndexPath, "utf8") : undefined;
 
 const app = createApp({
   store: new SqliteStore(dbPath),
@@ -33,6 +36,7 @@ const app = createApp({
   // Generous for a group of friends, tight enough to stop a flood of writes.
   limit: memoryLimiter(60, 60_000),
   ...(indexHtml ? { indexHtml } : {}),
+  ...(adminIndexHtml ? { adminIndexHtml } : {}),
 });
 // The built files: /assets/*, the icons and the manifest. Page routes above win.
 app.use("/*", serveStatic({ root: relative(process.cwd(), webDir) }));

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Card, Dialog, Field, Heading, Notice, PageHeader, TextInput, useToast } from "@wanderlot/ui";
+import { OrganiserCard } from "../components/OrganiserCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PersonRow, personState } from "../components/PersonRow.tsx";
 import { WhoGoes } from "../components/WhoGoes.tsx";
@@ -64,6 +65,7 @@ export function PersonasPage() {
         )}
 
         <GroupCard />
+        <OrganiserCard />
         {state.plan && state.members.length > 0 && <TripCard />}
 
         <Notice tone="neutral">
