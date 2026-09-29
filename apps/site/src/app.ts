@@ -84,6 +84,8 @@ export interface SiteOptions {
   // AI keys for the panel at /admin (ROADMAP 3.3): Worker secrets or the
   // Node server's environment.
   ai?: AiEnv;
+  // Tests: a stand-in for the AI's servers.
+  aiFetch?: typeof fetch;
 }
 
 type Env = { Variables: { member: Member } };
@@ -144,7 +146,7 @@ export const MAX_OPEN_SUGGESTIONS = 5;
 
 const FlowBody = z.object({ flowId: z.string().min(1), response: z.looseObject({ id: z.string() }) });
 
-export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, adminIndexHtml, limit, pinSecret, ai = {} }: SiteOptions) {
+export function createApp({ store, adminToken, rp, now = () => new Date(), indexHtml, adminIndexHtml, limit, pinSecret, ai = {}, aiFetch }: SiteOptions) {
   const app = new Hono<Env>();
   const hashPin = pinHasher(pinSecret || adminToken);
   const hashPassword = passwordHasher(pinSecret || adminToken);
@@ -646,6 +648,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
 
   admin.get("/panel/plans", async (c) => c.json(await store.panelVersions()));
 
+  // The laptop asks after a search started at /admin: the panel here holds
+  // the AI keys that started it (ROADMAP 3.3).
+  admin.post("/panel/plans/:planId/job", async (c) => hosted.request(`/api/plans/${encodeURIComponent(c.req.param("planId"))}/job`));
+
   admin.get("/panel/plans/:planId", async (c) => {
     const p = await store.panelPlan(c.req.param("planId"));
     return p ? c.json({ entry: JSON.parse(p.entry) as unknown, version: p.version }) : c.json({ error: "not found" }, 404);
@@ -1134,9 +1140,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   const hosted = createPanel({
     store: new PanelStore(panelData),
     status: { research: "none", flights: "none", photos: ["wikimedia"], hosted: true, store: "site" },
-    // The keys set on the site, never the browser. Only screenshots are read
-    // here for now: research takes minutes, longer than a request may.
-    ai: new AiChoice(apiEntries(ai, (key) => anthropicProvider(new Anthropic({ apiKey: key }).beta.messages), "site")),
+    // The keys set on the site, never the browser. Screenshots are read in
+    // the request; research and the guide take minutes, so they run on the
+    // AI's servers in the background and are checked on (ROADMAP 3.3).
+    ai: new AiChoice(apiEntries(ai, (key) => anthropicProvider(new Anthropic({ apiKey: key }).beta.messages), "site", aiFetch)),
     flights: { name: "duffel", search: noFlights, verify: async () => null },
     photos: [wikimedia()],
     // The admin API, called in this same process.

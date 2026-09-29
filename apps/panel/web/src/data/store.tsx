@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { AiId, AiView, ManualProposal, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { AiId, AiView, ManualProposal, PanelJob, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -44,6 +44,9 @@ export interface PanelState {
   verifying: string[];
   members: Person[];
   access: Access[];
+  // A search or guide running in the background (the panel at /admin), or
+  // how the last one ended.
+  job: PanelJob | null;
 }
 
 export interface PanelApi {
@@ -91,7 +94,10 @@ export interface PanelApi {
   organiser: () => Promise<OrganiserAccess>;
   setOrganiserPassword: (password: string | null) => Promise<OrganiserAccess>;
   trip: () => Promise<TripView>;
-  prepareTrip: (home: string, onStep?: (s: SearchStep) => void) => Promise<TripPage>;
+  // A trip page, or on the site a background job that will write it.
+  prepareTrip: (home: string, onStep?: (s: SearchStep) => void) => Promise<TripPage | { job: PanelJob }>;
+  // Cancels a running job, or clears how the last one ended.
+  clearJob: () => Promise<void>;
   saveTrip: (trip: TripPage) => Promise<TripView>;
   publishTrip: (published: boolean) => Promise<TripView>;
 }
@@ -142,11 +148,13 @@ const INITIAL: PanelState = {
   verifying: [],
   members: [],
   access: [],
+  job: null,
 };
 
 const Ctx = createContext<PanelApi | null>(null);
 
-export function PanelProvider({ backend, children }: { backend: PanelBackend; children: ReactNode }) {
+// How often a background job is checked on while it runs.
+export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend: PanelBackend; children: ReactNode; jobPollMs?: number }) {
   const [state, setState] = useState<PanelState>(INITIAL);
   const abort = useRef<AbortController | null>(null);
   const planId = state.plan?.id ?? null;
@@ -157,7 +165,7 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       const entry = await backend.plan(id);
       if (!entry) return;
       remember(id);
-      patch(() => ({ plan: entry.plan, participants: entry.participants ?? [], proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null }));
+      patch(() => ({ plan: entry.plan, participants: entry.participants ?? [], proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null, job: entry.job ?? null }));
     },
     [backend, patch],
   );
@@ -202,6 +210,29 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       abort.current?.abort();
     };
   }, [backend, patch, loadPlan, loadMembers]);
+
+  // A background job (a search from the panel at /admin): checked while it
+  // runs, here or on another device; once it ends, the trip is read again
+  // for what it added.
+  const jobRunning = state.job?.status === "running";
+  useEffect(() => {
+    if (!planId || !jobRunning) return;
+    let live = true;
+    const t = setInterval(() => {
+      backend.job(planId).then(
+        (job) => {
+          if (!live) return;
+          if (job?.status === "running") patch(() => ({ job }));
+          else void loadPlan(planId);
+        },
+        () => {},
+      );
+    }, jobPollMs);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [backend, planId, jobRunning, jobPollMs, loadPlan, patch]);
 
   const api = useMemo<PanelApi>(() => {
     const need = () => {
@@ -262,7 +293,8 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
             (step) => patch((s) => ({ generation: s.generation && { ...s.generation, steps: [...s.generation.steps.slice(-199), step] } })),
           )
           .then(
-            () => patch((s) => ({ generation: s.generation && { ...s.generation, running: false } })),
+            // On the site: the search runs in the background, followed below.
+            (job) => patch((s) => (job ? { job, generation: null } : { generation: s.generation && { ...s.generation, running: false } })),
             (e: Error) =>
               patch((s) => ({
                 generation: s.generation && { ...s.generation, running: false, error: e.name === "AbortError" ? null : e.message },
@@ -393,9 +425,14 @@ export function PanelProvider({ backend, children }: { backend: PanelBackend; ch
       trip: () => backend.trip(need()),
       async prepareTrip(home, onStep) {
         const trip = await backend.prepareTrip(need(), home, onStep);
+        if ("job" in trip) patch(() => ({ job: trip.job }));
         // The server keeps the home town in the group's settings.
-        if (home) patch((s) => ({ settings: s.settings ? { ...s.settings, homeTown: home } : s.settings }));
+        else if (home) patch((s) => ({ settings: s.settings ? { ...s.settings, homeTown: home } : s.settings }));
         return trip;
+      },
+      async clearJob() {
+        await backend.clearJob(need());
+        patch(() => ({ job: null }));
       },
       saveTrip: (trip) => backend.saveTrip(need(), trip),
       publishTrip: (published) => backend.publishTrip(need(), published),

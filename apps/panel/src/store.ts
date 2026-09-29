@@ -6,6 +6,7 @@
 // the phone see each other's changes. Proposals, drafts and notes never reach
 // friends except through publish (SPEC §2).
 import type { Destination, Plan, Proposal, TripPage } from "@wanderlot/core";
+import type { BackgroundTask } from "./providers/types.ts";
 
 // What Comparativa adds on top of an approved proposal, plus what to search
 // for in the photo picker (never published).
@@ -24,6 +25,28 @@ export interface PlanEntry {
   // to the site with the next publish.
   trip?: TripPage;
   tripPublished?: boolean;
+  // A search or guide the panel at /admin handed to the AI to run in the
+  // background (ROADMAP 3.3), and how it ended. One at a time per trip.
+  job?: PanelJob;
+}
+
+export interface PanelJob {
+  kind: BackgroundTask["kind"];
+  // Which AI runs it, and its id there.
+  ai: string;
+  aiName: string;
+  externalId: string;
+  task: BackgroundTask;
+  startedAt: string;
+  status: "running" | "done" | "failed";
+  finishedAt?: string;
+  // Research: how many proposals it added.
+  added?: number;
+  error?: string;
+  // Researching a friend's idea: credited, and marked done at the end.
+  idea?: { id: string; by: string };
+  // The guide: the destination it's for.
+  destinationId?: string;
 }
 
 // The latest invite link per member, kept so the organiser can copy it again

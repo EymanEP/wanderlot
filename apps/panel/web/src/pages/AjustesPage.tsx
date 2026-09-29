@@ -4,9 +4,13 @@ import { PanelShell } from "../components/PanelShell.tsx";
 import type { AiOption, AiView } from "../data/backend.ts";
 import { usePanel } from "../data/store.tsx";
 
-// What each AI can do, in a line.
-function abilities(o: AiOption): string {
-  return [o.search ? "Busca en la web" : "No busca en la web: precios estimados", o.images ? "lee capturas" : "no lee capturas"].join(" · ");
+// What each AI can do, in a line; on the site, whether it can search there.
+function abilities(o: AiOption, hosted: boolean): string {
+  return [
+    o.search ? "Busca en la web" : "No busca en la web: precios estimados",
+    o.images ? "lee capturas" : "no lee capturas",
+    ...(hosted ? [o.background ? "busca desde el sitio" : "desde el sitio solo lee capturas"] : []),
+  ].join(" · ");
 }
 
 // Ajustes (ROADMAP 3.3): which AI searches destinations, reads screenshots
@@ -53,7 +57,7 @@ export function AjustesPage() {
               </Heading>
               <Text tone="muted" size="sm">
                 {hosted
-                  ? "En el panel del sitio, la IA solo lee capturas: buscar destinos y preparar la guía tardan varios minutos y se hacen desde el panel de tu ordenador. Usa la primera que tenga clave en el sitio."
+                  ? "Aquí la IA lee capturas y, si es Claude por la API u OpenAI, busca destinos y prepara la guía en segundo plano. Usa la primera que tenga clave en el sitio."
                   : "Sin IA también puedes trabajar: añade destinos a mano en Revisar y escribe los precios que veas."}
               </Text>
             </div>
@@ -66,7 +70,7 @@ export function AjustesPage() {
                     key={o.id}
                     name="ia"
                     title={o.model ? `${o.name} · ${o.model}` : o.name}
-                    description={abilities(o)}
+                    description={abilities(o, hosted)}
                     checked={view.active === o.id}
                     disabled={!view.canChoose}
                     onChange={() => void pick(o)}
@@ -94,7 +98,7 @@ export function AjustesPage() {
                   <Card variant="muted" className="flex flex-col gap-1.5">
                     <span className="flex flex-wrap items-center gap-2">
                       <strong className="text-[15px]">{o.name}</strong>
-                      <Badge tone="muted">{abilities(o)}</Badge>
+                      <Badge tone="muted">{abilities(o, hosted)}</Badge>
                     </span>
                     <span className="text-[13px] text-ink-2">{o.setup}</span>
                   </Card>

@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { addDaysIso, type SuggestionView } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
 import { IdeasCard } from "../components/IdeasCard.tsx";
+import { JobCard } from "../components/JobCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { GenerationProgress } from "../components/GenerationProgress.tsx";
 import { ProposalRow } from "../components/ProposalRow.tsx";
@@ -13,12 +14,15 @@ const STOPS_LABEL = { direct: "solo directos", one: "máximo 1 escala", any: "co
 const COUNT = 12;
 
 export function GenerarPage() {
-  const { state, now, startGeneration, stopGeneration, verify, savePlan, suggestions, dismissSuggestion } = usePanel();
+  const { state, now, startGeneration, stopGeneration, verify, savePlan, suggestions, dismissSuggestion, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
   const initial = searchFromPlan(plan, status?.flights !== "none");
-  const running = generation?.running ?? false;
+  // A search running in the background (from the panel at /admin) counts
+  // as running too: one at a time per trip.
+  const job = state.job?.kind === "research" ? state.job : null;
+  const running = (generation?.running ?? false) || job?.status === "running";
   const [stops, setStops] = useState<SearchValues["stops"]>(initial.stops);
 
   // Friends' ideas from the site: reloaded when a search ends, since
@@ -97,10 +101,10 @@ export function GenerarPage() {
     <PanelShell>
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
-          {status?.hosted ? (
+          {status?.hosted && !status.ai?.background ? (
             <Notice tone="neutral">
-              Buscar destinos tarda varios minutos y desde el panel del sitio aún no se puede. Busca desde el panel de tu ordenador: lo que encuentre aparecerá aquí también. Desde
-              aquí puedes ver las ideas del grupo, descartarlas o añadir un destino a mano en Revisar.
+              Para buscar desde aquí, el sitio necesita una clave de Claude (API de Anthropic) u OpenAI: mira en <Link to="/ajustes">Ajustes</Link> cómo añadirla. Mientras,
+              busca desde el panel de tu ordenador, o añade un destino a mano en <Link to="/revisar">Revisar</Link>.
             </Notice>
           ) : (
             // Keyed so switching plans resets the form to the new plan.
@@ -131,6 +135,8 @@ export function GenerarPage() {
           </div>
 
           {generation && running && <GenerationProgress generation={generation} onStop={stopGeneration} aiName={status?.ai?.name ?? "Claude"} />}
+
+          {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(`No se pudo: ${e.message}`))} />}
 
           <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 

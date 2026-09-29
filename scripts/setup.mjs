@@ -83,7 +83,7 @@ if (await yes("Use another OpenAI-compatible endpoint (OpenRouter, a local model
 // The panel at /admin can read screenshots with the same keys, stored as
 // secrets on Cloudflare; npm run deploy:site copies them there.
 const apiKeys = anthropic || openai || compatible.AI_API_KEY;
-const siteAi = apiKeys ? await yes("Also let the panel on your site (/admin) use these keys to read screenshots? They're stored as Cloudflare secrets", env.WANDERLOT_SITE_AI === "1") : false;
+const siteAi = apiKeys ? await yes("Also let the panel on your site (/admin) use these keys (to read screenshots, and with Anthropic or OpenAI to search from your phone)? They're stored as Cloudflare secrets", env.WANDERLOT_SITE_AI === "1") : false;
 
 // 5. Optional providers.
 console.log("\nOptional: everything works without these, but prices stay labelled as written by Claude and photos come from Wikimedia only.");

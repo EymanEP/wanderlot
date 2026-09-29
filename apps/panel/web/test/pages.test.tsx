@@ -137,7 +137,7 @@ describe("Panel en el móvil", () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/desde el panel del sitio aún no se puede/)).toBeTruthy();
+    expect(await screen.findByText(/el sitio necesita una clave de Claude/)).toBeTruthy();
     expect(screen.getByText("sin IA: busca desde tu ordenador")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^Generar/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Salir" })).toBeTruthy();
@@ -761,5 +761,32 @@ describe("Añadir a mano", () => {
     expect(await screen.findByText("Sevilla añadido y aprobado")).toBeTruthy();
     const card = await screen.findByRole("article", { name: "Sevilla" });
     expect(within(card).getByText("Comprobado a mano")).toBeTruthy();
+  });
+});
+
+describe("Buscar desde el móvil", () => {
+  it("searches in the background with the site's AI, and shows what it found", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/generar"]}>
+        <ToastProvider>
+          <PanelProvider backend={mockBackend({ tickMs: 2, verifyMs: 2, hosted: true, hostedAi: true })} jobPollMs={20}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    // The form shows: OpenAI on the site can search in the background.
+    await user.click(await screen.findByRole("button", { name: /^Buscar 12 más/ }));
+    const card = await screen.findByRole("region", { name: "Búsqueda en segundo plano" });
+    expect(within(card).getByText("OpenAI está buscando destinos")).toBeTruthy();
+    expect(within(card).getByText(/puedes cerrar esta página/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Buscando…" })).toBeTruthy();
+
+    // Checked on until it ends; then the new proposals are in the trip.
+    const done = await screen.findByRole("region", { name: "Búsqueda terminada" }, { timeout: 2000 });
+    expect(within(done).getByText("3 propuestas nuevas")).toBeTruthy();
+    await user.click(within(done).getByRole("button", { name: "Cerrar" }));
+    expect(screen.queryByRole("region", { name: "Búsqueda terminada" })).toBeNull();
   });
 });

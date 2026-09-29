@@ -483,9 +483,30 @@ the choice is kept in `.env` as `WANDERLOT_AI`. Without a choice, the first
 set up in the order above. Keys are never typed in the browser: they live in
 the panel's `.env`, or as Worker secrets for the panel at `/admin`, where
 `npm run deploy:site` copies them only if `npm run setup` was told to
-(`WANDERLOT_SITE_AI=1`). There, the AI only reads screenshots: research and
-the guide take minutes, longer than one Worker request, and still run from
-the laptop.
+(`WANDERLOT_SITE_AI=1`). There, screenshots are read within the request.
+Research and the guide take minutes, longer than a Worker request should
+wait and far more than its CPU allows, so they run as **background jobs** on
+the AI's own servers:
+
+- `anthropic-api` sends a one-request Message Batch (web search and the
+  output schema as usual; batches don't take the refusal fallback, so a
+  refusal fails the job). A batch that ends on `pause_turn` is resumed once
+  in a second batch; a second pause fails the job. Most batches end within
+  minutes, some take up to an hour.
+- `openai-api` uses the Responses API's `background: true` mode.
+- `compatible-api` can't: the panel at `/admin` says to use one of the two
+  above, or the laptop.
+
+Starting one (`POST …/generate` or `…/trip/prepare`) answers `202 {job}` at
+once. The job lives in the trip's panel entry (`job`: kind, AI, its id there,
+the request, when it started, and later how it ended), so every device sees
+it; one runs at a time per trip. `GET /api/plans/:id/job` checks on it — a
+few quick requests — and, once it's done, saves the proposals (as pending,
+crediting a friend's idea) or the trip page, as a streamed search would. The
+laptop's panel asks the site to check (`POST /api/admin/panel/plans/:id/job`,
+site API 12), since the site holds the keys that started it. `DELETE …/job`
+cancels a running one or clears how the last one ended. The screens check
+every few seconds while one runs; the page can be closed meanwhile.
 
 With no AI at all the panel still works: **Añadir a mano** in Revisar takes a
 destination (city, country, airport, type) with the flight and stay prices
@@ -637,9 +658,8 @@ What's planned next is in [ROADMAP.md](ROADMAP.md): a date vote, the trip
 page, getting to the airport, export, the panel hosted on the site with other
 AI providers (or none), and later languages and currencies.
 
-- **Research in the panel at `/admin`.** Its AI reads screenshots only;
-  searching takes minutes and would need to run in the background (ROADMAP
-  3.3, second part).
+- **Local commands other than `claude`** (`codex`, `opencode`): each needs
+  checking first (ROADMAP 3.3).
 - Email/push notifications (§7 is the v1 answer).
 - Booking. Wanderlot decides; it doesn't buy.
 - More than one group per deployment. Each group deploys its own site.

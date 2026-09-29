@@ -25,7 +25,8 @@ export type AiId = "claude-cli" | "anthropic-api" | "openai-api" | "compatible-a
 export interface Status {
   // The AI in use (ROADMAP 3.3), and what it can do.
   research: AiId | "none";
-  ai?: { name: string; search: boolean; images: boolean };
+  // background: can search from the panel at /admin (ROADMAP 3.3).
+  ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: string[];
   // outdated: deployed from older code; some panel features need a redeploy.
@@ -47,6 +48,7 @@ export interface AiOption {
   setup: string;
   search: boolean;
   images: boolean;
+  background: boolean;
 }
 
 export interface AiView {
@@ -75,6 +77,21 @@ export interface PlanEntry {
   editorial: Record<string, Partial<Editorial>>;
   // Member ids on this trip (SPEC §5).
   participants?: string[];
+  job?: PanelJob;
+}
+
+// A search or guide the panel at /admin handed to the AI to run in the
+// background (apps/panel/src/store.ts), and how it ended.
+export interface PanelJob {
+  kind: "research" | "guide";
+  ai: string;
+  aiName: string;
+  startedAt: string;
+  status: "running" | "done" | "failed";
+  finishedAt?: string;
+  added?: number;
+  error?: string;
+  idea?: { id: string; by: string };
 }
 
 // What a search is doing right now (the panel server relays it as it happens).
@@ -180,8 +197,13 @@ export interface PanelBackend {
   deletePlan(planId: string): Promise<void>;
   savePlan(p: Plan): Promise<Plan>;
   setParticipants(planId: string, memberIds: string[]): Promise<PlanEntry>;
-  // Calls onProposal as each one arrives; resolves when the search ends.
-  generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal, onStep?: (s: SearchStep) => void): Promise<void>;
+  // Calls onProposal as each one arrives; resolves when the search ends. In
+  // the panel at /admin it resolves at once to a background job instead.
+  generate(planId: string, opts: SearchOptions, onProposal: (p: Proposal) => void, signal: AbortSignal, onStep?: (s: SearchStep) => void): Promise<PanelJob | void>;
+  // The trip's background job, checked on (and saved once done).
+  job(planId: string): Promise<PanelJob | null>;
+  // Cancels a running one, or clears how the last one ended.
+  clearJob(planId: string): Promise<void>;
   review(planId: string, id: string, review: Review): Promise<void>;
   // Deletes every proposal not approved; how many went.
   clearUnapproved(planId: string): Promise<{ removed: number }>;
@@ -225,7 +247,7 @@ export interface PanelBackend {
   // El viaje (ROADMAP 2.2–2.4).
   trip(planId: string): Promise<TripView>;
   // Claude drafts the guide and how to get there; steps arrive as it works.
-  prepareTrip(planId: string, home: string, onStep?: (s: SearchStep) => void): Promise<TripPage>;
+  prepareTrip(planId: string, home: string, onStep?: (s: SearchStep) => void): Promise<TripPage | { job: PanelJob }>;
   saveTrip(planId: string, trip: TripPage): Promise<TripView>;
   publishTrip(planId: string, published: boolean): Promise<TripView>;
 }
@@ -275,6 +297,8 @@ export const httpBackend: PanelBackend = {
       body: JSON.stringify(opts),
       signal,
     });
+    // The panel at /admin: running in the background.
+    if (res.status === 202) return ((await res.json()) as { job: PanelJob }).job;
     if (!res.ok || !res.body) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       throw new BackendError(data.error ?? `Error ${res.status}`);
@@ -298,6 +322,8 @@ export const httpBackend: PanelBackend = {
       }
     }
   },
+  job: async (planId) => (await call<{ job: PanelJob | null }>(`/api/plans/${enc(planId)}/job`)).job,
+  clearJob: async (planId) => void (await call(`/api/plans/${enc(planId)}/job`, "DELETE")),
   review: async (planId, id, review) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/review`, "POST", { review })),
   clearUnapproved: (planId) => call(`/api/plans/${enc(planId)}/proposals/clear-unapproved`, "POST"),
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
@@ -331,6 +357,7 @@ export const httpBackend: PanelBackend = {
   trip: (planId) => call<TripView>(`/api/plans/${enc(planId)}/trip`),
   async prepareTrip(planId, home, onStep) {
     const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });
+    if (res.status === 202) return (await res.json()) as { job: PanelJob };
     if (!res.ok || !res.body) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       throw new BackendError(data.error ?? `Error ${res.status}`);

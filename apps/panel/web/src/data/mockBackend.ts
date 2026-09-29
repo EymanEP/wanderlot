@@ -17,7 +17,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { AiOption, AiView, DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PlanEntry, Status, TripView, VoteView } from "./backend.ts";
+import type { AiOption, AiView, DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PanelJob, PlanEntry, Status, TripView, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -61,7 +61,9 @@ const photoQueries = (id: string) => {
 };
 
 // hosted: as the panel the site serves at /admin, without AI.
-export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: { tickMs?: number; verifyMs?: number; hosted?: boolean } = {}): PanelBackend {
+// hostedAi: the site has an OpenAI key, so the panel at /admin can search in
+// the background; a job ends on the second check.
+export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hostedAi = false }: { tickMs?: number; verifyMs?: number; hosted?: boolean; hostedAi?: boolean } = {}): PanelBackend {
   // Voting in the mocks is open on the site; here the plan is still being
   // curated, as in the Revisar and Comparativa designs.
   const entries = new Map<string, PlanEntry>(
@@ -185,12 +187,23 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: {
 
   // Ajustes: the laptop has the claude command; the site, no key yet.
   const aiOptions: AiOption[] = [
-    ...(hosted ? [] : [{ id: "claude-cli" as const, name: "Claude (comando claude)", model: null, ready: true, setup: "", search: true, images: true }]),
-    { id: "anthropic-api", name: "Claude (API de Anthropic)", model: null, ready: false, setup: hosted ? "Guárdala en el sitio: npx wrangler secret put ANTHROPIC_API_KEY (en apps/site)." : "Añade ANTHROPIC_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true },
-    { id: "openai-api", name: "OpenAI", model: "gpt-5", ready: !hosted, setup: "Añade OPENAI_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true },
-    { id: "compatible-api", name: "Otra IA compatible con OpenAI", model: null, ready: false, setup: "Añade AI_BASE_URL, AI_API_KEY y AI_MODEL a .env (OpenRouter, por ejemplo: https://openrouter.ai/api/v1) y reinicia el panel.", search: false, images: true },
+    ...(hosted ? [] : [{ id: "claude-cli" as const, name: "Claude (comando claude)", model: null, ready: true, setup: "", search: true, images: true, background: false }]),
+    { id: "anthropic-api", name: "Claude (API de Anthropic)", model: null, ready: false, setup: hosted ? "Guárdala en el sitio: npx wrangler secret put ANTHROPIC_API_KEY (en apps/site)." : "Añade ANTHROPIC_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true, background: true },
+    { id: "openai-api", name: "OpenAI", model: "gpt-5", ready: !hosted || hostedAi, setup: hosted ? "Guárdala en el sitio: npx wrangler secret put OPENAI_API_KEY (en apps/site)." : "Añade OPENAI_API_KEY a .env (npm run setup) y reinicia el panel.", search: true, images: true, background: true },
+    { id: "compatible-api", name: "Otra IA compatible con OpenAI", model: null, ready: false, setup: "Añade AI_BASE_URL, AI_API_KEY y AI_MODEL a .env (OpenRouter, por ejemplo: https://openrouter.ai/api/v1) y reinicia el panel.", search: false, images: true, background: false },
   ];
-  let aiActive: AiView["active"] = hosted ? null : "claude-cli";
+  let aiActive: AiView["active"] = hosted ? (hostedAi ? "openai-api" : null) : "claude-cli";
+
+  // Background jobs (the panel at /admin): what each saves once it ends.
+  const finishers = new Map<string, { checks: number; finish: () => Partial<PanelJob> }>();
+  const startJob = (planId: string, kind: PanelJob["kind"], finish: () => Partial<PanelJob>): PanelJob => {
+    const e = entry(planId);
+    if (e.job?.status === "running") throw new Error("Ya hay una búsqueda en marcha en este viaje: espera a que termine o cancélala.");
+    const job: PanelJob = { kind, ai: "openai-api", aiName: "OpenAI", startedAt: MOCK_NOW.toISOString(), status: "running" };
+    entries.set(planId, { ...e, job });
+    finishers.set(planId, { checks: 0, finish });
+    return job;
+  };
   const aiView = (): AiView => ({ options: aiOptions, active: aiActive, canChoose: !hosted });
 
   const patchMember = (id: string, patch: Partial<MemberAccess>) => {
@@ -202,7 +215,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: {
     async status(): Promise<Status> {
       const a = aiOptions.find((o) => o.id === aiActive);
       const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
-      const ai = a && name ? { research: a.id, ai: { name, search: a.search, images: a.images } } : { research: "none" as const };
+      const ai = a && name ? { research: a.id, ai: { name, search: a.search, images: a.images, background: a.background } } : { research: "none" as const };
       return hosted
         ? { ...ai, flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
         : { ...ai, flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
@@ -288,7 +301,38 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: {
       entries.set(p.id, { ...e, plan: p, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
       return p;
     },
+    async job(planId) {
+      const e = entry(planId);
+      const f = finishers.get(planId);
+      if (e.job?.status === "running" && f && ++f.checks >= 2) {
+        finishers.delete(planId);
+        entries.set(planId, { ...entry(planId), job: { ...e.job, status: "done", finishedAt: MOCK_NOW.toISOString(), ...f.finish() } });
+      }
+      return entry(planId).job ?? null;
+    },
+    async clearJob(planId) {
+      finishers.delete(planId);
+      const { job: _gone, ...rest } = entry(planId);
+      entries.set(planId, rest);
+    },
     async generate(planId, opts, onProposal, signal, onStep) {
+      // The panel at /admin: three of the canvas's proposals, found in the
+      // background, each with an unused id.
+      if (hosted) {
+        if (!hostedAi) throw new Error("Para buscar desde el panel del sitio hace falta una clave de Claude (API de Anthropic) u OpenAI en el sitio.");
+        return startJob(planId, "research", () => {
+          const e = entry(planId);
+          const taken = new Set(e.proposals.map((p) => p.id));
+          const fresh = mockProposals.slice(0, 3).map((p): Proposal => {
+            let id = p.id;
+            for (let n = 2; taken.has(id); n++) id = `${p.id}-${n}`;
+            taken.add(id);
+            return { ...p, id, planId, review: "pending", provenance: { kind: "claude", sources: p.provenance.kind === "claude" ? p.provenance.sources : [{ label: "OpenAI", url: "https://openai.com" }], by: "OpenAI" } };
+          });
+          entries.set(planId, { ...e, proposals: [...e.proposals, ...fresh] });
+          return { added: fresh.length };
+        });
+      }
       // One named place, typed by the organiser or a friend's idea (credited
       // to them): one proposal for it.
       const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;
@@ -498,6 +542,17 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false }: {
     async prepareTrip(planId, home, onStep) {
       const destination = tripView(planId).destination;
       if (!destination) throw new Error("primero decide el destino en Votación");
+      if (hosted) {
+        if (!hostedAi) throw new Error("Para preparar la guía desde el panel del sitio hace falta una clave de Claude u OpenAI en el sitio.");
+        const before = trips.get(planId)?.trip;
+        return {
+          job: startJob(planId, "guide", () => {
+            const trip: TripPage = { ...mockTripPage, destinationId: destination.id, home, toAirport: home ? mockTripPage.toAirport : [], by: "OpenAI", stay: before?.stay ?? { address: "", checkIn: "", checkOut: "" }, tricountUrl: before?.tricountUrl ?? null, preparedAt: MOCK_NOW.toISOString() };
+            trips.set(planId, { trip, published: trips.get(planId)?.published ?? false });
+            return {};
+          }),
+        };
+      }
       for (const query of [`qué hacer en ${destination.place.city}`, `aeropuerto ${destination.place.iata} al centro`]) {
         await wait(tickMs);
         onStep?.({ kind: "search", query });

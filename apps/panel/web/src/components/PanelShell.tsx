@@ -153,7 +153,10 @@ function TripBar({ end }: { end?: ReactNode }) {
 function Status() {
   const { status } = usePanel().state;
   if (!status) return null;
-  if (status.hosted) return status.ai ? <StatusDot tone="on">{status.ai.name}: lee capturas</StatusDot> : <StatusDot>sin IA: busca desde tu ordenador</StatusDot>;
+  if (status.hosted) {
+    if (!status.ai) return <StatusDot>sin IA: busca desde tu ordenador</StatusDot>;
+    return <StatusDot tone="on">{status.ai.background ? status.ai.name : `${status.ai.name}: lee capturas`}</StatusDot>;
+  }
   if (!status.site.reachable) return <StatusDot>sitio sin conexión</StatusDot>;
   if (status.research === "claude-cli") return <StatusDot tone="on">claude conectado</StatusDot>;
   if (status.research === "anthropic-api") return <StatusDot tone="on">API de Anthropic</StatusDot>;

@@ -108,6 +108,9 @@ export interface SiteClient {
   // The panel on the site, at /admin (ROADMAP 3.1): its password.
   organiser(): Promise<{ enabled: boolean; setAt: string | null }>;
   setOrganiserPassword(password: string | null): Promise<{ enabled: boolean; setAt: string | null }>;
+  // Checks on a background search started at /admin, with the site's AI
+  // keys, saving what it found once done (ROADMAP 3.3).
+  checkJob(planId: string): Promise<unknown>;
 }
 
 // The site said no; the panel passes its answer on.
@@ -183,6 +186,7 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     organiser: () => call<{ enabled: boolean; setAt: string | null }>("/organiser", "GET"),
     setOrganiserPassword: (password) => call<{ enabled: boolean; setAt: string | null }>("/organiser", "PUT", { password }),
     exportData: (planId) => call<unknown>(`/export${planId ? `?plan=${encodeURIComponent(planId)}` : ""}`, "GET"),
+    checkJob: (planId) => call<unknown>(`/panel/plans/${encodeURIComponent(planId)}/job`, "POST"),
   };
 }
 

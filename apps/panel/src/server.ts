@@ -78,6 +78,7 @@ const ai = new AiChoice(
         setup: "Instala Claude Code (el comando claude) y reinicia el panel.",
         search: true,
         images: true,
+        background: false,
       },
       make: () => claudeProvider(),
     },
