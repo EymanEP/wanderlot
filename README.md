@@ -23,9 +23,13 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 |---|---|
 | ![A plan on the site: four destinations with prices, and the latest comments](docs/screenshots/site-plan.png) | ![Votación on a phone: the vote so far and your three picks](docs/screenshots/site-votacion-phone.png) |
 
-| The organiser's panel: reviewing proposals | Following the vote |
+| The trip page, once decided | Agreeing on dates |
 |---|---|
-| ![Revisar: proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![Votación in the panel: who has voted, remind, close early](docs/screenshots/panel-votacion.png) |
+| ![El viaje: flights and stay with checked prices, each person's share, the Tricount link, getting there and what to know](docs/screenshots/site-viaje.png) | ![Fechas on a phone: yes, if need be or no for each date option](docs/screenshots/site-fechas-phone.png) |
+
+| The organiser's panel: reviewing proposals | The panel on a phone, at /admin |
+|---|---|
+| ![Revisar: the trip's steps (Cuándo, Dónde, El viaje), proposals with trust labels, approve or discard](docs/screenshots/panel-revisar.png) | ![The panel at phone width: the trip bar and Revisar](docs/screenshots/panel-phone.png) |
 
 <sub>Screenshots use the demo data, so photos appear as labelled placeholders.</sub>
 
