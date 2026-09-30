@@ -6,7 +6,7 @@ import { PhotoPicker } from "../components/PhotoPicker.tsx";
 import { ManualDialog } from "../components/ManualDialog.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import { ReviewCard } from "../components/ReviewCard.tsx";
-import type { PublishStatus, ScreenshotImage, SearchStep } from "../data/backend.ts";
+import type { PublishStatus, ScreenshotImage } from "../data/backend.ts";
 import { useApproved, useCounts, usePanel, usePlan, type Review } from "../data/store.tsx";
 import { flightMinutes, total, trustOf } from "../lib/view.ts";
 
@@ -14,7 +14,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse, takeTask } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -182,6 +182,7 @@ export function RevisarPage() {
                 now={now}
                 verifying={state.verifying.includes(p.id)}
                 canVerify={state.status?.flights !== "none"}
+                canBrowse={!!state.status?.browse && p.review === "approved"}
                 onReview={(r) => setReview(p.id, r)}
                 photos={state.editorial[p.id]?.photos ?? []}
                 onPickPhotos={() => setPicking(p.id)}
@@ -213,7 +214,13 @@ export function RevisarPage() {
         aiName={state.status?.ai?.name ?? "Claude"}
         // Only for the finalists: the proposals the group will vote on.
         {...(state.status?.browse && state.proposals.find((p) => p.id === pricing)?.review === "approved"
-          ? { onBrowse: (kind: "flight" | "stay", onStep: (s: SearchStep) => void) => browse(pricing!, kind, onStep) }
+          ? {
+              browse: {
+                tasks: state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === pricing),
+                start: (kind: "flight" | "stay") => browse(pricing!, kind),
+                take: takeTask,
+              },
+            }
           : {})}
         {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(pricing!, kind, images) } : {})}
         onClose={() => setPricing(null)}

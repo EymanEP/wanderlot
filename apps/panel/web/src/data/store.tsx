@@ -29,6 +29,27 @@ export interface GenerationState {
   idea: string | null;
 }
 
+// Work the AI does for a while (preparing the trip's guide, reading Google
+// Flights or Airbnb in the browser): kept here rather than in a screen, so it
+// carries on while the organiser moves around the panel, and its result waits
+// for them.
+export interface Task {
+  id: string;
+  planId: string;
+  kind: "guide" | "browse";
+  // browse: which proposal, and which site.
+  proposalId?: string;
+  site?: "flight" | "stay";
+  city: string;
+  startedAt: number;
+  steps: SearchStep[];
+  status: "running" | "done" | "failed";
+  error?: string;
+  result?: TripPage | Browsed;
+  // Its result was picked up (by the price dialog, or El viaje).
+  taken?: boolean;
+}
+
 export interface PanelState {
   loading: boolean;
   error: string | null;
@@ -47,10 +68,15 @@ export interface PanelState {
   // A search or guide running in the background (the panel at /admin), or
   // how the last one ended.
   job: PanelJob | null;
+  // Cuándo is done for the selected trip.
+  datesDecided: boolean;
+  tasks: Task[];
 }
 
 export interface PanelApi {
   state: PanelState;
+  // What each screen last loaded (see useLoad), kept between visits.
+  cache: Map<string, unknown>;
   now: Date;
   selectPlan: (id: string) => Promise<void>;
   createPlan: (p: NewPlan) => Promise<Plan>;
@@ -68,7 +94,10 @@ export interface PanelApi {
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
   setPrices: (id: string, prices: PriceSave) => Promise<void>;
-  browse: (id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void) => Promise<Browsed>;
+  // Starts reading Google Flights or Airbnb for a finalist; see Task.
+  browse: (id: string, kind: "flight" | "stay") => void;
+  // A task's result was used, or its outcome seen: it can go.
+  takeTask: (id: string) => void;
   addProposal: (p: ManualProposal) => Promise<Proposal>;
   ai: () => Promise<AiView>;
   chooseAi: (id: AiId) => Promise<AiView>;
@@ -92,11 +121,13 @@ export interface PanelApi {
   proposeDates: (windows: DateWindow[], deadline: string | null) => Promise<DatesPage & { message: string }>;
   chooseDates: (optionId: string) => Promise<DatesPage>;
   cancelDates: () => Promise<DatesPage>;
+  fixDates: (window: DateWindow | null) => Promise<void>;
   organiser: () => Promise<OrganiserAccess>;
   setOrganiserPassword: (password: string | null) => Promise<OrganiserAccess>;
   trip: () => Promise<TripView>;
-  // A trip page, or on the site a background job that will write it.
-  prepareTrip: (home: string, onStep?: (s: SearchStep) => void) => Promise<TripPage | { job: PanelJob }>;
+  // Starts preparing the guide: a task here, or on the site a background
+  // job (see PanelJob). Resolves once started.
+  prepareTrip: (home: string) => Promise<void>;
   // Cancels a running job, or clears how the last one ended.
   clearJob: () => Promise<void>;
   saveTrip: (trip: TripPage) => Promise<TripView>;
@@ -150,6 +181,8 @@ const INITIAL: PanelState = {
   members: [],
   access: [],
   job: null,
+  datesDecided: false,
+  tasks: [],
 };
 
 const Ctx = createContext<PanelApi | null>(null);
@@ -160,13 +193,37 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
   const abort = useRef<AbortController | null>(null);
   const planId = state.plan?.id ?? null;
   const patch = useCallback((fn: (s: PanelState) => Partial<PanelState>) => setState((s) => ({ ...s, ...fn(s) })), []);
+  const taskSeq = useRef(0);
+  const cache = useRef(new Map<string, unknown>()).current;
+  const patchTask = useCallback(
+    (id: string, fn: (t: Task) => Partial<Task>) => patch((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...fn(t) } : t)) })),
+    [patch],
+  );
+  // Runs a task: steps as they come, then its result or error.
+  const runTask = useCallback(
+    (task: Omit<Task, "id" | "startedAt" | "steps" | "status">, work: (onStep: (s: SearchStep) => void) => Promise<TripPage | Browsed>) => {
+      const id = `t${++taskSeq.current}`;
+      // One of each at a time: a new one replaces what the last left behind.
+      patch((s) => ({
+        tasks: [
+          ...s.tasks.filter((t) => !(t.planId === task.planId && t.kind === task.kind && t.proposalId === task.proposalId && t.site === task.site)),
+          { ...task, id, startedAt: Date.now(), steps: [], status: "running" },
+        ],
+      }));
+      work((step) => patchTask(id, (t) => ({ steps: [...t.steps.slice(-99), step] }))).then(
+        (result) => patchTask(id, () => ({ status: "done", result })),
+        (e: Error) => patchTask(id, () => ({ status: "failed", error: e.message })),
+      );
+    },
+    [patch, patchTask],
+  );
 
   const loadPlan = useCallback(
     async (id: string) => {
       const entry = await backend.plan(id);
       if (!entry) return;
       remember(id);
-      patch(() => ({ plan: entry.plan, participants: entry.participants ?? [], proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null, job: entry.job ?? null }));
+      patch(() => ({ plan: entry.plan, participants: entry.participants ?? [], proposals: entry.proposals, editorial: editorialOf(entry.editorial), generation: null, job: entry.job ?? null, datesDecided: !!entry.datesDecided }));
     },
     [backend, patch],
   );
@@ -242,6 +299,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
     };
     return {
       state,
+      cache,
       now: backend.now(),
       selectPlan: loadPlan,
       async createPlan(p) {
@@ -339,7 +397,13 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         return removed;
       },
       extract: (id, kind, images) => backend.extract(need(), id, kind, images),
-      browse: (id, kind, onStep) => backend.browse(need(), id, kind, onStep),
+      browse(id, kind) {
+        const pid = need();
+        const p = state.proposals.find((x) => x.id === id);
+        if (state.tasks.some((t) => t.status === "running" && t.kind === "browse" && t.planId === pid && t.proposalId === id && t.site === kind)) return;
+        runTask({ planId: pid, kind: "browse", proposalId: id, site: kind, city: p?.place.city ?? "" }, (onStep) => backend.browse(pid, id, kind, onStep));
+      },
+      takeTask: (id) => patch((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
       async addProposal(p) {
         const added = await backend.addProposal(need(), p);
         patch((s) => ({ proposals: [...s.proposals, added], editorial: { ...s.editorial, [added.id]: { ...EMPTY_EDITORIAL, photoQueries: [added.place.city] } } }));
@@ -422,15 +486,34 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         return page;
       },
       cancelDates: () => backend.cancelDates(need()),
+      async fixDates(window) {
+        const entry = await backend.fixDates(need(), window);
+        patch((s) => ({
+          plan: entry.plan,
+          plans: s.plans.map((x) => (x.id === entry.plan.id ? entry.plan : x)),
+          proposals: entry.proposals,
+          datesDecided: !!entry.datesDecided,
+        }));
+      },
       organiser: () => backend.organiser(),
       setOrganiserPassword: (password) => backend.setOrganiserPassword(password),
       trip: () => backend.trip(need()),
-      async prepareTrip(home, onStep) {
-        const trip = await backend.prepareTrip(need(), home, onStep);
-        if ("job" in trip) patch(() => ({ job: trip.job }));
+      async prepareTrip(home) {
+        const pid = need();
+        const city = state.proposals.find((p) => p.id === state.plan?.winnerDestinationId)?.place.city ?? "";
         // The server keeps the home town in the group's settings.
-        else if (home) patch((s) => ({ settings: s.settings ? { ...s.settings, homeTown: home } : s.settings }));
-        return trip;
+        if (home) patch((s) => ({ settings: s.settings ? { ...s.settings, homeTown: home } : s.settings }));
+        // On the site it's a background job, answered at once.
+        if (state.status?.hosted) {
+          const r = await backend.prepareTrip(pid, home);
+          if ("job" in r) patch(() => ({ job: r.job }));
+          return;
+        }
+        runTask({ planId: pid, kind: "guide", city }, async (onStep) => {
+          const r = await backend.prepareTrip(pid, home, onStep);
+          if ("job" in r) throw new Error("El panel del sitio prepara la guía en segundo plano");
+          return r;
+        });
       },
       async clearJob() {
         await backend.clearJob(need());
@@ -439,7 +522,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
       saveTrip: (trip) => backend.saveTrip(need(), trip),
       publishTrip: (published) => backend.publishTrip(need(), published),
     };
-  }, [state, backend, planId, patch, loadPlan, loadMembers, syncPlan]);
+  }, [state, cache, backend, planId, patch, loadPlan, loadMembers, syncPlan, runTask]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
@@ -455,6 +538,43 @@ export function usePlan(): Plan {
   const plan = usePanel().state.plan;
   if (!plan) throw new Error("usePlan needs a selected plan");
   return plan;
+}
+
+// A screen's data, loaded through the panel: shown at once from the last
+// visit while it's read again, so moving around the panel doesn't flash
+// empty screens. `key` names the data (and its trip); `set` keeps a change.
+export function useLoad<T>(key: string, load: () => Promise<T>) {
+  const { cache } = usePanel();
+  const [data, setData] = useState<T | null>(() => (cache.get(key) as T | undefined) ?? null);
+  const [error, setError] = useState<string | null>(null);
+  const current = useRef({ key, load });
+  current.current = { key, load };
+  const reload = useCallback(async () => {
+    const asked = current.current.key;
+    try {
+      const v = await current.current.load();
+      cache.set(asked, v);
+      if (current.current.key === asked) {
+        setData(v);
+        setError(null);
+      }
+    } catch (e) {
+      if (current.current.key === asked) setError((e as Error).message);
+    }
+  }, [cache]);
+  useEffect(() => {
+    setData((cache.get(key) as T | undefined) ?? null);
+    setError(null);
+    void reload();
+  }, [key, cache, reload]);
+  const set = useCallback(
+    (v: T) => {
+      cache.set(current.current.key, v);
+      setData(v);
+    },
+    [cache],
+  );
+  return { data, error, reload, set };
 }
 
 // --- derived views ---------------------------------------------------------

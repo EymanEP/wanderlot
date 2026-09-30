@@ -1,5 +1,7 @@
-import type { ReactNode } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router";
+import { createContext, useContext, useLayoutEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Activity } from "./Activity.tsx";
 import { rangeLabel } from "@wanderlot/core";
 import { Brand, CheckIcon, ExternalIcon, Page, Select, StatusDot, TopBar, chipClasses, cn, useToast } from "@wanderlot/ui";
 import { usePanel } from "../data/store.tsx";
@@ -86,7 +88,7 @@ function TripBar({ end }: { end?: ReactNode }) {
   // Dónde opens where the trip is: searching, reviewing, or voting.
   const dondeHome = plan.status !== "draft" ? "/votacion" : state.proposals.length ? "/revisar" : "/generar";
   const steps = [
-    { n: 1, label: "Cuándo", to: "/fechas", active: pathname.startsWith("/fechas"), done: false, later: false },
+    { n: 1, label: "Cuándo", to: "/fechas", active: pathname.startsWith("/fechas"), done: state.datesDecided, later: false },
     { n: 2, label: "Dónde", to: dondeHome, active: inDonde, done: decided, later: false },
     { n: 3, label: "El viaje", to: "/viaje", active: pathname.startsWith("/viaje"), done: false, later: !decided },
   ];
@@ -177,10 +179,23 @@ function SiteOutdated() {
   );
 }
 
-export function PanelShell({ end, trip = true, children, tone = "white" }: PanelShellProps) {
+// The frame every screen sits in: the top bar, the trip bar on a trip's
+// screens, and a place for the screen's main action. It stays put while the
+// organiser moves between screens (ShellLayout), so only the page changes.
+interface Chrome {
+  trip: boolean;
+  tone: "white" | "canvas";
+  // Where the screen's main action goes, in the top bar or the trip bar.
+  slot: HTMLElement | null;
+  set: (c: { trip: boolean; tone: "white" | "canvas" }) => void;
+}
+const ChromeCtx = createContext<Chrome | null>(null);
+
+function Frame({ trip, tone, children, onSlot }: { trip: boolean; tone: "white" | "canvas"; children: ReactNode; onSlot: (el: HTMLElement | null) => void }) {
   const { state } = usePanel();
   const withTrip = trip && !!state.plan;
   const hosted = !!state.status?.hosted;
+  const slot = <span ref={onSlot} className="flex items-center gap-2 empty:hidden" />;
   return (
     <Page className={tone === "canvas" ? "bg-canvas" : undefined}>
       <TopBar
@@ -188,10 +203,11 @@ export function PanelShell({ end, trip = true, children, tone = "white" }: Panel
         nav={<PanelNav className="hidden md:flex" />}
         end={
           <>
+            <Activity />
             <span className="hidden md:inline-flex">
               <Status />
             </span>
-            {!withTrip && end}
+            {!withTrip && slot}
             {hosted && (
               <button type="button" onClick={() => void signOutHosted()} className={chipClasses("nav", false)}>
                 Salir
@@ -203,9 +219,50 @@ export function PanelShell({ end, trip = true, children, tone = "white" }: Panel
       <div className="border-b border-line-soft bg-surface px-4 py-2 md:hidden">
         <PanelNav className="overflow-x-auto" />
       </div>
-      {withTrip && <TripBar end={end} />}
+      {withTrip && <TripBar end={slot} />}
       <SiteOutdated />
       {children}
     </Page>
+  );
+}
+
+// The panel's screens as one layout route: the frame stays mounted, each
+// screen fades in below it.
+export function ShellLayout() {
+  const [chrome, setChrome] = useState<{ trip: boolean; tone: "white" | "canvas" }>({ trip: true, tone: "white" });
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const { pathname } = useLocation();
+  const set = (c: { trip: boolean; tone: "white" | "canvas" }) => setChrome((p) => (p.trip === c.trip && p.tone === c.tone ? p : c));
+  return (
+    <ChromeCtx.Provider value={{ ...chrome, slot, set }}>
+      <Frame trip={chrome.trip} tone={chrome.tone} onSlot={setSlot}>
+        <div key={pathname} className="flex flex-1 flex-col motion-safe:animate-[page-in_160ms_ease-out]">
+          <Outlet />
+        </div>
+      </Frame>
+    </ChromeCtx.Provider>
+  );
+}
+
+// What a screen tells the frame: whether it's about a trip, its tone, and its
+// main action. Outside ShellLayout (tests of a single screen) it draws the
+// frame itself.
+export function PanelShell({ end, trip = true, children, tone = "white" }: PanelShellProps) {
+  const chrome = useContext(ChromeCtx);
+  const [ownSlot, setOwnSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => chrome?.set({ trip, tone }), [chrome, trip, tone]);
+  if (!chrome) {
+    return (
+      <Frame trip={trip} tone={tone} onSlot={setOwnSlot}>
+        {end && ownSlot && createPortal(end, ownSlot)}
+        {children}
+      </Frame>
+    );
+  }
+  return (
+    <>
+      {end && chrome.slot && createPortal(end, chrome.slot)}
+      {children}
+    </>
   );
 }

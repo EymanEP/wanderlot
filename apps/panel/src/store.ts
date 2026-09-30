@@ -25,6 +25,9 @@ export interface PlanEntry {
   // to the site with the next publish.
   trip?: TripPage;
   tripPublished?: boolean;
+  // The trip's dates are settled (Cuándo is done): chosen from a date vote,
+  // or fixed by the organiser without one.
+  datesDecided?: boolean;
   // A search or guide the panel at /admin handed to the AI to run in the
   // background (ROADMAP 3.3), and how it ended. One at a time per trip.
   job?: PanelJob;

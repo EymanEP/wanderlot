@@ -89,21 +89,23 @@ const ai = new AiChoice(
   (id) => saveEnv("WANDERLOT_AI", id),
 );
 
-const status: PanelStatus = {
-  research: "none",
-  // The Duffel provider is still a stub (providers/duffel.ts): until it's
-  // wired up, a key doesn't make flight search work, so don't offer it.
-  flights: "none",
-  photos: photos.map((s) => s.name),
-  store: onSite ? "site" : "file",
-};
-
 // "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): the claude command
 // drives a visible browser (Chrome by default) with a profile of its own.
 let mcpCli: string | null = null;
 try {
   mcpCli = join(dirname(createRequire(import.meta.url).resolve("@playwright/mcp/package.json")), "cli.js");
 } catch {}
+
+const status: PanelStatus = {
+  research: "none",
+  // The Duffel provider is still a stub (providers/duffel.ts): until it's
+  // wired up, a key doesn't make flight search work, so don't offer it.
+  flights: "none",
+  ...(!hasClaude ? { browseMissing: "claude" as const } : !mcpCli ? { browseMissing: "install" as const } : {}),
+  photos: photos.map((s) => s.name),
+  store: onSite ? "site" : "file",
+};
+
 const browse =
   hasClaude && mcpCli
     ? claudeProvider(undefined, {

@@ -550,8 +550,20 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       const e = entry(planId);
       const moved = e.plan.dateFrom !== option.dateFrom || e.plan.dateTo !== option.dateTo;
       const plan = { ...e.plan, dateFrom: option.dateFrom, dateTo: option.dateTo, nights: nightsOf(option) };
-      entries.set(planId, { ...e, plan, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
+      entries.set(planId, { ...e, plan, datesDecided: true, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
       return { ...datesPage(planId), plan };
+    },
+    async fixDates(planId, window) {
+      const e = entry(planId);
+      if (!window) {
+        entries.set(planId, { ...e, datesDecided: false });
+        return entry(planId);
+      }
+      if (datesBy.get(planId)?.status === "open") throw new Error("Hay una votación de fechas abierta: elige una de sus opciones o quítala primero.");
+      const moved = e.plan.dateFrom !== window.dateFrom || e.plan.dateTo !== window.dateTo;
+      const plan = { ...e.plan, dateFrom: window.dateFrom, dateTo: window.dateTo, nights: nightsOf(window) };
+      entries.set(planId, { ...e, plan, datesDecided: true, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
+      return entry(planId);
     },
     async cancelDates(planId) {
       datesBy.delete(planId);

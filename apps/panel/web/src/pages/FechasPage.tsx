@@ -41,9 +41,9 @@ import {
 } from "@wanderlot/ui";
 import { MessageDialog } from "../components/MessageDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
-import { datesSummary } from "../components/TripDates.tsx";
+import { TripDates, datesSummary } from "../components/TripDates.tsx";
 import type { DatesPage, DateWindow } from "../data/backend.ts";
-import { usePanel, usePlan } from "../data/store.tsx";
+import { useLoad, usePanel, usePlan } from "../data/store.tsx";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const nights = (w: DateWindow) => plural(nightsOf(w), "noche", "noches");
@@ -51,11 +51,11 @@ const nights = (w: DateWindow) => plural(nightsOf(w), "noche", "noches");
 // Cuándo (ROADMAP 2.1): propose 2–5 date windows, see who can go when, and
 // choose. Choosing gives the trip those dates, here and on the site.
 export function FechasPage() {
-  const { dates, proposeDates, chooseDates, cancelDates, now } = usePanel();
+  const { state, dates, proposeDates, chooseDates, cancelDates, fixDates, now } = usePanel();
   const plan = usePlan();
   const toast = useToast();
-  const [page, setPage] = useState<DatesPage | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Shown at once from the last visit, and read again (see useLoad).
+  const { data: page, error, reload: load, set: setPage } = useLoad<DatesPage>(`dates:${plan.id}`, dates);
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState<{ title: string; intro: string; text: string } | null>(null);
   const [choosing, setChoosing] = useState<DateOption | null>(null);
@@ -63,22 +63,7 @@ export function FechasPage() {
   const [busy, setBusy] = useState(false);
   const today = now.toISOString().slice(0, 10);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setPage(await dates());
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [dates]);
-
-  useEffect(() => {
-    setPage(null);
-    setEditing(false);
-    void load();
-    // Reload when switching plans, not on every change to the plan object.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan.id]);
+  useEffect(() => setEditing(false), [plan.id]);
 
   const view = page?.dates ?? null;
   const open = view?.status === "open";
@@ -131,7 +116,9 @@ export function FechasPage() {
           title="Fechas"
           subtitle={
             !view
-              ? `${plan.name} · propón varias fechas y la cuadrilla dice cuáles le vienen bien`
+              ? state.datesDecided
+                ? `${plan.name} · fechas decididas`
+                : `${plan.name} · fíjalas, o propón varias y la cuadrilla dice cuáles le vienen bien`
               : open
                 ? `${plan.name} · ${answered} de ${page!.people.length} han respondido${view.deadline ? ` · responder antes del ${deadlineLabel(view.deadline)}` : ""}`
                 : `${plan.name} · fechas decididas`
@@ -175,7 +162,15 @@ export function FechasPage() {
         )}
         {!page && !error && <Skeleton className="h-64 rounded-card" />}
 
-        {page && (!view || editing) && (
+        {page && !view && !editing && <SettleDates decided={state.datesDecided} plan={plan} min={addDaysIso(today, 1)} onFix={fixDates} />}
+
+        {page && !view && !editing && !state.datesDecided && (
+          <Heading as="h2" size="subheading" className="-mb-2">
+            O propón varias y que la cuadrilla diga cuáles le vienen bien
+          </Heading>
+        )}
+
+        {page && ((!view && !state.datesDecided) || editing) && (
           <DatesEditor
             key={view ? view.options.map((o) => o.id).join() : "new"}
             initial={view?.options ?? []}
@@ -248,6 +243,69 @@ export function FechasPage() {
 }
 
 // The windows that suit the group best so far.
+// "Ya sabemos las fechas": the organiser settles them without a vote, and
+// Cuándo is done. Once settled, they can be changed or talked about again.
+function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { dateFrom: string; dateTo: string }; min: string; onFix: (w: DateWindow | null) => Promise<void> }) {
+  const toast = useToast();
+  const [changing, setChanging] = useState(false);
+  const [range, setRange] = useState<DateRange>({ start: plan.dateFrom, end: plan.dateTo });
+  const [busy, setBusy] = useState(false);
+  const run = async (w: DateWindow | null, done: string) => {
+    setBusy(true);
+    try {
+      await onFix(w);
+      setChanging(false);
+      toast(done);
+    } catch (e) {
+      toast(`No se pudo: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (decided && !changing) {
+    return (
+      <Card variant="raised" className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-bold text-muted uppercase">Fechas decididas</span>
+          <Heading size="headline">{rangeLabel(plan.dateFrom, plan.dateTo)}</Heading>
+          <span className="text-sm text-muted">{nights(plan)} · sin votación</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="ghost" disabled={busy} onClick={() => void run(null, "Las fechas vuelven a estar por decidir")}>
+            Volver a decidirlas
+          </Button>
+          <Button onClick={() => setChanging(true)}>Cambiar fechas</Button>
+        </div>
+      </Card>
+    );
+  }
+  const ready = !!range.start && !!range.end;
+  return (
+    <Card variant="raised" className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <Heading as="h2" size="subheading">
+          {changing ? "Cambiar las fechas" : "¿Ya sabéis las fechas?"}
+        </Heading>
+        <span className="text-sm text-muted">Elige la ida y la vuelta y fíjalas: no hace falta votar. Los precios comprobados para otras fechas se marcan para volver a mirarlos.</span>
+      </div>
+      <div className="max-w-[440px]">
+        <TripDates value={range} onChange={setRange} min={min} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {changing && <Button onClick={() => setChanging(false)}>Cancelar</Button>}
+        <Button
+          variant="primary"
+          disabled={busy || !ready}
+          onClick={() => ready && void run({ dateFrom: range.start!, dateTo: range.end! }, `Fechas fijadas: ${rangeLabel(range.start!, range.end!)}`)}
+        >
+          {busy ? "Guardando…" : "Fijar estas fechas"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function BestSoFar({ view }: { view: DatesView }) {
   const best = bestDateOptions(view);
   const counts = new Map(dateCounts(view).map((c) => [c.id, c]));
@@ -418,7 +476,7 @@ function DatesEditor({
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <section aria-label="Votación de fechas" className="grid gap-5 lg:grid-cols-2">
       <Card variant="raised" className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between gap-3">
           <Heading size="subheading">Elige unas fechas</Heading>
@@ -473,6 +531,6 @@ function DatesEditor({
           </Button>
         </div>
       </Card>
-    </div>
+    </section>
   );
 }

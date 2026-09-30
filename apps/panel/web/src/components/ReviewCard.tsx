@@ -14,6 +14,9 @@ export interface ReviewCardProps {
   onVerify: () => void;
   // Whether a flight API is configured to verify against.
   canVerify: boolean;
+  // Its prices can be read off Google Flights and Airbnb (a finalist, and the
+  // browser works here): the prices link says so.
+  canBrowse?: boolean;
   photos: PhotoData[];
   onPickPhotos: () => void;
   // Type in prices checked by hand.
@@ -21,7 +24,7 @@ export interface ReviewCardProps {
 }
 
 // A proposal as the organiser judges it: photo, provenance, facts, decision.
-export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, photos, onPickPhotos, onEditPrices }: ReviewCardProps) {
+export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, canBrowse, photos, onPickPhotos, onEditPrices }: ReviewCardProps) {
   const [showSources, setShowSources] = useState(false);
   const trust = trustOf(p, now);
   const approved = p.review === "approved";
@@ -130,7 +133,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               </>
             )}
             <button type="button" onClick={onEditPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
-              {p.provenance.kind === "organiser" ? "cambiar precios" : "poner precios reales"}
+              {p.provenance.kind === "organiser" ? "cambiar precios" : canBrowse ? "mirar precios reales" : "poner precios reales"}
             </button>{" "}
             ·{" "}
             <a

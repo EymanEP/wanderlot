@@ -630,6 +630,17 @@ browser's response. A flow expires after 5 minutes and can be used once.
 Members belong to the group: one sign-up works for every trip they're put on.
 Member routes under `/api/plans/:planId` answer `404` to anyone not on the trip.
 
+### Panel screens
+One frame (top bar, trip bar) stays mounted while the screens change below
+it, and each screen shows what it loaded on the last visit at once while it
+reads it again. Work the AI does for a while — a search, the trip's guide,
+reading Google Flights or Airbnb — belongs to the panel rather than to a
+screen: it carries on while the organiser moves around, shows in the top bar
+("Claude prepara la guía de Praga"), says when it ends from wherever they
+are, and its result waits on its screen. An answer that doesn't fit what the
+trip page takes is shortened rather than failing, and a failed check is
+explained in words, never as a raw validation dump.
+
 ### Panel API (local)
 
 The panel's own server, for its UI only. It listens on `127.0.0.1`, answers
@@ -664,6 +675,8 @@ serves the same API at `/admin/api` for the organiser (§5), without research.
 | `PUT` | `/api/plans/:planId/winner` | `{ destinationId }` to break a tie; `{ destinationId, override: true, note? }` to go somewhere other than the vote's winner (`409` on a site older than API version 7) |
 | `GET` / `PUT` / `DELETE` | `/api/plans/:planId/dates` | Fechas: `{ dates, people, reminder, announcement }` / `{ options, deadline? }` proposes or changes the windows (publishing the trip without destinations if it isn't on the site yet) and adds the group-chat `message` / removes the date vote. `409` without people on the trip, or on a site older than API version 8 |
 | `POST` | `/api/plans/:planId/dates/choose` | `{ optionId }`: the trip takes those dates here and on the site; checked prices are flagged `forOtherDates` |
+| `POST` | `/api/plans/:planId/dates/fix` | `{ dateFrom, dateTo }`: "Ya sabemos las fechas", settled without a vote (refused while one is open); checked prices for other dates are flagged. The trip bar ticks Cuándo once the dates are settled, this way or by choosing (`datesDecided` in the panel's entry) |
+| `DELETE` | `/api/plans/:planId/dates/fix` | back to undecided |
 | `GET` / `PUT` | `/api/plans/:planId/trip` | El viaje: `{ destination, trip, published }` (the decided destination's proposal, the trip page being prepared, whether the site shows it) / save the organiser's edits (`409` until a destination is decided) |
 | `POST` | `/api/plans/:planId/trip/prepare` | `{ home? }`: research drafts the guide and how to get there; streams NDJSON `{progress}` lines, then `{trip}` or `{error}`. Keeps the stay's details and the Tricount link; saves `home` as the group's `homeTown`. `409` without a decided destination or without Claude |
 | `POST` | `/api/plans/:planId/trip/publish` | `{ published }`: publishes the trip with its page, or takes the page down. `409` on a site older than API version 9 |

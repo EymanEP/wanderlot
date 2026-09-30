@@ -28,8 +28,10 @@ export interface PanelStatus {
   // The panel served by the site at /admin (ROADMAP 3.1). Its AI reads
   // screenshots, and searches in the background (3.3).
   hosted?: boolean;
-  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4).
+  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4), or what it
+  // lacks: the claude command, or the Playwright package (npm install).
   browse?: boolean;
+  browseMissing?: "claude" | "install";
   // Where trips are kept: the site's database, or (with a site too old for
   // that) the laptop's data/panel.json.
   store?: "site" | "file";
@@ -170,6 +172,13 @@ function guideRequest(entry: PlanEntry, destination: Proposal, home: string): Gu
   };
 }
 
+// What went wrong, in words: a schema check that failed says so plainly
+// instead of dumping its issues on the organiser.
+export function humanError(err: unknown): string {
+  if (err instanceof z.ZodError) return "La respuesta de la IA no venía como se esperaba. Vuelve a probar; si se repite, hazlo a mano.";
+  return err instanceof Error ? err.message : String(err);
+}
+
 async function* fromFlights(it: AsyncIterable<Omit<Proposal, "review">>): AsyncIterable<ResearchResult> {
   for await (const proposal of it) yield { proposal };
 }
@@ -193,7 +202,7 @@ export function createPanel({
   // from the site keeps its status and its (Spanish) reason.
   app.onError((err, c) => {
     if (err instanceof SiteError && err.status >= 400 && err.status < 500) return c.json({ error: err.reason }, err.status as 409);
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: humanError(err) }, 500);
   });
 
   const entryOr404 = (planId: string) => store.get(planId);
@@ -515,7 +524,7 @@ export function createPanel({
         if (idea && researched) await site.setSuggestion(plan.id, idea.id, "researched", researched).catch(() => {});
         await write({ done: true });
       } catch (err) {
-        await write({ error: (err as Error).message });
+        await write({ error: humanError(err) });
       }
     });
   });
@@ -771,7 +780,7 @@ export function createPanel({
         }
         await write({ fields: { ...fields, pageUrl: https(raw.pageUrl) ?? req.url, ...(req.kind === "stay" ? { url: https(raw.url) } : {}) } });
       } catch (err) {
-        await write({ error: (err as Error).message });
+        await write({ error: humanError(err) });
       }
     });
   });
@@ -1025,7 +1034,7 @@ export function createPanel({
         const raw = await guide(req, c.req.raw.signal, (p) => void write({ progress: p }));
         await write({ trip: await saveGuide(planId, destination.id, home, raw, who) });
       } catch (err) {
-        await write({ error: (err as Error).message });
+        await write({ error: humanError(err) });
       }
     });
   });
@@ -1095,6 +1104,8 @@ export function createPanel({
       // Not on the site yet: no date vote either.
       if (!(e instanceof SiteError && e.status === 404)) throw e;
     }
+    // A vote that chose dates before the panel kept track: settled.
+    if (dates?.chosenOptionId && !store.get(planId)!.datesDecided) store.update(planId, (e) => ({ entry: { ...e!, datesDecided: true }, result: null }));
     return c.json(await datesPage(planId, dates));
   });
 
@@ -1138,9 +1149,39 @@ export function createPanel({
     store.update(planId, (e) => {
       const moved = e!.plan.dateFrom !== option.dateFrom || e!.plan.dateTo !== option.dateTo;
       const plan = { ...e!.plan, dateFrom: option.dateFrom, dateTo: option.dateTo, nights: nightsOf(option) };
-      return { entry: { ...e!, plan, proposals: moved ? e!.proposals.map(markForOtherDates) : e!.proposals }, result: null };
+      return { entry: { ...e!, plan, datesDecided: true, proposals: moved ? e!.proposals.map(markForOtherDates) : e!.proposals }, result: null };
     });
     return c.json({ ...(await datesPage(planId, dates)), plan: store.get(planId)!.plan });
+  });
+
+  // "Ya sabemos las fechas": the organiser settles the dates without a vote.
+  // Prices checked for other dates are flagged, as when a vote chooses.
+  app.post("/api/plans/:planId/dates/fix", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const body = z
+      .object({ dateFrom: day, dateTo: day })
+      .refine((d) => d.dateTo > d.dateFrom, "la vuelta tiene que ser después de la ida")
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {dateFrom, dateTo}" }, 400);
+    const open = await site.dates(planId).catch(() => null);
+    if (open?.status === "open") return c.json({ error: "Hay una votación de fechas abierta: elige una de sus opciones o quítala primero." }, 409);
+    const { dateFrom, dateTo } = body.data;
+    store.update(planId, (e) => {
+      const moved = e!.plan.dateFrom !== dateFrom || e!.plan.dateTo !== dateTo;
+      const plan = { ...e!.plan, dateFrom, dateTo, nights: nightsOf({ dateFrom, dateTo }) };
+      return { entry: { ...e!, plan, datesDecided: true, proposals: moved ? e!.proposals.map(markForOtherDates) : e!.proposals }, result: null };
+    });
+    return c.json(store.get(planId));
+  });
+
+  // Back to undecided, to talk about them again.
+  app.delete("/api/plans/:planId/dates/fix", (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    store.update(planId, (e) => ({ entry: { ...e!, datesDecided: false }, result: null }));
+    return c.json(store.get(planId));
   });
 
   app.delete("/api/plans/:planId/dates", async (c) => {

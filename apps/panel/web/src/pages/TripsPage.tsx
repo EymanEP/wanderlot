@@ -5,7 +5,7 @@ import { Badge, Button, Card, Dialog, EmptyState, Field, Heading, Notice, PageHe
 import { PanelShell } from "../components/PanelShell.tsx";
 import { TripDates, type FlexDays } from "../components/TripDates.tsx";
 import type { TripSummary } from "../data/backend.ts";
-import { usePanel } from "../data/store.tsx";
+import { useLoad, usePanel } from "../data/store.tsx";
 import { downloadJson } from "../lib/download.ts";
 
 const STATUS = {
@@ -22,24 +22,15 @@ export function TripsPage() {
   const { state, now, trips, selectPlan, savePlan, deletePlan, exportData } = usePanel();
   const navigate = useNavigate();
   const toast = useToast();
-  const [list, setList] = useState<TripSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Shown at once from the last visit, and read again (see useLoad).
+  const { data: list, error, reload } = useLoad<TripSummary[]>("trips", trips);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [deleting, setDeleting] = useState<TripSummary | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    trips().then(
-      (t) => {
-        setList(t);
-        setError(null);
-      },
-      (e: Error) => setError(e.message),
-    );
-    // Not on `trips` itself: it's a new function on every panel change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.plans]);
-  useEffect(load, [load]);
+  const load = useCallback(() => void reload(), [reload]);
+  // Again when a trip is added, renamed or deleted.
+  useEffect(load, [load, state.plans]);
 
   const open = async (t: TripSummary, to = t.proposals ? "/revisar" : "/generar") => {
     await selectPlan(t.plan.id);

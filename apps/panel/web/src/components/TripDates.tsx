@@ -20,8 +20,9 @@ export function datesSummary({ start, end }: DateRange): string {
 export interface TripDatesProps {
   value: DateRange;
   onChange: (range: DateRange) => void;
-  flexDays: FlexDays;
-  onFlexChange: (flex: FlexDays) => void;
+  // The ± days chips; left out without onFlexChange.
+  flexDays?: FlexDays;
+  onFlexChange?: (flex: FlexDays) => void;
   // Days before this can't be picked (tomorrow, for a new trip).
   min: string;
 }
@@ -45,13 +46,15 @@ export function TripDates({ value, onChange, flexDays, onFlexChange, min }: Trip
     >
       <Card variant="outline" radius="tile" padding="sm" className="flex flex-col gap-2.5">
         <Calendar {...month} onMonthChange={setMonth} start={value.start} end={value.end} min={min} onPick={(d) => onChange(pickRange(value, d))} />
-        <div role="group" aria-label="Flexibilidad" className="flex gap-1.5 border-t border-line-faint pt-3">
-          {FLEX.map((f) => (
-            <Chip key={f.value} variant="subtle" size="sm" on={flexDays === f.value} onClick={() => onFlexChange(f.value)} className="flex-1">
-              {f.label}
-            </Chip>
-          ))}
-        </div>
+        {onFlexChange && (
+          <div role="group" aria-label="Flexibilidad" className="flex gap-1.5 border-t border-line-faint pt-3">
+            {FLEX.map((f) => (
+              <Chip key={f.value} variant="subtle" size="sm" on={flexDays === f.value} onClick={() => onFlexChange(f.value)} className="flex-1">
+                {f.label}
+              </Chip>
+            ))}
+          </div>
+        )}
       </Card>
     </Fieldset>
   );
