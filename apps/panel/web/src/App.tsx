@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes } from "react-router";
 import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
-import { PanelShell } from "./components/PanelShell.tsx";
+import { PanelShell, ShellLayout } from "./components/PanelShell.tsx";
 import { usePanel } from "./data/store.tsx";
 import { AjustesPage } from "./pages/AjustesPage.tsx";
 import { ComparativaPage } from "./pages/ComparativaPage.tsx";
@@ -60,6 +60,8 @@ function RequirePlan({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <Routes>
+      {/* One frame for every screen: it stays while the page below changes. */}
+      <Route element={<ShellLayout />}>
       <Route index element={<TripsPage />} />
       <Route path="/fechas" element={<RequirePlan><FechasPage /></RequirePlan>} />
       <Route path="/generar" element={<RequirePlan><GenerarPage /></RequirePlan>} />
@@ -71,6 +73,7 @@ export function App() {
       <Route path="/ajustes" element={<AjustesPage />} />
       <Route path="/planes/nuevo" element={<NewPlanPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
     </Routes>
   );
 }

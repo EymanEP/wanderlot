@@ -5,7 +5,7 @@ import { Avatar, Badge, Button, Card, CheckIcon, Dialog, EmptyState, Field, Head
 import { MessageDialog } from "../components/MessageDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import type { VoteView } from "../data/backend.ts";
-import { usePanel, usePlan } from "../data/store.tsx";
+import { useLoad, usePanel, usePlan } from "../data/store.tsx";
 
 // Following the vote from the panel (SPEC §4, §7): the running count and each
 // ballot (the organiser sees them live; friends only once it closes), a nudge
@@ -14,8 +14,9 @@ export function VotacionPage() {
   const { vote, closeVote, pickWinner, now } = usePanel();
   const plan = usePlan();
   const toast = useToast();
-  const [view, setView] = useState<VoteView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Shown at once from the last visit, and read again (see useLoad).
+  const { data: loaded, error, reload: load, set: setView } = useLoad<VoteView | null>(`vote:${plan.id}:${plan.status}`, () => (plan.status === "draft" ? Promise.resolve(null) : vote()));
+  const view = loaded;
   const [message, setMessage] = useState<"reminder" | "announcement" | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -23,22 +24,6 @@ export function VotacionPage() {
   const [changing, setChanging] = useState(false);
   const [other, setOther] = useState<string | null>(null);
   const [note, setNote] = useState("");
-
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setView(await vote());
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [vote]);
-
-  useEffect(() => {
-    setView(null);
-    if (plan.status !== "draft") void load();
-    // Reload when switching plans, not on every change to the plan object.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan.id]);
 
   const act = async (what: () => Promise<VoteView>, done: string) => {
     setBusy(true);

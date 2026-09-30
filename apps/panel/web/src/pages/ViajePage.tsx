@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   TransportMode,
+  checkedLabel,
   longDate,
   rangeLabel,
   trustState,
@@ -35,7 +36,7 @@ import { PanelShell } from "../components/PanelShell.tsx";
 import { JobCard } from "../components/JobCard.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import type { ScreenshotImage, SearchStep, TripView } from "../data/backend.ts";
-import { usePanel, usePlan } from "../data/store.tsx";
+import { useLoad, usePanel, usePlan } from "../data/store.tsx";
 
 const MODES: { value: TransportMode; label: string }[] = [
   { value: "car", label: "Coche" },
@@ -92,47 +93,52 @@ function stepText(step: SearchStep): string {
 
 // El viaje (ROADMAP 2.2–2.4): once the destination is decided, check its
 // prices, have Claude draft the guide and how to get there, edit it, add the
-// stay's details and the Tricount link, and publish it for the group.
+// stay's details and the Tricount link, and publish it for the group. Each
+// step says what's next and does it in place; the AI's work carries on if
+// the organiser goes elsewhere in the panel (store.tsx, Task).
 export function ViajePage() {
-  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, browse, now, clearJob } = usePanel();
+  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, browse, takeTask, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
-  const [view, setView] = useState<TripView | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<TripPage | null>(null);
+  const { data: view, error, reload, set: setView } = useLoad(`trip:${plan.id}:${plan.winnerDestinationId ?? ""}`, trip);
+  const [draft, setDraft] = useState<TripPage | null>(view?.trip ?? null);
   const [dirty, setDirty] = useState(false);
-  const [preparing, setPreparing] = useState<SearchStep[] | null>(null);
   const [asking, setAsking] = useState(false);
   const [home, setHome] = useState(state.settings?.homeTown ?? "");
   const [pricing, setPricing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
 
-  const load = async () => {
-    setError(null);
-    try {
-      const v = await trip();
-      setView(v);
-      setDraft(v.trip);
-      setDirty(false);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
+  // The saved page, unless the organiser is editing it.
   useEffect(() => {
-    setView(null);
-    void load();
-    // Reload when switching plans or when the destination is decided.
+    if (!dirty) setDraft(view?.trip ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plan.id, plan.winnerDestinationId]);
+  }, [view]);
 
   // A guide prepared in the background (the panel at /admin): read the trip
   // page again once it's done, here or on another device.
   const job = state.job?.kind === "guide" ? state.job : null;
   useEffect(() => {
-    if (job?.status === "done") void load();
+    if (job?.status === "done") void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job?.status]);
+
+  // The guide being prepared here, even if the organiser left and came back.
+  const guide = state.tasks.find((t) => t.kind === "guide" && t.planId === plan.id);
+  useEffect(() => {
+    if (!guide || guide.status === "running") return;
+    if (guide.status === "done") {
+      // The guide at once; the page read again behind it.
+      const t = guide.result as TripPage | undefined;
+      if (t && view) setView({ ...view, trip: t });
+      setDirty(false);
+      if (t) setDraft(t);
+      void reload();
+      takeTask(guide.id);
+    }
+    // A failure stays on screen until retried or dismissed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guide?.id, guide?.status]);
 
   // The group's home town, once the settings have loaded.
   useEffect(() => {
@@ -141,6 +147,14 @@ export function ViajePage() {
 
   // The panel's own copy, so checked prices show at once.
   const destination = view?.destination ? (state.proposals.find((p) => p.id === view.destination!.id) ?? view.destination) : null;
+  const readings = destination ? state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === destination.id) : [];
+  const reading = readings.find((t) => t.status === "running");
+  // A reading that finished opens the prices to review and save.
+  useEffect(() => {
+    if (readings.some((t) => t.status !== "running")) setPricing(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readings.map((t) => `${t.id}:${t.status}`).join()]);
+
   const edit = (patch: Partial<TripPage>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
     setDirty(true);
@@ -148,18 +162,14 @@ export function ViajePage() {
 
   const prepare = async () => {
     setAsking(false);
-    setPreparing([]);
+    if (guide) takeTask(guide.id);
+    setStarting(true);
     try {
-      const t = await prepareTrip(home.trim(), (s) => setPreparing((steps) => [...(steps ?? []), s]));
-      if ("job" in t) return;
-      setDraft(t);
-      setView((v) => (v ? { ...v, trip: t } : v));
-      setDirty(false);
-      toast("Guía preparada: revísala antes de publicarla");
+      await prepareTrip(home.trim());
     } catch (e) {
       toast(`No se pudo preparar: ${(e as Error).message}`);
     } finally {
-      setPreparing(null);
+      setStarting(false);
     }
   };
 
@@ -167,9 +177,7 @@ export function ViajePage() {
     if (!draft) return;
     setBusy(true);
     try {
-      const v = await saveTrip(clean(draft));
-      setView(v);
-      setDraft(v.trip);
+      setView(await saveTrip(clean(draft)));
       setDirty(false);
       toast("Cambios guardados");
     } catch (e) {
@@ -183,7 +191,7 @@ export function ViajePage() {
     if (!draft) return;
     setBusy(true);
     try {
-      if (dirty) setDraft((await saveTrip(clean(draft))).trip);
+      if (dirty) await saveTrip(clean(draft));
       setView(await publishTrip(published));
       setDirty(false);
       toast(published ? "Página del viaje publicada" : "Página del viaje retirada del sitio");
@@ -218,8 +226,10 @@ export function ViajePage() {
   // Research needs an AI; the panel the site serves needs one that runs in
   // the background (it takes minutes), and one guide at a time.
   const hosted = !!state.status?.hosted;
-  const claude = state.status?.research !== "none" && (!hosted || !!state.status?.ai?.background) && job?.status !== "running";
+  const preparing = guide?.status === "running" || job?.status === "running" || starting;
+  const canPrepare = state.status?.research !== "none" && (!hosted || !!state.status?.ai?.background);
   const ai = state.status?.ai?.name ?? "Claude";
+  const published = !!view?.published && !dirty;
 
   return (
     <PanelShell>
@@ -228,29 +238,30 @@ export function ViajePage() {
           title="El viaje"
           subtitle={destination ? `${plan.name} · ${destination.place.city} · ${rangeLabel(plan.dateFrom, plan.dateTo)}` : plan.name}
           actions={
-            destination && (
+            destination &&
+            draft && (
               <div className="flex flex-wrap gap-2">
                 {view?.published && (
                   <Button variant="ghost" disabled={busy} onClick={() => void publish(false)}>
                     Retirar del sitio
                   </Button>
                 )}
-                <Button
-                  disabled={!!preparing || !claude}
-                  title={claude ? undefined : job?.status === "running" ? "Ya se está preparando" : "Necesita una IA: mira en Ajustes"}
-                  onClick={() => setAsking(true)}
-                >
-                  {draft?.preparedAt ? "Volver a preparar" : `Preparar con ${ai}`}
-                </Button>
-                <Button variant="primary" disabled={!draft || busy || !!preparing} onClick={() => void publish(true)}>
-                  {view?.published ? (dirty ? "Guardar y publicar" : "Publicar de nuevo") : "Publicar el viaje"}
+                <Button variant="primary" disabled={busy || preparing || published} onClick={() => void publish(true)}>
+                  {view?.published ? (dirty ? "Guardar y publicar" : "Publicada") : "Publicar el viaje"}
                 </Button>
               </div>
             )
           }
         />
 
-        {error && <Notice role="alert">No se pudo cargar el viaje: {error}</Notice>}
+        {error && !view && (
+          <Notice role="alert">
+            No se pudo cargar el viaje: {error}{" "}
+            <button type="button" onClick={() => void reload()} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent">
+              Reintentar
+            </button>
+          </Notice>
+        )}
         {!view && !error && <Skeleton className="h-40 rounded-card" />}
 
         {destination && (
@@ -260,52 +271,120 @@ export function ViajePage() {
               <Check done title={`Destino decidido: ${destination.place.city}`} />
               <Check
                 done={checked}
-                title={checked ? "Precios de vuelos y alojamiento comprobados" : "Comprueba los precios de vuelos y alojamiento"}
-                detail={
+                title={
                   checked
-                    ? "La página del viaje los muestra tal cual."
-                    : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
+                    ? destination.provenance.kind === "api"
+                      ? "Precios comprobados con la API de vuelos"
+                      : `Precios comprobados · ${checkedLabel(destination.provenance)}`
+                    : "Comprueba los precios de vuelos y alojamiento"
                 }
+                detail={
+                  reading
+                    ? `${ai} está mirando ${reading.site === "flight" ? "Google Flights" : "Airbnb"} en la ventana del navegador${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
+                    : checked
+                      ? "La página del viaje los muestra tal cual."
+                      : state.status?.browse
+                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} puede mirarlos en Google Flights y Airbnb por ti, o pégalos tú.`
+                        : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
+                }
+                busy={!!reading}
                 action={
-                  <Button size="sm" variant={checked ? "ghost" : "secondary"} onClick={() => setPricing(true)}>
-                    {checked ? "Cambiar precios" : "Poner precios reales"}
-                  </Button>
+                  <span className="flex flex-wrap gap-2">
+                    {state.status?.browse && !checked && (
+                      <>
+                        <Button size="sm" variant="secondary" disabled={!!reading} onClick={() => browse(destination.id, "flight")}>
+                          Mirar en Google Flights
+                        </Button>
+                        <Button size="sm" variant="secondary" disabled={!!reading} onClick={() => browse(destination.id, "stay")}>
+                          Mirar en Airbnb
+                        </Button>
+                      </>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setPricing(true)}>
+                      {checked ? "Cambiar precios" : "Ponerlos a mano"}
+                    </Button>
+                  </span>
                 }
               />
               <Check
-                done={!!draft}
-                title={draft ? `Guía ${draft.preparedAt ? `preparada el ${longDate(draft.preparedAt)}` : "escrita a mano"}` : "Prepara la guía"}
+                done={!!draft && !preparing}
+                busy={preparing}
+                title={
+                  preparing
+                    ? `${ai} está preparando la guía`
+                    : draft
+                      ? `Guía ${draft.preparedAt ? `preparada el ${longDate(draft.preparedAt)}` : "escrita a mano"}`
+                      : "Prepara la guía"
+                }
                 detail={
-                  draft
-                    ? "Revísala abajo: quita lo que no encaje y añade la dirección, la hora de entrada y el Tricount."
-                    : `${ai} busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice.`
+                  preparing
+                    ? undefined
+                    : draft
+                      ? "Revísala abajo: quita lo que no encaje y añade la dirección, la hora de entrada y el Tricount."
+                      : `${ai} busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice.`
                 }
                 action={
-                  !draft && (
-                    <Button size="sm" variant="ghost" onClick={() => setDraft({ ...EMPTY, destinationId: destination.id, home: home.trim() })}>
-                      Escribirla a mano
+                  !preparing &&
+                  (draft ? (
+                    canPrepare && (
+                      <Button size="sm" variant="ghost" onClick={() => setAsking(true)}>
+                        Volver a preparar
+                      </Button>
+                    )
+                  ) : (
+                    <span className="flex flex-wrap items-end gap-2">
+                      {canPrepare && (
+                        <>
+                          <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted">
+                            Salís desde
+                            <TextInput className="h-9 w-36" maxLength={60} placeholder="Logroño" value={home} onChange={(e) => setHome(e.target.value)} />
+                          </label>
+                          <Button size="sm" variant="primary" onClick={() => void prepare()}>
+                            Preparar con {ai}
+                          </Button>
+                        </>
+                      )}
+                      <Button size="sm" variant="ghost" onClick={() => setDraft({ ...EMPTY, destinationId: destination.id, home: home.trim() })}>
+                        Escribirla a mano
+                      </Button>
+                    </span>
+                  ))
+                }
+              >
+                {guide?.status === "running" && <TaskProgress steps={guide.steps} startedAt={guide.startedAt} searches={state.status?.ai?.search !== false} />}
+                {guide?.status === "failed" && (
+                  <Notice role="alert">
+                    <span className="flex flex-wrap items-center justify-between gap-3">
+                      <span>No se pudo preparar: {guide.error}</span>
+                      <span className="flex gap-2">
+                        <Button size="sm" onClick={() => takeTask(guide.id)}>
+                          Cerrar
+                        </Button>
+                        <Button size="sm" variant="primary" onClick={() => void prepare()}>
+                          Volver a probar
+                        </Button>
+                      </span>
+                    </span>
+                  </Notice>
+                )}
+              </Check>
+              <Check
+                done={published}
+                title={view?.published ? (dirty ? "Hay cambios sin publicar" : "Publicada en el sitio") : "Publícala para el grupo"}
+                action={
+                  draft &&
+                  !published && (
+                    <Button size="sm" variant="primary" disabled={busy || preparing} onClick={() => void publish(true)}>
+                      {view?.published ? "Guardar y publicar" : "Publicar el viaje"}
                     </Button>
                   )
                 }
               />
-              <Check done={!!view?.published && !dirty} title={view?.published ? (dirty ? "Hay cambios sin publicar" : "Publicada en el sitio") : "Publícala para el grupo"} />
             </ol>
           </Card>
         )}
 
         {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(`No se pudo: ${e.message}`))} />}
-
-        {preparing && (
-          <Card variant="raised" role="region" aria-label="Preparando el viaje" className="flex flex-col gap-2">
-            <Heading size="subheading">{ai} está preparando el viaje</Heading>
-            <span className="text-sm text-muted">{state.status?.ai?.search === false ? "Escribe con lo que sabe; tarda un poco." : "Busca en la web; tarda unos minutos."}</span>
-            <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px] text-ink-2">
-              {preparing.slice(-6).map((s, i) => (
-                <li key={i}>{stepText(s)}</li>
-              ))}
-            </ul>
-          </Card>
-        )}
 
         {draft && destination && (
           <TripEditor trip={draft} city={destination.place.city} origin={destination.outbound.from} iata={destination.place.iata} onChange={edit} />
@@ -317,7 +396,14 @@ export function ViajePage() {
           <div className="mx-auto flex max-w-[1100px] items-center justify-between gap-3">
             <span className="text-sm text-ink-2">Cambios sin guardar</span>
             <div className="flex gap-2">
-              <Button variant="ghost" disabled={busy} onClick={() => void load()}>
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  setDirty(false);
+                  setDraft(view?.trip ?? null);
+                }}
+              >
                 Descartar
               </Button>
               <Button variant="primary" disabled={busy} onClick={() => void save()}>
@@ -328,18 +414,9 @@ export function ViajePage() {
         </div>
       )}
 
-      <Dialog
-        open={asking}
-        title={draft?.preparedAt ? "¿Volver a preparar la guía?" : `Preparar el viaje con ${ai}`}
-        confirmLabel="Preparar"
-        onConfirm={() => void prepare()}
-        onClose={() => setAsking(false)}
-      >
+      <Dialog open={asking} title="¿Volver a preparar la guía?" confirmLabel={`Preparar con ${ai}`} onConfirm={() => void prepare()} onClose={() => setAsking(false)}>
         <div className="flex flex-col gap-3.5">
-          <span>
-            {ai} busca qué hacer, qué comer, qué ver y qué saber antes de ir a {destination?.place.city}, y cómo llegar: de vuestra ciudad al aeropuerto y del aeropuerto al
-            alojamiento. {draft?.preparedAt ? "Sustituye la guía de ahora; la dirección, las horas y el Tricount se quedan." : ""}
-          </span>
+          <span>Sustituye la guía de ahora. La dirección, las horas y el Tricount se quedan.</span>
           <Field label="Salís desde (opcional)" aside="Para ir al aeropuerto">
             {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder="Logroño" value={home} onChange={(e) => setHome(e.target.value)} />}
           </Field>
@@ -350,13 +427,21 @@ export function ViajePage() {
         <PriceDialog
           proposal={pricing ? destination : undefined}
           plan={plan}
-          aiName={state.status?.ai?.name ?? "Claude"}
-          {...(state.status?.browse ? { onBrowse: (kind: "flight" | "stay", onStep: (s: SearchStep) => void) => browse(destination.id, kind, onStep) } : {})}
+          aiName={ai}
+          {...(state.status?.browse
+            ? {
+                browse: {
+                  tasks: readings,
+                  start: (kind: "flight" | "stay") => browse(destination.id, kind),
+                  take: takeTask,
+                },
+              }
+            : {})}
           {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(destination.id, kind, images) } : {})}
           onClose={() => setPricing(false)}
           onSave={async (prices) => {
             await setPrices(destination.id, prices);
-            toast(`${destination.place.city}: precios comprobados a mano`);
+            toast(`${destination.place.city}: precios comprobados`);
           }}
         />
       )}
@@ -364,25 +449,67 @@ export function ViajePage() {
   );
 }
 
-function Check({ done, title, detail, action }: { done: boolean; title: string; detail?: string; action?: ReactNode }) {
+// What the AI is doing, in one line: the latest step and how long it's
+// been; the rest folded away.
+function TaskProgress({ steps, startedAt, searches }: { steps: SearchStep[]; startedAt: number; searches: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const elapsed = secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)} min ${secs % 60} s`;
+  const last = steps.at(-1);
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
-      <span className="flex min-w-0 flex-1 items-start gap-2.5">
-        <span
-          aria-hidden
-          className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full", done ? "bg-accent text-white" : "border-2 border-line bg-surface")}
-        >
-          {done && <CheckIcon size={12} />}
-        </span>
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className={cn("text-sm font-semibold", !done && "text-ink")}>
-            {title}
-            <span className="sr-only">{done ? " (hecho)" : " (pendiente)"}</span>
-          </span>
-          {detail && <span className="text-[13px] text-muted">{detail}</span>}
-        </span>
+    <div role="status" aria-label="Progreso" className="flex flex-col gap-1.5 text-[13px] text-ink-2">
+      <span className="flex flex-wrap items-center gap-x-2">
+        <span className="tabular-nums text-muted">{elapsed}</span>
+        <span className="min-w-0 truncate">{last ? stepText(last) : searches ? "Empezando a buscar en la web…" : "Empezando…"}</span>
       </span>
-      {action}
+      <span className="text-muted">Tarda unos minutos. Puedes seguir por el panel: te avisamos al terminar.</span>
+      {steps.length > 1 && (
+        <button type="button" onClick={() => setOpen((o) => !o)} className="cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] font-semibold text-accent" aria-expanded={open}>
+          {open ? "Ocultar lo que hace" : `Ver lo que hace (${steps.length})`}
+        </button>
+      )}
+      {open && (
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {steps.slice(-12).map((s, i) => (
+            <li key={i}>{stepText(s)}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// One step before publishing: done, pending, or with the AI working on it.
+function Check({ done, busy, title, detail, action, children }: { done: boolean; busy?: boolean; title: string; detail?: string; action?: ReactNode; children?: ReactNode }) {
+  return (
+    <li className="flex flex-col gap-2.5 rounded-xl bg-surface-2 px-3.5 py-3" aria-busy={busy || undefined}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <span className="flex min-w-0 flex-1 items-start gap-2.5">
+          <span
+            aria-hidden
+            className={cn(
+              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
+              busy ? "border-2 border-accent border-t-transparent motion-safe:animate-spin" : done ? "bg-accent text-white" : "border-2 border-line bg-surface",
+            )}
+          >
+            {done && !busy && <CheckIcon size={12} />}
+          </span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className={cn("text-sm font-semibold", !done && "text-ink")}>
+              {title}
+              <span className="sr-only">{busy ? " (en marcha)" : done ? " (hecho)" : " (pendiente)"}</span>
+            </span>
+            {detail && <span className="text-[13px] text-muted">{detail}</span>}
+          </span>
+        </span>
+        {action}
+      </div>
+      {children && <div className="pl-[30px]">{children}</div>}
     </li>
   );
 }

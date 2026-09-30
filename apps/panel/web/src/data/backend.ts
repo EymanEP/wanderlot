@@ -29,8 +29,10 @@ export interface Status {
   ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: string[];
-  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4).
+  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4), or what it
+  // lacks: the claude command, or the Playwright package (npm install).
   browse?: boolean;
+  browseMissing?: "claude" | "install";
   // outdated: deployed from older code; some panel features need a redeploy.
   site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
   // The panel the site serves at /admin (ROADMAP 3.1): an AI there only
@@ -80,6 +82,8 @@ export interface PlanEntry {
   // Member ids on this trip (SPEC §5).
   participants?: string[];
   job?: PanelJob;
+  // Cuándo is done: dates chosen from a vote, or fixed directly.
+  datesDecided?: boolean;
 }
 
 // A search or guide the panel at /admin handed to the AI to run in the
@@ -257,6 +261,8 @@ export interface PanelBackend {
   // The trip takes these dates; prices checked for others are flagged.
   chooseDates(planId: string, optionId: string): Promise<DatesPage & { plan: Plan }>;
   cancelDates(planId: string): Promise<DatesPage>;
+  // "Ya sabemos las fechas": settles them without a vote; null undoes it.
+  fixDates(planId: string, window: DateWindow | null): Promise<PlanEntry>;
   // El viaje (ROADMAP 2.2–2.4).
   trip(planId: string): Promise<TripView>;
   // Claude drafts the guide and how to get there; steps arrive as it works.
@@ -393,6 +399,7 @@ export const httpBackend: PanelBackend = {
   proposeDates: (planId, options, deadline) => call<DatesPage & { message: string }>(`/api/plans/${enc(planId)}/dates`, "PUT", { options, deadline }),
   chooseDates: (planId, optionId) => call<DatesPage & { plan: Plan }>(`/api/plans/${enc(planId)}/dates/choose`, "POST", { optionId }),
   cancelDates: (planId) => call<DatesPage>(`/api/plans/${enc(planId)}/dates`, "DELETE"),
+  fixDates: (planId, window) => call<PlanEntry>(`/api/plans/${enc(planId)}/dates/fix`, window ? "POST" : "DELETE", window ?? undefined),
   trip: (planId) => call<TripView>(`/api/plans/${enc(planId)}/trip`),
   async prepareTrip(planId, home, onStep) {
     const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });

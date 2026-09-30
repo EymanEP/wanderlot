@@ -425,3 +425,25 @@ describe("checking a finalist in the browser", () => {
     expect(again.lines[0].provenance.seenOn).toEqual(["google-flights", "airbnb"]);
   });
 });
+
+describe("the guide from a long answer", () => {
+  it("shortens what the trip page can't hold instead of failing", async () => {
+    const { toTripPage, fit } = await import("../src/providers/guide.ts");
+    const { TripPage } = await import("@wanderlot/core");
+    const long = "Autobús de Jiménez desde la estación de Logroño hasta Termibus en Bilbao, ".repeat(12);
+    const t = (title: string) => ({ mode: "bus" as const, title, detail: long, minutes: 0, priceEuros: 12.5 });
+    const page = toTripPage(
+      "prg",
+      "Logroño",
+      { intro: "Praga.", todo: [], food: [], sights: [{ title: "", detail: "sin título" }], beforeYouGo: [], toAirport: [t("Autobús a Bilbao"), t("x".repeat(200))], fromAirport: [], sources: [] },
+      new Date("2026-10-10T12:00:00Z"),
+    );
+    expect(TripPage.safeParse(page).success).toBe(true);
+    expect(page.toAirport[0]!.detail.length).toBeLessThanOrEqual(600);
+    expect(page.toAirport[0]!.detail.endsWith("…")).toBe(true);
+    expect(page.toAirport[1]!.title.length).toBeLessThanOrEqual(120);
+    expect(page.toAirport[0]!.minutes).toBeNull();
+    expect(page.sights).toEqual([]);
+    expect(fit("corto", 10)).toBe("corto");
+  });
+});

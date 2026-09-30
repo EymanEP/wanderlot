@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -211,19 +211,22 @@ describe("Fechas", () => {
     await user.click(screen.getAllByRole("link", { name: "Viajes" })[0]!);
     await user.click(within(await screen.findByRole("article", { name: "Noviembre 2026" })).getByRole("button", { name: "Fechas" }));
     expect(await screen.findByRole("heading", { name: "Elige unas fechas" })).toBeTruthy();
-    const propose = screen.getByRole("button", { name: "Proponer fechas" }) as HTMLButtonElement;
+    // Fixing them without a vote is offered too; this trip votes.
+    expect(screen.getByRole("heading", { name: "¿Ya sabéis las fechas?" })).toBeTruthy();
+    const voting = within(screen.getByRole("region", { name: "Votación de fechas" }));
+    const propose = voting.getByRole("button", { name: "Proponer fechas" }) as HTMLButtonElement;
     expect(propose.disabled).toBe(true);
     const pick = async (from: string, to: string) => {
-      await user.click(screen.getByRole("button", { name: from }));
-      await user.click(screen.getByRole("button", { name: to }));
-      await user.click(screen.getByRole("button", { name: "Añadir estas fechas" }));
+      await user.click(voting.getByRole("button", { name: from }));
+      await user.click(voting.getByRole("button", { name: to }));
+      await user.click(voting.getByRole("button", { name: "Añadir estas fechas" }));
     };
-    await user.click(screen.getByRole("button", { name: "Mes siguiente" }));
-    await user.click(screen.getByRole("button", { name: "Mes siguiente" }));
+    await user.click(voting.getByRole("button", { name: "Mes siguiente" }));
+    await user.click(voting.getByRole("button", { name: "Mes siguiente" }));
     await pick("2026-11-12", "2026-11-16");
     await pick("2026-11-03", "2026-11-07");
-    await user.click(screen.getByRole("button", { name: "2026-11-03" }));
-    await user.click(screen.getByRole("button", { name: "2026-11-07" }));
+    await user.click(voting.getByRole("button", { name: "2026-11-03" }));
+    await user.click(voting.getByRole("button", { name: "2026-11-07" }));
     expect(screen.getByRole("button", { name: "Ya está entre las opciones" })).toBeTruthy();
     const options = within(screen.getByRole("list", { name: "Opciones" })).getAllByRole("listitem");
     expect(options.map((o) => o.textContent)).toEqual([expect.stringMatching(/^3 – 7 nov/), expect.stringMatching(/^12 – 16 nov/)]);
@@ -267,19 +270,21 @@ describe("El viaje", () => {
     const checklist = await screen.findByLabelText("Antes de publicar");
     expect(within(checklist).getByText("Destino decidido: Nápoles")).toBeTruthy();
     // Nápoles's prices came from the flight API a day ago: still good.
-    expect(within(checklist).getByText("Precios de vuelos y alojamiento comprobados")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Publicar el viaje" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(checklist).getByText("Precios comprobados con la API de vuelos")).toBeTruthy();
+    // Nothing to publish before there's a guide.
+    expect(screen.queryByRole("button", { name: "Publicar el viaje" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Preparar con Claude" }));
-    const dialog = () => within(document.querySelector("dialog[open]") as HTMLElement);
-    const home = dialog().getByLabelText("Salís desde (opcional)") as HTMLInputElement;
+    // Where they leave from, and prepare: in place, no dialog.
+    const home = within(checklist).getByLabelText("Salís desde") as HTMLInputElement;
     await user.clear(home);
     await user.type(home, "Logroño");
-    await user.click(dialog().getByRole("button", { name: "Preparar" }));
-    expect(await screen.findByText("Guía preparada: revísala antes de publicarla")).toBeTruthy();
+    await user.click(within(checklist).getByRole("button", { name: "Preparar con Claude" }));
+    expect(await within(checklist).findByText("Claude está preparando la guía")).toBeTruthy();
+    expect(screen.getByRole("status", { name: /En marcha: Claude prepara la guía de Nápoles/ })).toBeTruthy();
+    expect(await screen.findByText("La guía de Nápoles está lista")).toBeTruthy();
 
     // Research's draft, editable.
-    const todo = screen.getByRole("list", { name: "Qué hacer" });
+    const todo = await screen.findByRole("list", { name: "Qué hacer" });
     expect((within(todo).getByLabelText("Qué hacer 1: título") as HTMLInputElement).value).toBe("Pompeya");
     expect((within(todo).getByLabelText("Qué hacer 1: € por persona") as HTMLInputElement).value).toBe("22");
     expect((screen.getByLabelText("Salís desde") as HTMLInputElement).value).toBe("Logroño");
@@ -293,7 +298,7 @@ describe("El viaje", () => {
     expect(within(screen.getByRole("list", { name: "Qué hacer" })).getAllByRole("listitem")).toHaveLength(3);
     expect(within(screen.getByRole("list", { name: "Sitios que ver" })).getAllByRole("listitem")).toHaveLength(3);
 
-    await user.click(screen.getByRole("button", { name: "Publicar el viaje" }));
+    await user.click(screen.getAllByRole("button", { name: "Publicar el viaje" })[0]!);
     expect(await screen.findByText("Página del viaje publicada")).toBeTruthy();
     expect(screen.getByText("Publicada en el sitio")).toBeTruthy();
     const saved = await backend.trip("noviembre-2026");
@@ -821,3 +826,87 @@ describe("Mirar en Google Flights / Airbnb", () => {
     expect(dialog.getByRole("button", { name: "Leer captura del vuelo" })).toBeTruthy();
   });
 });
+
+describe("Cuándo", () => {
+  it("fixes the dates without a vote, and ticks the step", async () => {
+    const user = userEvent.setup();
+    renderAt("/fechas");
+    const step = await screen.findByRole("link", { name: /Cuándo/ });
+    expect(step.textContent).toMatch(/^1/);
+    const card = screen.getByRole("heading", { name: "¿Ya sabéis las fechas?" }).closest("div")!.parentElement!;
+    await user.click(within(card).getByRole("button", { name: "Fijar estas fechas" }));
+    expect(await screen.findByText("Fechas decididas")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Cuándo/ }).textContent).not.toMatch(/^1/);
+    // Settled: the vote is out of the way, and it can be undone.
+    expect(screen.queryByRole("region", { name: "Votación de fechas" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Volver a decidirlas" }));
+    expect(await screen.findByRole("heading", { name: "¿Ya sabéis las fechas?" })).toBeTruthy();
+  });
+});
+
+describe("Moving around while the AI works", () => {
+  // The trip being worked on is Noviembre, whatever another test left.
+  beforeEach(() => localStorage.setItem("wanderlot:panel-plan", "noviembre-2026"));
+
+  it("keeps preparing the guide on another screen, and says when it's ready", async () => {
+    const user = userEvent.setup();
+    const backend = mockBackend({ tickMs: 120, verifyMs: 2 });
+    const plan = (await backend.plan("noviembre-2026"))!.plan;
+    await backend.savePlan({ ...plan, status: "closed", winnerDestinationId: "nap" });
+    render(
+      <MemoryRouter initialEntries={["/viaje"]}>
+        <ToastProvider>
+          <PanelProvider backend={backend}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const checklist = await screen.findByLabelText("Antes de publicar");
+    await user.click(within(checklist).getByRole("button", { name: "Preparar con Claude" }));
+    expect(await within(checklist).findByText("Claude está preparando la guía")).toBeTruthy();
+
+    // Off to Personas: the work goes on, shown in the top bar.
+    await user.click(screen.getAllByRole("link", { name: "Personas" })[0]!);
+    expect(await screen.findByRole("heading", { level: 1, name: "Personas" })).toBeTruthy();
+    expect(screen.getByRole("status", { name: /En marcha: Claude prepara la guía de Nápoles/ })).toBeTruthy();
+    const done = await screen.findByText("La guía de Nápoles está lista", {}, { timeout: 3000 });
+    await user.click(within(done.parentElement!).getByRole("link", { name: "Ver" }));
+    const back = await screen.findByLabelText("Antes de publicar");
+    expect(within(back).getByText(/^Guía preparada el/)).toBeTruthy();
+    expect(screen.queryByRole("status", { name: /En marcha/ })).toBeNull();
+  });
+
+  it("reads Google Flights from El viaje and opens the prices to review", async () => {
+    const user = userEvent.setup();
+    const backend = mockBackend({ tickMs: 2, verifyMs: 2 });
+    const plan = (await backend.plan("noviembre-2026"))!.plan;
+    // Edimburgo won, and its prices are research's: not checked yet.
+    await backend.review("noviembre-2026", "edi", "approved");
+    await backend.savePlan({ ...plan, status: "closed", winnerDestinationId: "edi" });
+    render(
+      <MemoryRouter initialEntries={["/viaje"]}>
+        <ToastProvider>
+          <PanelProvider backend={backend}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const checklist = await screen.findByLabelText("Antes de publicar");
+    await user.click(within(checklist).getByRole("button", { name: "Mirar en Google Flights" }));
+    const dialog = await waitForDialog();
+    expect(await within(dialog).findByText(/^Ida · /)).toBeTruthy();
+    await user.click(within(dialog).getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights")).toBeTruthy();
+  });
+});
+
+async function waitForDialog(): Promise<HTMLElement> {
+  for (let i = 0; i < 100; i++) {
+    const d = document.querySelector("dialog[open]");
+    if (d) return d as HTMLElement;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("no dialog opened");
+}

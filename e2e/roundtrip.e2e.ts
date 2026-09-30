@@ -208,13 +208,15 @@ try {
   // phone, and the organiser chooses one; the trip takes those dates.
   await org.getByRole("link", { name: "Cuándo" }).click();
   await org.getByRole("heading", { name: "Elige unas fechas" }).waitFor();
-  await org.getByRole("button", { name: "Mes siguiente" }).click();
+  // Fixing them without a vote is offered too; this trip votes.
+  const voting = org.getByRole("region", { name: "Votación de fechas" });
+  await voting.getByRole("button", { name: "Mes siguiente" }).click();
   for (const [from, to] of [[3, 7], [17, 21]]) {
-    await org.getByRole("button", { name: day(from!), exact: true }).click();
-    await org.getByRole("button", { name: day(to!), exact: true }).click();
-    await org.getByRole("button", { name: "Añadir estas fechas" }).click();
+    await voting.getByRole("button", { name: day(from!), exact: true }).click();
+    await voting.getByRole("button", { name: day(to!), exact: true }).click();
+    await voting.getByRole("button", { name: "Añadir estas fechas" }).click();
   }
-  await org.getByRole("button", { name: "Proponer fechas" }).click();
+  await voting.getByRole("button", { name: "Proponer fechas" }).click();
   assert.match(await org.getByLabel("Mensaje para el grupo").inputValue(), new RegExp(`${SITE}/p/noviembre-2026/fechas`));
   await org.getByRole("button", { name: "Cerrar" }).click();
   await ana.goto(`${SITE}/p/noviembre-2026/fechas`);
@@ -264,12 +266,13 @@ try {
   // Tricount and publishes it; Ana sees it first in her trip.
   await org.getByRole("button", { name: "Cerrar" }).click();
   await org.getByRole("link", { name: "Preparar el viaje" }).click();
-  await org.getByRole("button", { name: "Preparar con Claude" }).click();
-  await org.getByLabel("Salís desde (opcional)").fill("Logroño");
-  await org.getByRole("button", { name: "Preparar", exact: true }).click();
-  await org.getByText("Guía preparada: revísala antes de publicarla").waitFor();
+  // Where they leave from, and prepare: in place, no dialog.
+  const checklist = org.getByLabel("Antes de publicar");
+  await checklist.getByLabel("Salís desde").fill("Logroño");
+  await checklist.getByRole("button", { name: "Preparar con Claude" }).click();
+  await org.getByText(/La guía de .* está lista/).waitFor();
   await org.getByLabel("Enlace del Tricount (opcional)").fill("https://tricount.com/e2e");
-  await org.getByRole("button", { name: "Publicar el viaje" }).click();
+  await org.getByRole("button", { name: /Publicar el viaje|Guardar y publicar/ }).first().click();
   await org.getByText("Página del viaje publicada").waitFor();
   await ana.goto(`${SITE}/`);
   await ana.getByText("El viaje está listo").waitFor();

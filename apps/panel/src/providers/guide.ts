@@ -63,28 +63,47 @@ export function guidePrompt(req: GuideRequest, estimate = false): string {
       ? `- toAirport (cómo llegar al aeropuerto): desde ${req.home} hasta el aeropuerto ${req.origin} en las fechas del viaje. Opciones: coche (kilómetros y tiempo, gasolina por persona repartida en los coches necesarios con un consumo medio y el precio actual del combustible, peajes y parking en el aeropuerto durante los días del viaje, con dónde aparcar), autobús y tren (operador, salidas típicas esos días, tiempo, precio por persona y dónde para respecto a la terminal). Pon el total por persona en priceEuros y el desglose en detail.`
       : "- toAirport: déjalo vacío.",
     `- fromAirport (del aeropuerto al alojamiento): metro, autobús, tren, taxi o lanzadera desde ${req.iata}, con tiempo y precio por persona, y cuál conviene a un grupo con maletas (menciónalo en el detalle).`,
+    "Sé breve: cada título en menos de 80 caracteres y cada detalle en menos de 400.",
     estimate
       ? "No puedes buscar en la web: escribe con lo que sabes, con cifras aproximadas y realistas, y deja sources vacío. Todo en español de España."
       : "Los horarios y precios cambian: da cifras aproximadas y realistas. Cita en sources las páginas de donde salen. Todo en español de España.",
   ].join("\n");
 }
 
-const toCents = (euros: number | null) => (euros === null ? null : Math.round(euros * 100));
+const toCents = (euros: number | null) => (euros === null || euros < 0 ? null : Math.round(euros * 100));
+
+// Cuts text to what the trip page takes, at a word, with an ellipsis.
+export function fit(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:·–-]+$/, "")}…`;
+}
 
 // Research's answer → the trip page's guide, keeping what the organiser
 // already added (stay details, Tricount).
 export function toTripPage(destinationId: string, home: string, out: z.infer<typeof GuideEstimate>, now: Date, keep?: Partial<TripPage>, by?: string): TripPage {
-  const transport = (t: GuideOutput["toAirport"][number]) => ({ mode: t.mode, title: t.title, detail: t.detail, minutes: t.minutes, priceCents: toCents(t.priceEuros) });
+  // Anything longer than the page allows is shortened, and entries without a
+  // title are left out: a long answer shouldn't lose the whole guide.
+  const titled = <T extends { title: string }>(items: T[], max: number) => items.filter((i) => i.title.trim()).slice(0, max);
+  const transport = (t: GuideOutput["toAirport"][number]) => ({
+    mode: t.mode,
+    title: fit(t.title, 120),
+    detail: fit(t.detail, 600),
+    minutes: t.minutes && t.minutes > 0 ? Math.round(t.minutes) : null,
+    priceCents: toCents(t.priceEuros),
+  });
   return {
     destinationId,
-    intro: out.intro,
-    todo: out.todo.map((t) => ({ title: t.title, detail: t.detail, priceCents: toCents(t.priceEuros) })),
-    food: out.food.map((f) => ({ title: f.title, detail: f.detail, ...(f.where ? { where: f.where } : {}) })),
-    sights: out.sights.map((s) => ({ title: s.title, detail: s.detail })),
-    beforeYouGo: out.beforeYouGo.map((b) => ({ title: b.title, detail: b.detail })),
+    intro: fit(out.intro, 1000),
+    todo: titled(out.todo, 15).map((t) => ({ title: fit(t.title, 120), detail: fit(t.detail, 600), priceCents: toCents(t.priceEuros) })),
+    food: titled(out.food, 15).map((f) => ({ title: fit(f.title, 120), detail: fit(f.detail, 600), ...(f.where ? { where: fit(f.where, 200) } : {}) })),
+    sights: titled(out.sights, 15).map((s) => ({ title: fit(s.title, 120), detail: fit(s.detail, 600) })),
+    beforeYouGo: titled(out.beforeYouGo, 15).map((b) => ({ title: fit(b.title, 120), detail: fit(b.detail, 600) })),
     home,
-    toAirport: home ? out.toAirport.map(transport) : [],
-    fromAirport: out.fromAirport.map(transport),
+    toAirport: home ? titled(out.toAirport, 6).map(transport) : [],
+    fromAirport: titled(out.fromAirport, 6).map(transport),
     stay: keep?.stay ?? { address: "", checkIn: "", checkOut: "" },
     tricountUrl: keep?.tricountUrl ?? null,
     sources: out.sources,

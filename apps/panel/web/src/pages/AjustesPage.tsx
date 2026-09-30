@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Badge, Card, EmptyState, Heading, Notice, PageHeader, RadioCard, Skeleton, Text, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
-import type { AiOption, AiView } from "../data/backend.ts";
-import { usePanel } from "../data/store.tsx";
+import type { AiOption, AiView, Status } from "../data/backend.ts";
+import { useLoad, usePanel } from "../data/store.tsx";
 
 // What each AI can do, in a line; on the site, whether it can search there.
 function abilities(o: AiOption, hosted: boolean): string {
@@ -13,21 +13,37 @@ function abilities(o: AiOption, hosted: boolean): string {
   ].join(" · ");
 }
 
+// "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): whether it works on this
+// laptop, what it lacks, and where to find it.
+function BrowserCard({ status }: { status: Status }) {
+  return (
+    <Card as="section" variant="raised" aria-labelledby="navegador" className="flex flex-col gap-2">
+      <span className="flex flex-wrap items-center gap-2">
+        <Heading id="navegador" size="subheading">
+          Precios reales en el navegador
+        </Heading>
+        <Badge tone={status.browse ? "accent" : "muted"}>{status.browse ? "Listo" : "Sin configurar"}</Badge>
+      </span>
+      <Text tone="muted" size="sm">
+        {status.browse
+          ? "En las propuestas aprobadas (Revisar, «mirar precios reales») y en El viaje, «Mirar en Google Flights» y «Mirar en Airbnb» abren una ventana de Chrome en este ordenador y Claude lee el precio. Si sale un aviso de cookies o un CAPTCHA, resuélvelo en la ventana."
+          : status.browseMissing === "install"
+            ? "Falta el paquete del navegador: ejecuta npm install en la carpeta de Wanderlot y reinicia el panel (npm run panel). Hace falta Chrome instalado."
+            : "Necesita el comando claude (Claude Code) en este ordenador. Instálalo y reinicia el panel."}
+      </Text>
+    </Card>
+  );
+}
+
 // Ajustes (ROADMAP 3.3): which AI searches destinations, reads screenshots
 // and drafts the trip's guide. Keys live in .env or the site's secrets,
 // never here: the page says where to put them.
 export function AjustesPage() {
   const { state, ai, chooseAi } = usePanel();
   const toast = useToast();
-  const [view, setView] = useState<AiView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: view, error, set: setView } = useLoad<AiView>("ai", ai);
   const hosted = !!state.status?.hosted;
 
-  useEffect(() => {
-    ai().then(setView, (e: Error) => setError(e.message));
-    // Once: `ai` is a new function on every panel change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const pick = async (o: AiOption) => {
     try {
@@ -83,6 +99,8 @@ export function AjustesPage() {
             )}
           </Card>
         )}
+
+        {!hosted && state.status && <BrowserCard status={state.status} />}
 
         {missing.length > 0 && (
           <section aria-labelledby="otras-ia" className="flex flex-col gap-3">

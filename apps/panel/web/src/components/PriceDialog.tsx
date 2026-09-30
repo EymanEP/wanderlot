@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from
 import { baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
 import { Button, DataRow, Dialog, Field, Notice, TextInput } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
+import type { Task } from "../data/store.tsx";
 
 export interface PriceDialogProps {
   proposal: Proposal | undefined;
@@ -14,8 +15,10 @@ export interface PriceDialogProps {
   // Which AI reads them: "Claude", "OpenAI".
   aiName?: string;
   // "Mirar en Google Flights / Airbnb": Claude reads the real page in a
-  // browser on the laptop (ROADMAP 3.4). Only for the finalists.
-  onBrowse?: (kind: "flight" | "stay", onStep: (s: SearchStep) => void) => Promise<Browsed>;
+  // browser on the laptop (ROADMAP 3.4). Only for the finalists. The reading
+  // is a task in the panel (store.tsx), so it carries on if the dialog closes
+  // and its result fills the fields when it opens again.
+  browse?: { tasks: Task[]; start: (kind: "flight" | "stay") => void; take: (id: string) => void };
 }
 
 const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
@@ -110,7 +113,7 @@ const SITE = { flight: { name: "Google Flights", id: "google-flights" }, stay: {
 // What the browser is doing, in a line.
 const stepLine = (s: SearchStep) => (s.kind === "read" ? `Mirando ${s.host}…` : s.kind === "search" ? `Buscando «${s.query}»…` : s.text);
 
-export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onBrowse, aiName = "Claude" }: PriceDialogProps) {
+export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, browse, aiName = "Claude" }: PriceDialogProps) {
   const stay = p ? baseStay(p.stays) : undefined;
   const people = plan.partySize;
   const [flights, setFlights] = useState("");
@@ -121,8 +124,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onB
   const [stayTotal, setStayTotal] = useState("");
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
   // "Mirar en…": which part, what it's doing, and the pages read.
-  const [browsing, setBrowsing] = useState<"flight" | "stay" | null>(null);
-  const [step, setStep] = useState<string | null>(null);
+
   const [seen, setSeen] = useState<{ flight?: string; stay?: string }>({});
   // Where a pasted screenshot goes: the section last worked in, or asked.
   const [focus, setFocus] = useState<"flight" | "stay" | null>(null);
@@ -168,21 +170,30 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onB
   };
 
   // Claude reads the real page in the browser window on the laptop.
-  const look = async (kind: "flight" | "stay") => {
-    setBrowsing(kind);
-    setStep(null);
-    setError(null);
-    try {
-      const got = await onBrowse!(kind, (s) => setStep(stepLine(s)));
-      fill(got, "la página");
-      if (got.kind === "stay" && got.url) setStayUrl(got.url);
-      setSeen((s) => ({ ...s, [kind]: got.pageUrl ?? "" }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBrowsing(null);
-      setStep(null);
+  // The browser's readings for this proposal: running ones show their step;
+  // finished ones fill the fields (or say what failed) once, then go.
+  const running = browse?.tasks.find((t) => t.status === "running");
+  const browsing = (running?.site ?? null) as "flight" | "stay" | null;
+  const step = running?.steps.at(-1) ? stepLine(running.steps.at(-1)!) : null;
+  const finished = browse?.tasks.filter((t) => t.status !== "running") ?? [];
+  useEffect(() => {
+    if (!p || !finished.length) return;
+    for (const t of finished) {
+      if (t.status === "failed") setError(t.error ?? "No se pudo leer la página");
+      else if (t.result && "kind" in t.result) {
+        const got = t.result as Browsed;
+        fill(got, "la página");
+        if (got.kind === "stay" && got.url) setStayUrl(got.url);
+        setSeen((s) => ({ ...s, [t.site!]: got.pageUrl ?? "" }));
+      }
+      browse!.take(t.id);
     }
+    // Once per finished reading, while this proposal's dialog is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p?.id, finished.map((t) => t.id).join()]);
+  const look = (kind: "flight" | "stay") => {
+    setError(null);
+    browse!.start(kind);
   };
 
   // What was read, into the fields; says what's missing.
@@ -278,7 +289,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onB
             ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y ${aiName} lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
             : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita una IA: mira en Ajustes cómo añadir una.`}{" "}
           Se mostrarán como «Comprobado a mano» durante 72 horas.
-          {onBrowse && ` Con «Mirar en…», ${aiName} abre la página en una ventana de este ordenador y lee el precio: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. Se mostrará como «Visto en Google Flights» o «Airbnb».`}
+          {browse && ` Con «Mirar en…», ${aiName} abre la página en una ventana de este ordenador y lee el precio: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. Se mostrará como «Visto en Google Flights» o «Airbnb».`}
         </span>
 
         {browsing && (
@@ -303,8 +314,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onB
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Vuelos</strong>
             <div className="flex flex-wrap items-center gap-2">
-              {onBrowse && (
-                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => void look("flight")}>
+              {browse && (
+                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => look("flight")}>
                   {browsing === "flight" ? `Mirando en ${SITE.flight.name}…` : `Mirar en ${SITE.flight.name}`}
                 </Button>
               )}
@@ -345,8 +356,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onB
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Alojamiento</strong>
             <div className="flex flex-wrap items-center gap-2">
-              {onBrowse && (
-                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => void look("stay")}>
+              {browse && (
+                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => look("stay")}>
                   {browsing === "stay" ? `Mirando en ${SITE.stay.name}…` : `Mirar en ${SITE.stay.name}`}
                 </Button>
               )}
