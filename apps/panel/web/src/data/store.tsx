@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { AiId, AiView, ManualProposal, PanelJob, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { AiId, AiView, Browsed, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -67,7 +67,8 @@ export interface PanelApi {
   verify: (id: string) => Promise<{ verified: boolean; reason?: string }>;
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
-  setPrices: (id: string, prices: CheckedPrices) => Promise<void>;
+  setPrices: (id: string, prices: PriceSave) => Promise<void>;
+  browse: (id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void) => Promise<Browsed>;
   addProposal: (p: ManualProposal) => Promise<Proposal>;
   ai: () => Promise<AiView>;
   chooseAi: (id: AiId) => Promise<AiView>;
@@ -338,6 +339,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         return removed;
       },
       extract: (id, kind, images) => backend.extract(need(), id, kind, images),
+      browse: (id, kind, onStep) => backend.browse(need(), id, kind, onStep),
       async addProposal(p) {
         const added = await backend.addProposal(need(), p);
         patch((s) => ({ proposals: [...s.proposals, added], editorial: { ...s.editorial, [added.id]: { ...EMPTY_EDITORIAL, photoQueries: [added.place.city] } } }));

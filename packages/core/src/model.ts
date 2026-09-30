@@ -64,6 +64,9 @@ export const Provenance = z.discriminatedUnion("kind", [
     // screenshot), not only the price. Without it they're research's guess,
     // and the site shows the price alone.
     flightDetails: z.boolean().optional(),
+    // Read off these sites in a browser, then reviewed by the organiser
+    // ("Mirar en Google Flights / Airbnb"): the site says where.
+    seenOn: z.array(z.enum(["google-flights", "airbnb"])).optional(),
     // The trip's dates changed after this check: the price was for others.
     forOtherDates: z.boolean().optional(),
   }),

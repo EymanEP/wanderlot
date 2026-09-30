@@ -528,6 +528,32 @@ sources, which the model allows only then; the site says "Estimado por …".
 Sites before API version 11 refuse sourceless research, so the panel asks for
 a redeploy before publishing an estimate to one.
 
+### Checking finalists in the browser (local panel only)
+"Mirar en Google Flights" and "Mirar en Airbnb" in the price dialog, for
+**approved** proposals only (the ones the group will vote on, or the decided
+destination in El viaje). The `claude` command drives a visible browser on
+the organiser's laptop through Playwright MCP (`@playwright/mcp`), opens the
+Google Flights search for the route and dates, or the chosen Airbnb listing
+(or an Airbnb search for a whole place for the group) with the dates and
+people, and reads the price, the flights' times and the listing into the same
+fields as a screenshot. Nothing is saved until the organiser reviews and
+saves; the proposal is then `organiser` provenance with `seenOn`
+(`google-flights`, `airbnb`) and the pages in `sources`, and the site says
+"Visto en Google Flights y Airbnb".
+
+- The run gets no built-in tools (`--restricted --tools ""`), no other MCP
+  servers or settings (`--strict-mcp-config`), and only the Playwright tools
+  for reading a page (navigate, snapshot, click, type…); running scripts,
+  files, cookies and storage by hand are refused outright.
+- The browser is Chrome by default (`WANDERLOT_BROWSER`), with a profile of
+  its own in `data/browser` (`WANDERLOT_BROWSER_PROFILE`) kept between runs,
+  so a cookie choice or a solved CAPTCHA is remembered. The organiser sees
+  the window and clears any consent page or CAPTCHA; Claude waits for them.
+- Google's and Airbnb's terms don't allow automated access. This checks a
+  handful of pages, one at a time, on the organiser's own machine and at
+  their request, as they would by hand; it is not a crawler, and never runs
+  in Generar, on the site, or on its own.
+
 ### Flights (optional)
 `FlightProvider` searches and verifies fares; it is the only way to `api`
 provenance.

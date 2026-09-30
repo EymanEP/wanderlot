@@ -790,3 +790,34 @@ describe("Buscar desde el móvil", () => {
     expect(screen.queryByRole("region", { name: "Búsqueda terminada" })).toBeNull();
   });
 });
+
+describe("Mirar en Google Flights / Airbnb", () => {
+  it("reads the real pages for a finalist, and saves where the price was seen", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    await screen.findByRole("button", { name: /^Publicar/ });
+    await user.click(screen.getByRole("button", { name: /^Aprobadas/ }));
+    const card = screen.getAllByRole("article")[0]!;
+    const city = card.getAttribute("aria-label")!;
+    await user.click(within(card).getByRole("button", { name: /precios/ }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+
+    await user.click(dialog.getByRole("button", { name: "Mirar en Google Flights" }));
+    await dialog.findByText(/^Ida · /);
+    await user.click(dialog.getByRole("button", { name: "Mirar en Airbnb" }));
+    await dialog.findByDisplayValue("https://www.airbnb.es/rooms/12345");
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
+  });
+
+  it("isn't offered for a proposal not approved", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    const card = await screen.findByRole("article", { name: "Cracovia" });
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    expect(dialog.queryByRole("button", { name: "Mirar en Google Flights" })).toBeNull();
+    expect(dialog.getByRole("button", { name: "Leer captura del vuelo" })).toBeTruthy();
+  });
+});

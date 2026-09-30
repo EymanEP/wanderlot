@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { extractJsonSchema, extractPrompt } from "./extract.ts";
 import { guideJsonSchema, guidePrompt } from "./guide.ts";
+import { BROWSE_TOOLS, browseJsonSchema, browsePrompt } from "./browse.ts";
 import { ResearchOutput, buildPrompt, outputSchema, toResults } from "./research.ts";
 import type { ResearchProgress, ResearchProvider } from "./types.ts";
 
@@ -46,7 +47,7 @@ export function progressOf(event: Event): ResearchProgress[] {
     if (b.type === "text" && b.text?.trim()) return [{ kind: "note", text: b.text.trim().split("\n")[0]!.slice(0, 200) }];
     if (b.type !== "tool_use") return [];
     if (b.name === "WebSearch" && typeof b.input?.query === "string") return [{ kind: "search", query: b.input.query }];
-    if (b.name === "WebFetch" && typeof b.input?.url === "string") {
+    if ((b.name === "WebFetch" || b.name === "mcp__playwright__browser_navigate") && typeof b.input?.url === "string") {
       try {
         return [{ kind: "read", host: new URL(b.input.url).hostname.replace(/^www\./, ""), url: b.input.url }];
       } catch {
@@ -81,8 +82,99 @@ async function answer(run: Runner, args: string[], signal?: AbortSignal, onProgr
 
 const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" } as const;
 
-export function claudeProvider(run: Runner = runClaude): ResearchProvider {
+// The browser Claude drives to check the finalists' prices: Playwright MCP
+// in a visible window, with a profile of its own kept between runs so a
+// cookie choice or a solved CAPTCHA is remembered.
+export interface BrowserConfig {
+  // The Playwright MCP server's cli.js.
+  mcpCli: string;
+  // "chrome", "msedge", "firefox"…: installed on the laptop.
+  channel: string;
+  profileDir: string;
+}
+
+// Everything in Playwright MCP that isn't reading a page: running code, files,
+// cookies and storage by hand, the network. Refused outright, on top of
+// being left out of --allowedTools.
+const BROWSE_REFUSED = [
+  "browser_evaluate",
+  "browser_run_code_unsafe",
+  "browser_file_upload",
+  "browser_pdf_save",
+  "browser_route",
+  "browser_unroute",
+  "browser_network_state_set",
+  "browser_set_storage_state",
+  "browser_storage_state",
+  "browser_cookie_set",
+  "browser_cookie_get",
+  "browser_cookie_list",
+  "browser_cookie_delete",
+  "browser_cookie_clear",
+  "browser_localstorage_set",
+  "browser_localstorage_get",
+  "browser_localstorage_list",
+  "browser_localstorage_delete",
+  "browser_localstorage_clear",
+  "browser_sessionstorage_set",
+  "browser_sessionstorage_get",
+  "browser_sessionstorage_list",
+  "browser_sessionstorage_delete",
+  "browser_sessionstorage_clear",
+].map((t) => `mcp__playwright__${t}`);
+
+export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig): ResearchProvider {
   return {
+    ...(browser
+      ? {
+          async browse(req, signal, onProgress) {
+            const dir = await mkdtemp(join(tmpdir(), "wanderlot-navegador-"));
+            try {
+              const config = join(dir, "mcp.json");
+              await writeFile(
+                config,
+                JSON.stringify({
+                  mcpServers: {
+                    playwright: {
+                      command: process.execPath,
+                      args: [browser.mcpCli, "--browser", browser.channel, "--user-data-dir", browser.profileDir, "--output-dir", dir, "--viewport-size", "1280x900"],
+                    },
+                  },
+                }),
+              );
+              return await answer(
+                run,
+                [
+                  "-p",
+                  browsePrompt(req),
+                  "--output-format",
+                  "stream-json",
+                  "--verbose",
+                  "--json-schema",
+                  JSON.stringify(browseJsonSchema(req.kind)),
+                  // No built-in tools at all (no files, no shell, no web
+                  // search), no other MCP servers or settings: only this
+                  // browser, and only the tools for reading a page.
+                  "--restricted",
+                  "--tools",
+                  "",
+                  "--strict-mcp-config",
+                  "--mcp-config",
+                  config,
+                  "--allowedTools",
+                  BROWSE_TOOLS.join(","),
+                  "--disallowedTools",
+                  BROWSE_REFUSED.join(","),
+                ],
+                signal,
+                onProgress,
+              );
+            } finally {
+              await rm(dir, { recursive: true, force: true });
+            }
+          },
+        }
+      : {}),
     async extract(req, signal) {
       // The screenshots go in a folder of their own, the only place this run
       // may read from.

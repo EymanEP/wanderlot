@@ -84,7 +84,9 @@ try {
   await org.getByRole("link", { name: "Crear el primero" }).click();
   await org.getByLabel("Nombre").fill("Noviembre 2026");
   // Two clicks on next month's calendar: leave on the 10th, back on the 15th.
-  const next = new Date();
+  // The calendar opens on the first day that can be picked, tomorrow, so
+  // "next month" counts from there (on the last day of a month, it's two).
+  const next = new Date(Date.now() + 86_400_000);
   next.setUTCDate(1);
   next.setUTCMonth(next.getUTCMonth() + 1);
   const day = (d: number) => `${next.toISOString().slice(0, 8)}${String(d).padStart(2, "0")}`;

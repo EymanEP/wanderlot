@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { euros, researchLabel, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
+import { checkedLabel, euros, researchLabel, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
 import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, type Trust } from "@wanderlot/ui";
 import { placeLine, rankLabel, stayLine } from "../lib/view.ts";
 
@@ -27,7 +27,7 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
         className="h-[240px] rounded-2xl sm:h-[310px]"
         top={
           <>
-            {winner ? <Badge tone="dark" size="md">Destino elegido</Badge> : <ProvenanceBadge trust={trust} size="md" label={trust === "verified" && d.provenance.kind === "organiser" ? "Comprobado" : (researchLabel(d.provenance) ?? "short")} />}
+            {winner ? <Badge tone="dark" size="md">Destino elegido</Badge> : <ProvenanceBadge trust={trust} size="md" label={trust === "verified" && d.provenance.kind === "organiser" ? (d.provenance.seenOn?.length ? checkedLabel(d.provenance)! : "Comprobado") : (researchLabel(d.provenance) ?? "short")} />}
             <IconButton
               label={saved ? `Quitar ${d.place.city} de guardados` : `Guardar ${d.place.city}`}
               aria-pressed={saved}
