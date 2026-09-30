@@ -162,3 +162,47 @@ describe("the schema handed to `claude --json-schema`", () => {
     expect(validate({ proposals: [{ place: {} }] })).toBe(false);
   });
 });
+
+describe("claude checking a finalist in the browser", () => {
+  const context = { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 };
+  const browser = { mcpCli: "/opt/pw/cli.js", channel: "chrome", profileDir: "/home/ana/wanderlot/data/browser" };
+
+  it("gives claude only the browser, only the tools to read a page, and cleans up", async () => {
+    let args: string[] = [];
+    let config: any;
+    const steps: ResearchProgress[] = [];
+    const provider = claudeProvider(async (a, onLine) => {
+      args = a;
+      config = JSON.parse(readFileSync(a[a.indexOf("--mcp-config") + 1]!, "utf8"));
+      onLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__playwright__browser_navigate", input: { url: "https://www.google.com/travel/flights?q=x" } }] } }));
+      onLine(resultLine({ outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, pageUrl: "https://www.google.com/travel/flights?q=x" }));
+    }, browser);
+    const raw = await provider.browse!({ kind: "flight", url: "https://www.google.com/travel/flights?q=x", context }, undefined, (p) => steps.push(p));
+    expect(raw).toMatchObject({ pricePerPersonEuros: 121 });
+    expect(steps).toEqual([{ kind: "read", host: "google.com", url: "https://www.google.com/travel/flights?q=x" }]);
+
+    // No built-in tools, no other MCP servers or settings.
+    expect(args).toContain("--restricted");
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args).toContain("--strict-mcp-config");
+    const allowed = args[args.indexOf("--allowedTools") + 1]!.split(",");
+    expect(allowed.every((t) => t.startsWith("mcp__playwright__browser_"))).toBe(true);
+    expect(allowed).toContain("mcp__playwright__browser_navigate");
+    for (const t of ["browser_evaluate", "browser_run_code_unsafe", "browser_file_upload", "browser_cookie_list"]) {
+      expect(allowed).not.toContain(`mcp__playwright__${t}`);
+      expect(args[args.indexOf("--disallowedTools") + 1]).toContain(`mcp__playwright__${t}`);
+    }
+    // A visible browser with a profile of its own, kept between runs.
+    expect(config.mcpServers.playwright.args).toEqual(expect.arrayContaining(["/opt/pw/cli.js", "--browser", "chrome", "--user-data-dir", browser.profileDir]));
+    expect(config.mcpServers.playwright.args).not.toContain("--headless");
+    const prompt = args[args.indexOf("-p") + 1]!;
+    expect(prompt).toMatch(/No reserves, no pagues, no inicies sesión/);
+    expect(prompt).toMatch(/CAPTCHA/);
+    // The temporary folder is gone.
+    expect(existsSync(join(args[args.indexOf("--mcp-config") + 1]!, ".."))).toBe(false);
+  });
+
+  it("isn't offered without a browser", () => {
+    expect(claudeProvider(async () => {}).browse).toBeUndefined();
+  });
+});

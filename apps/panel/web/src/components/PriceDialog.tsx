@@ -1,19 +1,21 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
 import { Button, DataRow, Dialog, Field, Notice, TextInput } from "@wanderlot/ui";
-import type { CheckedPrices } from "../data/backend.ts";
-import type { Extracted, ExtractedLeg, ScreenshotImage } from "../data/backend.ts";
+import type { Browsed, Extracted, ExtractedLeg, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 
 export interface PriceDialogProps {
   proposal: Proposal | undefined;
   plan: Plan;
-  onSave: (prices: CheckedPrices) => Promise<void>;
+  onSave: (prices: PriceSave) => Promise<void>;
   onClose: () => void;
   // An AI reading screenshots of the flights or the stay; without one set up,
   // the prices are typed.
   onExtract?: (kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
   // Which AI reads them: "Claude", "OpenAI".
   aiName?: string;
+  // "Mirar en Google Flights / Airbnb": Claude reads the real page in a
+  // browser on the laptop (ROADMAP 3.4). Only for the finalists.
+  onBrowse?: (kind: "flight" | "stay", onStep: (s: SearchStep) => void) => Promise<Browsed>;
 }
 
 const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
@@ -103,7 +105,12 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
 // group pays for the stay. From then on the proposal shows as checked by hand
 // (SPEC §3). Without a screenshot of the flights, the site shows their price
 // alone: research's times would sit beside a real price.
-export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiName = "Claude" }: PriceDialogProps) {
+const SITE = { flight: { name: "Google Flights", id: "google-flights" }, stay: { name: "Airbnb", id: "airbnb" } } as const;
+
+// What the browser is doing, in a line.
+const stepLine = (s: SearchStep) => (s.kind === "read" ? `Mirando ${s.host}…` : s.kind === "search" ? `Buscando «${s.query}»…` : s.text);
+
+export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, onBrowse, aiName = "Claude" }: PriceDialogProps) {
   const stay = p ? baseStay(p.stays) : undefined;
   const people = plan.partySize;
   const [flights, setFlights] = useState("");
@@ -113,6 +120,10 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
   const [stayDescription, setStayDescription] = useState<string | undefined>(undefined);
   const [stayTotal, setStayTotal] = useState("");
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
+  // "Mirar en…": which part, what it's doing, and the pages read.
+  const [browsing, setBrowsing] = useState<"flight" | "stay" | null>(null);
+  const [step, setStep] = useState<string | null>(null);
+  const [seen, setSeen] = useState<{ flight?: string; stay?: string }>({});
   // Where a pasted screenshot goes: the section last worked in, or asked.
   const [focus, setFocus] = useState<"flight" | "stay" | null>(null);
   const [pasted, setPasted] = useState<File[] | null>(null);
@@ -132,6 +143,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
     setError(null);
     setFocus(null);
     setPasted(null);
+    setSeen({});
     // Refill each time a different proposal opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id]);
@@ -147,26 +159,48 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
     setPasted(null);
     setError(null);
     try {
-      const got = await onExtract!(kind, await readImages(files));
-      const missing: string[] = [];
-      if (got.kind === "flight") {
-        if (got.flightCents !== null) setFlights(toEuros(got.flightCents));
-        else missing.push("No vi el precio del vuelo por persona: escríbelo tú.");
-        if (got.outbound && got.inbound) setLegs({ outbound: got.outbound, inbound: got.inbound });
-        else missing.push("No vi los dos vuelos, ida y vuelta, así que la cuadrilla verá solo el precio.");
-      } else {
-        if (got.name) setStayName(got.name);
-        setStayDescription(got.description ?? undefined);
-        if (got.stayCents !== null) setStayTotal(toEuros(got.stayCents));
-        else missing.push("No vi el precio total del alojamiento: escríbelo tú.");
-        if (got.nights !== null && got.nights !== plan.nights) missing.push(`La captura es para ${got.nights} noches y el viaje tiene ${plan.nights}: revisa el precio.`);
-      }
-      setNotes(missing);
+      fill(await onExtract!(kind, await readImages(files)), "la captura");
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setReading(null);
     }
+  };
+
+  // Claude reads the real page in the browser window on the laptop.
+  const look = async (kind: "flight" | "stay") => {
+    setBrowsing(kind);
+    setStep(null);
+    setError(null);
+    try {
+      const got = await onBrowse!(kind, (s) => setStep(stepLine(s)));
+      fill(got, "la página");
+      if (got.kind === "stay" && got.url) setStayUrl(got.url);
+      setSeen((s) => ({ ...s, [kind]: got.pageUrl ?? "" }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBrowsing(null);
+      setStep(null);
+    }
+  };
+
+  // What was read, into the fields; says what's missing.
+  const fill = (got: Extracted, from: string) => {
+    const missing: string[] = [];
+    if (got.kind === "flight") {
+      if (got.flightCents !== null) setFlights(toEuros(got.flightCents));
+      else missing.push("No vi el precio del vuelo por persona: escríbelo tú.");
+      if (got.outbound && got.inbound) setLegs({ outbound: got.outbound, inbound: got.inbound });
+      else missing.push("No vi los dos vuelos, ida y vuelta, así que la cuadrilla verá solo el precio.");
+    } else {
+      if (got.name) setStayName(got.name);
+      setStayDescription(got.description ?? undefined);
+      if (got.stayCents !== null) setStayTotal(toEuros(got.stayCents));
+      else missing.push("No vi el precio total del alojamiento: escríbelo tú.");
+      if (got.nights !== null && got.nights !== plan.nights) missing.push(`${from[0]!.toUpperCase()}${from.slice(1)} es para ${got.nights} noches y el viaje tiene ${plan.nights}: revisa el precio.`);
+    }
+    setNotes(missing);
   };
 
   // Ctrl/Cmd+V with an image: read it into the section being worked in.
@@ -186,9 +220,16 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
     if (url && !/^https:\/\/\S+$/.test(url)) return setError("El enlace del alojamiento tiene que empezar por https://");
     setBusy(true);
     try {
+      const kinds = (["flight", "stay"] as const).filter((k) => seen[k] !== undefined);
       await onSave({
         flightCents,
         ...(legs ?? {}),
+        ...(kinds.length
+          ? {
+              seenOn: kinds.map((k) => SITE[k].id),
+              sources: kinds.flatMap((k) => (seen[k] && /^https:\/\//.test(seen[k]!) ? [{ label: SITE[k].name, url: seen[k]! }] : [])),
+            }
+          : {}),
         ...(stayCents !== undefined
           ? { stayCents, stay: { name: stayName.trim(), ...(stayDescription ? { description: stayDescription } : {}), ...(url ? { url } : {}) } }
           : {}),
@@ -225,7 +266,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
       actions={
         <>
           <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" type="submit" form="precios" disabled={busy || reading !== null}>
+          <Button variant="primary" type="submit" form="precios" disabled={busy || reading !== null || browsing !== null}>
             {busy ? "Guardando…" : "Guardar como comprobados"}
           </Button>
         </>
@@ -237,7 +278,14 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
             ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y ${aiName} lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
             : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita una IA: mira en Ajustes cómo añadir una.`}{" "}
           Se mostrarán como «Comprobado a mano» durante 72 horas.
+          {onBrowse && ` Con «Mirar en…», ${aiName} abre la página en una ventana de este ordenador y lee el precio: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. Se mostrará como «Visto en Google Flights» o «Airbnb».`}
         </span>
+
+        {browsing && (
+          <div role="status" className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
+            {step ?? `Abriendo ${SITE[browsing].name} en el navegador…`}
+          </div>
+        )}
 
         {pasted && (
           <div role="group" aria-label="¿De qué es la captura?" className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
@@ -254,7 +302,14 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
         <section aria-label="Vuelos" className="flex flex-col gap-3" onFocus={() => setFocus("flight")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Vuelos</strong>
-            {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
+            <div className="flex flex-wrap items-center gap-2">
+              {onBrowse && (
+                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => void look("flight")}>
+                  {browsing === "flight" ? `Mirando en ${SITE.flight.name}…` : `Mirar en ${SITE.flight.name}`}
+                </Button>
+              )}
+              {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
+            </div>
           </div>
           {p && (
             <a
@@ -289,7 +344,14 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, aiN
         <section aria-label="Alojamiento" className="flex flex-col gap-3 border-t border-line-faint pt-4" onFocus={() => setFocus("stay")}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Alojamiento</strong>
-            {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
+            <div className="flex flex-wrap items-center gap-2">
+              {onBrowse && (
+                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => void look("stay")}>
+                  {browsing === "stay" ? `Mirando en ${SITE.stay.name}…` : `Mirar en ${SITE.stay.name}`}
+                </Button>
+              )}
+              {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nombre del alojamiento">

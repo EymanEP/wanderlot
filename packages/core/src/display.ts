@@ -53,6 +53,14 @@ export function flightDetailsKnown(p: Pick<Proposal, "provenance">): boolean {
   return p.provenance.kind === "api" || p.provenance.flightDetails === true;
 }
 
+// A price the organiser checked, and where: "Visto en Google Flights y
+// Airbnb", or "Comprobado a mano". null for others.
+export function checkedLabel(p: Provenance): string | null {
+  if (p.kind !== "organiser") return null;
+  const seen = (p.seenOn ?? []).map((s) => (s === "google-flights" ? "Google Flights" : "Airbnb"));
+  return seen.length ? `Visto en ${seen.join(" y ")}` : "Comprobado a mano";
+}
+
 // Who wrote research's figures, as a badge says it: "Lo escribió Claude",
 // "Estimado por OpenAI" (ROADMAP 3.3). null for checked prices.
 export function researchLabel(p: Provenance): string | null {

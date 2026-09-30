@@ -94,7 +94,7 @@ function stepText(step: SearchStep): string {
 // prices, have Claude draft the guide and how to get there, edit it, add the
 // stay's details and the Tricount link, and publish it for the group.
 export function ViajePage() {
-  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, now, clearJob } = usePanel();
+  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, browse, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const [view, setView] = useState<TripView | null>(null);
@@ -351,6 +351,7 @@ export function ViajePage() {
           proposal={pricing ? destination : undefined}
           plan={plan}
           aiName={state.status?.ai?.name ?? "Claude"}
+          {...(state.status?.browse ? { onBrowse: (kind: "flight" | "stay", onStep: (s: SearchStep) => void) => browse(destination.id, kind, onStep) } : {})}
           {...(state.status?.research !== "none" ? { onExtract: (kind: "flight" | "stay", images: ScreenshotImage[]) => extract(destination.id, kind, images) } : {})}
           onClose={() => setPricing(false)}
           onSave={async (prices) => {

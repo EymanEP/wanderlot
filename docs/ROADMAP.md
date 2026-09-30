@@ -14,8 +14,9 @@ What this roadmap covers:
 
 **Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
 phase 1 (2.3) and the Tricount link (2.4), the export (2.5), the panel on the
-site (3.1), one store (3.2) and other AIs (3.3, all but other local
-commands). Everything else is still a plan.
+site (3.1), one store (3.2), other AIs (3.3, all but other local commands)
+and checking the finalists in the browser (3.4). Everything else is still a
+plan.
 
 **Legend**
 
@@ -496,6 +497,23 @@ the background, so there they still search from the laptop.
 
 - Not yet: `codex` and `opencode` as local commands (each needs checking
   first).
+
+---
+
+### 3.4 Check the finalists in the browser · M
+
+**Why.** Research's prices are estimates, and checking the finalists by hand
+means opening Google Flights and Airbnb, taking screenshots and reading them
+in. The browser can do the opening and reading, with the organiser watching.
+
+**Done:** "Mirar en Google Flights" and "Mirar en Airbnb" in the price
+dialog, for approved proposals only, on the laptop's panel. The `claude`
+command drives a visible Chrome window through Playwright MCP and fills in
+the same fields as a screenshot; the organiser reviews and saves, and the
+site shows "Visto en Google Flights y Airbnb". See SPEC §8 for what the run
+may do. Not on the site's panel (there's no browser there), and never for a
+whole search: Google and Airbnb don't allow automated access, so this stays
+a few pages checked at the organiser's request.
 
 ---
 

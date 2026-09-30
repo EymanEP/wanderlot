@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPanel, type PanelStatus } from "./app.ts";
 import { panelHosts } from "./guard.ts";
@@ -97,11 +98,27 @@ const status: PanelStatus = {
   store: onSite ? "site" : "file",
 };
 
+// "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): the claude command
+// drives a visible browser (Chrome by default) with a profile of its own.
+let mcpCli: string | null = null;
+try {
+  mcpCli = join(dirname(createRequire(import.meta.url).resolve("@playwright/mcp/package.json")), "cli.js");
+} catch {}
+const browse =
+  hasClaude && mcpCli
+    ? claudeProvider(undefined, {
+        mcpCli,
+        channel: process.env.WANDERLOT_BROWSER ?? "chrome",
+        profileDir: resolvePath(process.env.WANDERLOT_BROWSER_PROFILE ?? "data/browser"),
+      }).browse
+    : undefined;
+
 const app = createPanel({
   status,
   store: new PanelStore(onSite ? sitePanelBackend(site) : fileBackend(dataFile)),
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
   ai,
+  ...(browse ? { browse } : {}),
   photos,
   // This server, and Vite's dev server in front of it.
   hosts: panelHosts([port, 5174]),

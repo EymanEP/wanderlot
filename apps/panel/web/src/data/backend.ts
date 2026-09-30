@@ -29,6 +29,8 @@ export interface Status {
   ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: string[];
+  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4).
+  browse?: boolean;
   // outdated: deployed from older code; some panel features need a redeploy.
   site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
   // The panel the site serves at /admin (ROADMAP 3.1): an AI there only
@@ -163,6 +165,15 @@ export type Extracted =
   | { kind: "flight"; outbound: ExtractedLeg | null; inbound: ExtractedLeg | null; flightCents: number | null }
   | { kind: "stay"; name: string | null; description: string | null; stayCents: number | null; nights: number | null };
 
+// What Claude read off Google Flights or Airbnb in the browser, and where.
+export type Browsed = Extracted & { pageUrl: string | null; url?: string | null };
+
+// Checked prices, and where they were seen ("Mirar en…", ROADMAP 3.4).
+export interface PriceSave extends CheckedPrices {
+  seenOn?: ("google-flights" | "airbnb")[];
+  sources?: { label: string; url: string }[];
+}
+
 export interface TripSummary {
   plan: Plan;
   proposals: number;
@@ -209,7 +220,9 @@ export interface PanelBackend {
   clearUnapproved(planId: string): Promise<{ removed: number }>;
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
-  setPrices(planId: string, id: string, prices: CheckedPrices): Promise<Proposal>;
+  setPrices(planId: string, id: string, prices: PriceSave): Promise<Proposal>;
+  // Claude reads the real page in a browser on the laptop; nothing is saved.
+  browse(planId: string, id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void): Promise<Browsed>;
   // Added by hand, approved and checked from now.
   addProposal(planId: string, p: ManualProposal): Promise<Proposal>;
   ai(): Promise<AiView>;
@@ -329,6 +342,32 @@ export const httpBackend: PanelBackend = {
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
+  async browse(planId, id, kind, onStep) {
+    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/proposals/${enc(id)}/browse`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }) });
+    if (!res.ok || !res.body) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new BackendError(data.error ?? `Error ${res.status}`);
+    }
+    // NDJSON: {progress} lines, then {fields} or {error}.
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line) as { progress?: SearchStep; fields?: Browsed; error?: string };
+        if (msg.error) throw new BackendError(msg.error);
+        if (msg.progress) onStep?.(msg.progress);
+        if (msg.fields) return msg.fields;
+      }
+    }
+    throw new BackendError("El navegador terminó sin resultado");
+  },
   addProposal: (planId, p) => call<Proposal>(`/api/plans/${enc(planId)}/proposals`, "POST", p),
   ai: () => call<AiView>("/api/ai"),
   chooseAi: (id) => call<AiView>("/api/ai", "PUT", { id }),

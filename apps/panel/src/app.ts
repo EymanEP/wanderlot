@@ -3,8 +3,9 @@
 import { Hono, type Context } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
+import { googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
+import { airbnbUrl, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
 import { AI_IDS, AiChoice, type AiId, type AiView } from "./providers/ai.ts";
 import type { BackgroundTask, FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
@@ -24,9 +25,11 @@ export interface PanelStatus {
   ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: ("wikimedia" | "unsplash" | "pexels")[];
-  // The panel served by the site at /admin (ROADMAP 3.1). An AI there reads
-  // screenshots; searching still happens on the laptop.
+  // The panel served by the site at /admin (ROADMAP 3.1). Its AI reads
+  // screenshots, and searches in the background (3.3).
   hosted?: boolean;
+  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4).
+  browse?: boolean;
   // Where trips are kept: the site's database, or (with a site too old for
   // that) the laptop's data/panel.json.
   store?: "site" | "file";
@@ -38,6 +41,9 @@ export interface PanelOptions {
   flights: FlightProvider;
   // The AI, fixed (tests), or chosen among those set up (ROADMAP 3.3).
   research?: ResearchProvider;
+  // "Mirar en Google Flights / Airbnb" for the finalists: the `claude`
+  // command driving a browser on this laptop (ROADMAP 3.4).
+  browse?: ResearchProvider["browse"];
   ai?: AiChoice;
   photos?: PhotoSource[];
   site: SiteClient;
@@ -61,6 +67,9 @@ const PricesBody = z.object({
       url: z.url({ protocol: /^https$/ }).optional(),
     })
     .optional(),
+  // Read off these sites in the browser ("Mirar en…"), and the pages.
+  seenOn: z.array(z.enum(["google-flights", "airbnb"])).max(2).optional(),
+  sources: z.array(z.object({ label: z.string().trim().min(1).max(60), url: z.url({ protocol: /^https$/ }) })).max(4).optional(),
 });
 
 // Screenshots for "Leer captura": up to 4 images, each under ~5 MB.
@@ -170,6 +179,7 @@ export function createPanel({
   flights,
   research,
   ai: aiChoice,
+  browse,
   photos = [],
   hosts,
   site,
@@ -191,12 +201,12 @@ export function createPanel({
   // The AI in use now: the one chosen in Ajustes, or the one given.
   const currentAi = (): ResearchProvider | null => (aiChoice ? aiChoice.provider() : (research ?? null));
   const statusNow = (): PanelStatus => {
-    if (!aiChoice) return status;
+    if (!aiChoice) return { ...status, ...(browse ? { browse: true } : {}) };
     const a = aiChoice.active?.option;
     const { ai: _was, ...rest } = status;
     // As the screens say it: "Preparar con Claude", "OpenAI está buscando".
     const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
-    return { ...rest, research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
+    return { ...rest, ...(browse ? { browse: true } : {}), research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
   };
   // The panel at /admin searches in the background, which needs an AI that
   // can (ROADMAP 3.3).
@@ -639,13 +649,18 @@ export function createPanel({
     const prev = proposal.provenance;
     // Times checked now, or on an earlier check that this one keeps.
     const flightDetails = body.data.outbound !== undefined || (prev.kind !== "claude" && !prev.forOtherDates && (prev.kind === "api" || prev.flightDetails === true));
+    // Where it was seen: now, or on an earlier check still for these dates.
+    const kept = prev.kind === "organiser" && !prev.forOtherDates ? (prev.seenOn ?? []) : [];
+    const seenOn = [...new Set([...kept, ...(body.data.seenOn ?? [])])];
+    const sources = [...(prev.kind === "api" ? [] : prev.sources), ...(body.data.sources ?? [])].filter((s, i, all) => all.findIndex((x) => x.url === s.url) === i).slice(-10);
     const updated: Proposal = {
       ...applyCheckedPrices(proposal, body.data, entry.plan.nights),
       provenance: {
         kind: "organiser",
         checkedAt: now().toISOString(),
-        sources: prev.kind === "api" ? [] : prev.sources,
+        sources,
         ...(flightDetails ? { flightDetails: true } : {}),
+        ...(seenOn.length ? { seenOn } : {}),
       },
     };
     store.update(planId, (e) => ({ entry: { ...e!, proposals: e!.proposals.map((p) => (p.id === id ? updated : p)) }, result: null }));
@@ -717,6 +732,48 @@ export function createPanel({
     } catch {
       return c.json({ error: "No he sabido leer esa captura. Prueba con otra más clara." }, 422);
     }
+  });
+
+  // "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): Claude reads the real
+  // page in a browser window on this laptop, for a finalist only. Streams
+  // {progress} lines, then the price dialog's fields or {error}. Nothing is
+  // saved here: the organiser reviews and saves, as with a screenshot.
+  app.post("/api/plans/:planId/proposals/:id/browse", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z.object({ kind: z.enum(["flight", "stay"]) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {kind}" }, 400);
+    const entry = store.get(planId);
+    const proposal = entry?.proposals.find((p) => p.id === id);
+    if (!entry || !proposal) return c.json({ error: "not found" }, 404);
+    if (!browse) return c.json({ error: "Mirar en Google Flights o Airbnb necesita el comando claude en este ordenador." }, 409);
+    if (proposal.review !== "approved") return c.json({ error: "Mira en el navegador solo las propuestas que vais a usar: apruébala primero." }, 409);
+    const { plan } = entry;
+    const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize };
+    const stay = baseStay(proposal.stays);
+    const listing = stay?.url && /airbnb\./.test(stay.url) ? stay.url : undefined;
+    const req: BrowseRequest =
+      body.data.kind === "flight"
+        ? { kind: "flight", url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context }
+        : { kind: "stay", url: airbnbUrl(context, listing), context, ...(listing && stay ? { stayName: stay.name } : {}) };
+
+    c.header("content-type", "application/x-ndjson");
+    return stream(c, async (s) => {
+      let writing = Promise.resolve();
+      const write = (line: unknown) => (writing = writing.then(async () => void (await s.writeln(JSON.stringify(line)))));
+      try {
+        const raw = (await browse(req, c.req.raw.signal, (p) => void write({ progress: p }))) as { url?: unknown; pageUrl?: unknown };
+        const https = (u: unknown) => (typeof u === "string" && /^https:\/\/[^\s]+$/.test(u) ? u : null);
+        let fields;
+        try {
+          fields = extractedFields(req.kind, raw);
+        } catch {
+          throw new Error("No he sabido leer la página. Prueba otra vez, o pon los precios a mano.");
+        }
+        await write({ fields: { ...fields, pageUrl: https(raw.pageUrl) ?? req.url, ...(req.kind === "stay" ? { url: https(raw.url) } : {}) } });
+      } catch (err) {
+        await write({ error: (err as Error).message });
+      }
+    });
   });
 
   // Comparativa: pros/cons, weather, photos, the inVote checkbox.

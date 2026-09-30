@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import type { Plan, Proposal } from "@wanderlot/core";
-import { euros, researchLabel } from "@wanderlot/core";
+import { checkedLabel, euros, researchLabel } from "@wanderlot/core";
 import { Badge, Button, Card, Heading, IataTile, ProvenanceBadge, buttonClasses } from "@wanderlot/ui";
 import { generatedLine, total, trustOf } from "../lib/view.ts";
 
@@ -26,7 +26,7 @@ export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVe
             {p.place.city}
           </Heading>
           <span className="text-sm text-muted">{p.place.country}</span>
-          <ProvenanceBadge trust={trust} label={trust === "stale" ? "Caducado" : p.provenance.kind === "organiser" ? "Comprobado" : (researchLabel(p.provenance) ?? "short")} />
+          <ProvenanceBadge trust={trust} label={trust === "stale" ? "Caducado" : p.provenance.kind === "organiser" ? (p.provenance.seenOn?.length ? checkedLabel(p.provenance)! : "Comprobado") : (researchLabel(p.provenance) ?? "short")} />
           {p.suggestedBy && <Badge tone="neutral">Idea de {p.suggestedBy}</Badge>}
         </div>
         <span className="text-sm text-ink-2">{generatedLine(p, plan)}</span>

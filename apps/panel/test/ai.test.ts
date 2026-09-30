@@ -351,3 +351,77 @@ describe("Claude in the background", () => {
     expect(await b.background!.check("batch_2#resumed", task)).toMatchObject({ state: "failed", error: /tardó demasiado/ });
   });
 });
+
+describe("the Airbnb page to check", () => {
+  it("opens the chosen listing for the trip's dates, or searches for a whole place", async () => {
+    const { airbnbUrl } = await import("../src/providers/browse.ts");
+    const c = { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 };
+    expect(airbnbUrl(c, "https://www.airbnb.es/rooms/123?source=x")).toBe("https://www.airbnb.es/rooms/123?check_in=2026-11-07&check_out=2026-11-14&adults=6");
+    expect(airbnbUrl(c, "https://www.booking.com/hotel/x")).toMatch(/^https:\/\/www\.airbnb\.es\/s\/Lisboa\/homes\?checkin=2026-11-07&checkout=2026-11-14&adults=6/);
+  });
+});
+
+describe("checking a finalist in the browser", () => {
+  const ADMIN = "b".repeat(40);
+  const ORIGIN = "https://wanderlot.test";
+
+  it("reads Google Flights and Airbnb for approved proposals only, and remembers where the price was seen", async () => {
+    const site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => new Date("2026-10-10T12:00:00Z") });
+    const asked: any[] = [];
+    const panel = createPanel({
+      store: new PanelStore(null),
+      flights: {} as FlightProvider,
+      browse: async (req, _signal, onProgress) => {
+        asked.push(req);
+        onProgress?.({ kind: "read", host: req.kind === "flight" ? "google.com" : "airbnb.es", url: req.url });
+        return req.kind === "flight"
+          ? { outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, pageUrl: "https://www.google.com/travel/flights/booking?x=1" }
+          : { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "javascript:alert(1)" };
+      },
+      site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
+      siteUrl: ORIGIN,
+      now: () => new Date("2026-10-10T12:00:00Z"),
+    });
+    const json = async (path: string, method = "GET", body?: unknown) => {
+      const res = await panel.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const text = await res.text();
+      return { status: res.status, lines: text.split("\n").filter(Boolean).map((l) => JSON.parse(l)) as any[] };
+    };
+    await json("/api/plans/noviembre", "PUT", { name: "Noviembre", origin: "MAD", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, flexDays: 0, partySize: 6, maxPriceCents: null, status: "draft" });
+    expect((await json("/api/status")).lines[0]).toMatchObject({ browse: true });
+    await json("/api/plans/noviembre/proposals", "POST", { place: { city: "Lisboa", country: "Portugal", iata: "LIS" }, category: "ciudad", flightCents: 15000 });
+    await json("/api/plans/noviembre/proposals/lisboa/review", "POST", { review: "pending" });
+
+    // Not a finalist yet: refused.
+    const early = await json("/api/plans/noviembre/proposals/lisboa/browse", "POST", { kind: "flight" });
+    expect(early.status).toBe(409);
+    expect(early.lines[0].error).toMatch(/apruébala primero/);
+    await json("/api/plans/noviembre/proposals/lisboa/review", "POST", { review: "approved" });
+
+    const flight = await json("/api/plans/noviembre/proposals/lisboa/browse", "POST", { kind: "flight" });
+    expect(flight.lines).toEqual([
+      { progress: { kind: "read", host: "google.com", url: asked[0].url } },
+      { fields: { kind: "flight", outbound: null, inbound: null, flightCents: 12100, pageUrl: "https://www.google.com/travel/flights/booking?x=1" } },
+    ]);
+    expect(asked[0].url).toMatch(/^https:\/\/www\.google\.com\/travel\/flights\?/);
+    const stay = await json("/api/plans/noviembre/proposals/lisboa/browse", "POST", { kind: "stay" });
+    // A page address that isn't https is never passed on.
+    expect(stay.lines.at(-1).fields).toMatchObject({ name: "Piso en Alfama", stayCents: 140000, url: "https://www.airbnb.es/rooms/987", pageUrl: asked[1].url });
+
+    // Saved from the dialog: checked, and where.
+    const saved = await json("/api/plans/noviembre/proposals/lisboa/prices", "POST", {
+      flightCents: 12100,
+      stayCents: 140000,
+      stay: { name: "Piso en Alfama", url: "https://www.airbnb.es/rooms/987" },
+      seenOn: ["google-flights", "airbnb"],
+      sources: [{ label: "Google Flights", url: "https://www.google.com/travel/flights/booking?x=1" }],
+    });
+    const prov = saved.lines[0].provenance;
+    expect(prov).toMatchObject({ kind: "organiser", seenOn: ["google-flights", "airbnb"], sources: [{ label: "Google Flights", url: "https://www.google.com/travel/flights/booking?x=1" }] });
+    const { checkedLabel } = await import("@wanderlot/core");
+    expect(checkedLabel(prov)).toBe("Visto en Google Flights y Airbnb");
+    // A later check by hand keeps where it was seen.
+    const again = await json("/api/plans/noviembre/proposals/lisboa/prices", "POST", { flightCents: 12500 });
+    expect(again.lines[0].provenance.seenOn).toEqual(["google-flights", "airbnb"]);
+  });
+});

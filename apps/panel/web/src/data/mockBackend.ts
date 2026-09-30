@@ -218,7 +218,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       const ai = a && name ? { research: a.id, ai: { name, search: a.search, images: a.images, background: a.background } } : { research: "none" as const };
       return hosted
         ? { ...ai, flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
-        : { ...ai, flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
+        : { ...ai, browse: true, flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
     },
     ai: async () => aiView(),
     async chooseAi(id) {
@@ -399,7 +399,13 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         provenance: {
           kind: "organiser",
           checkedAt: MOCK_NOW.toISOString(),
-          sources: p.provenance.kind === "api" ? [] : p.provenance.sources,
+          sources: [...(p.provenance.kind === "api" ? [] : p.provenance.sources), ...(prices.sources ?? [])],
+          // As the server: where it was seen, now or on an earlier check.
+          ...((): { seenOn?: ("google-flights" | "airbnb")[] } => {
+            const kept = p.provenance.kind === "organiser" && !p.provenance.forOtherDates ? (p.provenance.seenOn ?? []) : [];
+            const seenOn = [...new Set([...kept, ...(prices.seenOn ?? [])])];
+            return seenOn.length ? { seenOn } : {};
+          })(),
           // As the server: times checked now, earlier, or by the API.
           ...(prices.outbound || (p.provenance.kind !== "claude" && !p.provenance.forOtherDates && (p.provenance.kind === "api" || p.provenance.flightDetails))
             ? { flightDetails: true }
@@ -407,6 +413,19 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         },
       }));
       return entry(planId).proposals.find((p) => p.id === id)!;
+    },
+    // "Mirar en…": the same answers as a screenshot, after a few steps.
+    async browse(planId, id, kind, onStep) {
+      const p = entry(planId).proposals.find((x) => x.id === id)!;
+      if (p.review !== "approved") throw new Error("Mira en el navegador solo las propuestas que vais a usar: apruébala primero.");
+      const page = kind === "flight" ? "google.com" : "airbnb.es";
+      onStep?.({ kind: "read", host: page, url: `https://www.${page}/` });
+      await wait(Math.min(tickMs, 400));
+      onStep?.({ kind: "note", text: kind === "flight" ? "Elijo el vuelo directo de la mañana." : "Abro un piso entero con sitio para todos." });
+      const got = await this.extract(planId, id, kind, []);
+      return kind === "flight"
+        ? { ...got, pageUrl: "https://www.google.com/travel/flights" }
+        : { ...got, url: "https://www.airbnb.es/rooms/12345", pageUrl: "https://www.airbnb.es/rooms/12345" };
     },
     // Reads any screenshot as the same KLM flight or Amsterdam flat.
     async extract(planId, id, kind) {

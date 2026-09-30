@@ -1,6 +1,7 @@
 import type { FlightLeg, FlightProviderName, Proposal, Source } from "@wanderlot/core";
 import type { ExtractRequest } from "./extract.ts";
 import type { GuideRequest } from "./guide.ts";
+import type { BrowseRequest } from "./browse.ts";
 import type { Researcher } from "./research.ts";
 
 // What Generar asks for (SPEC §1, Plan).
@@ -71,6 +72,10 @@ export interface ResearchProvider {
   // "Preparar el viaje": the trip page's guide and how to get there, shaped
   // by guide.ts's schema. Optional: without it the organiser writes it.
   guide?(req: GuideRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown>;
+  // "Mirar en Google Flights / Airbnb": reads the real page in a browser on
+  // the organiser's laptop; resolves to the raw answer, shaped by browse.ts's
+  // schema for that kind. Only with the `claude` command and Playwright MCP.
+  browse?(req: BrowseRequest, signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown>;
   // The same work, handed to the AI's own servers to run in the background
   // and checked on later (ROADMAP 3.3): how the panel at /admin searches,
   // since a Worker request can't wait minutes. Absent: not possible.

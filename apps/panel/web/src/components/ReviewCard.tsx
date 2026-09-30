@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
+import { checkedLabel, euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
@@ -53,7 +53,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             <Badge tone="white" size="md">
               {CATEGORY_LABEL[p.category]}
             </Badge>
-            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : p.provenance.kind === "organiser" ? "Comprobado a mano" : (researchLabel(p.provenance) ?? "long")} size="md" withIcon />
+            <ProvenanceBadge trust={trust} label={trust === "stale" ? trustText(p, now) : p.provenance.kind === "organiser" ? checkedLabel(p.provenance)! : (researchLabel(p.provenance) ?? "long")} size="md" withIcon />
           </>
         }
       />

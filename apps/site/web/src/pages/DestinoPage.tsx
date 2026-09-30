@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router";
-import { baseStay, euros, flightDetailsKnown, flightPriceCents, longDate, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
+import { baseStay, euros, flightDetailsKnown, flightPriceCents, checkedLabel, longDate, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
 import {
   BulletList,
   Card,
@@ -83,7 +83,7 @@ export function DestinoPage() {
         {trust === "unverified" ? (
           <StatTile label="Datos de vuelo" value={researchLabel(d.provenance)!.replace("Lo escribió", "Los escribió").replace("Estimado", "Estimados")} tone="claude" />
         ) : (
-          <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : d.provenance.kind === "organiser" ? "Comprobados a mano" : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
+          <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : d.provenance.kind === "organiser" ? checkedLabel(d.provenance)!.replace("Visto", "Vistos").replace("Comprobado", "Comprobados") : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
         )}
       </section>
 

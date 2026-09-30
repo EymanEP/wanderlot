@@ -190,6 +190,8 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
+| `WANDERLOT_BROWSER` | panel | `chrome`: the browser "Mirar en Google Flights / Airbnb" opens (`msedge`, `firefox`…) |
+| `WANDERLOT_BROWSER_PROFILE` | panel | `data/browser`: that browser's own profile, kept between runs |
 
 ## State
 
@@ -203,13 +205,18 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   weather and photo subjects. None has been run against the real service
   from CI; they're tested with recorded shapes. With no AI, destinations can
   be added by hand.
+- The finalists' prices can be checked in the browser: "Mirar en Google
+  Flights / Airbnb" has the `claude` command read the real pages in a Chrome
+  window on the laptop (Playwright MCP), for the organiser to review. Not
+  yet run against the real sites from CI.
 - Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
   (with keys) and publishes the chosen ones with their credits (SPEC §6).
 - The organiser follows the vote in the panel: who has voted, a reminder for
   the rest, closing early, breaking a tie, going somewhere other than the
   winner, and the result message.
 - The panel's trips are kept on the site, and the site serves the panel at
-  `/admin` for the organiser's phone, with everything but the AI.
+  `/admin` for the organiser's phone; with an AI key shared, it reads
+  screenshots and searches in the background.
 - Dates can be agreed first: the organiser proposes a few windows, each friend
   says yes, if need be or no, and the chosen one becomes the trip's dates.
 - Once the destination is decided, the trip gets its own page: flights and
