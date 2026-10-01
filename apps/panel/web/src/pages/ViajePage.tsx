@@ -331,7 +331,7 @@ export function ViajePage() {
                     : checked
                       ? "La página del viaje los muestra tal cual."
                       : state.status?.browse
-                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} los mira en Google Flights y Airbnb y los guarda, o pégalos tú.`
+                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} trae de Google Flights y Airbnb las mejores opciones para que elijas, o pégalos tú.`
                         : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
                 }
                 busy={!!reading}

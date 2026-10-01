@@ -809,14 +809,22 @@ describe("Mirar en Google Flights / Airbnb", () => {
 
     await user.click(dialog.getByRole("button", { name: "Mirar en Google Flights" }));
     await dialog.findByText(/^Ida · /);
+    // Five flights to pick from; the first is filled in.
+    const flights = dialog.getByRole("radiogroup", { name: "Vuelos encontrados" });
+    expect(within(flights).getAllByRole("radio")).toHaveLength(5);
+    await user.click(within(flights).getByRole("radio", { name: /El más barato/ }));
+    expect(dialog.getByText(/^Ida · .* Vueling VY 811/)).toBeTruthy();
     await user.click(dialog.getByRole("button", { name: "Mirar en Airbnb" }));
+    // No stay chosen yet: the search's typical price, and three to pick.
+    expect(await dialog.findByText(/^Mediana de 18 anuncios/)).toBeTruthy();
+    await user.click(dialog.getByRole("radio", { name: /De Pijp/ }));
     await dialog.findByDisplayValue("https://www.airbnb.es/rooms/12345");
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
     expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
   });
 
-  it("checks both in one go from the card, and saves them", async () => {
+  it("checks both in one go from the card, and the organiser picks", async () => {
     const user = userEvent.setup();
     renderAt("/revisar");
     await screen.findByRole("button", { name: /^Publicar/ });
@@ -824,9 +832,14 @@ describe("Mirar en Google Flights / Airbnb", () => {
     const card = screen.getAllByRole("article").find((a) => within(a).queryByRole("button", { name: "comprobar precios" }))!;
     const city = card.getAttribute("aria-label")!;
     await user.click(within(card).getByRole("button", { name: "comprobar precios" }));
-    expect(await screen.findByText(new RegExp(`^Precios de ${city} comprobados y guardados: .+ por persona$`), {}, { timeout: 3000 })).toBeTruthy();
+    // Both read: the prices open to pick a flight and a stay.
+    const dialog = within(await waitForDialog(3000));
+    await user.click(await dialog.findByRole("radio", { name: /Directo, por la tarde/ }));
+    await user.click(dialog.getByRole("radio", { name: /^Precio típico por ahora/ }));
+    expect(dialog.getByDisplayValue("Por elegir en Airbnb")).toBeTruthy();
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
     expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
-    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("isn't offered for a proposal not approved", async () => {
@@ -915,7 +928,7 @@ describe("Moving around while the AI works", () => {
     expect(screen.queryByRole("status", { name: /En marcha/ })).toBeNull();
   });
 
-  it("checks the prices from El viaje in one go and saves them", async () => {
+  it("checks the prices from El viaje in one go, to pick and save", async () => {
     const user = userEvent.setup();
     const backend = mockBackend({ tickMs: 150, verifyMs: 2 });
     const plan = (await backend.plan("noviembre-2026"))!.plan;
@@ -934,8 +947,10 @@ describe("Moving around while the AI works", () => {
     const checklist = await screen.findByLabelText("Antes de publicar");
     await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
     expect(await within(checklist).findByText(/está mirando Google Flights en una ventana de Chrome \(1 de 2\)/)).toBeTruthy();
-    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights y Airbnb", {}, { timeout: 3000 })).toBeTruthy();
-    expect(document.querySelector("dialog[open]")).toBeNull();
+    const dialog = within(await waitForDialog(3000));
+    await user.click(await dialog.findByRole("radio", { name: /De Pijp/ }));
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights y Airbnb")).toBeTruthy();
   });
 });
 
@@ -964,14 +979,17 @@ describe("El viaje once published", () => {
 
     // Prices checked after publishing: the group still sees the old ones.
     await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
-    expect(await within(checklist).findByText("Hay cambios sin publicar", {}, { timeout: 3000 })).toBeTruthy();
+    const dialog = within(await waitForDialog(3000));
+    await user.click(await dialog.findByRole("radio", { name: /De Pijp/ }));
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await within(checklist).findByText("Hay cambios sin publicar")).toBeTruthy();
     await user.click(within(checklist).getByRole("button", { name: "Publicar cambios" }));
     expect(await within(checklist).findByText("Publicada en el sitio")).toBeTruthy();
   });
 });
 
-async function waitForDialog(): Promise<HTMLElement> {
-  for (let i = 0; i < 100; i++) {
+async function waitForDialog(ms = 2000): Promise<HTMLElement> {
+  for (let i = 0; i < ms / 20; i++) {
     const d = document.querySelector("dialog[open]");
     if (d) return d as HTMLElement;
     await new Promise((r) => setTimeout(r, 20));

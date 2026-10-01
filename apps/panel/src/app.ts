@@ -5,7 +5,7 @@ import { stream } from "hono/streaming";
 import { z } from "zod";
 import { LeaveStatus, googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
-import { airbnbUrl, type BrowseRequest } from "./providers/browse.ts";
+import { airbnbUrl, browsedFields, schemaFor, type Browsed, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
 import { AI_IDS, AiChoice, type AiId, type AiView } from "./providers/ai.ts";
 import type { BackgroundTask, FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
@@ -773,7 +773,6 @@ export function createPanel({
 
   // "Comprobar precios" (ROADMAP 3.4): Claude reads the real page in a
   // browser window on this laptop, for a finalist only.
-  type Browsed = ReturnType<typeof extractedFields> & { pageUrl: string; url?: string | null };
   let browserTurn: Promise<void> = Promise.resolve();
   const browseCheck = (planId: string, id: string): { entry: PlanEntry; proposal: Proposal } | { error: string; status: 404 | 409 } => {
     const entry = store.get(planId);
@@ -798,15 +797,12 @@ export function createPanel({
       () => {},
       () => {},
     );
-    const raw = (await turn) as { url?: unknown; pageUrl?: unknown };
-    const https = (u: unknown) => (typeof u === "string" && /^https:\/\/[^\s]+$/.test(u) ? u : null);
-    let fields;
+    const raw = await turn;
     try {
-      fields = extractedFields(req.kind, raw);
+      return browsedFields(schemaFor(req), raw, plan, req.url);
     } catch {
       throw new Error("No he sabido leer la página. Prueba otra vez, o pon los precios a mano.");
     }
-    return { ...fields, pageUrl: https(raw.pageUrl) ?? req.url, ...(req.kind === "stay" ? { url: https(raw.url) } : {}) };
   };
   const ndjson = (c: Context, work: (write: (line: unknown) => Promise<void>) => Promise<void>) => {
     c.header("content-type", "application/x-ndjson");
@@ -836,10 +832,10 @@ export function createPanel({
   });
 
   // "Comprobar precios": the flight on Google Flights, then the stay on
-  // Airbnb, and saved straight away when both were read whole, as if typed
-  // in (publishing stays the organiser's say). What came back incomplete is
-  // handed back for the price dialog instead. Streams {site} as each starts,
-  // {progress}, then {saved} with the proposal, or {readings, missing}.
+  // Airbnb, one after the other. Nothing is saved: the best flights and the
+  // stay (its price, or what a search costs with a few to pick from) go to
+  // the price dialog, where the organiser picks and saves. Streams {site} as
+  // each starts, {progress}, then {readings}.
   app.post("/api/plans/:planId/proposals/:id/check-prices", async (c) => {
     const { planId, id } = c.req.param();
     const found = browseCheck(planId, id);
@@ -852,27 +848,7 @@ export function createPanel({
       };
       const flight = await read("flight");
       const stay = await read("stay");
-      if (flight.kind !== "flight" || stay.kind !== "stay") throw new Error("lectura inesperada");
-      const nights = store.get(planId)!.plan.nights;
-      const missing = [
-        ...(flight.flightCents === null ? ["el precio del vuelo"] : []),
-        ...(stay.stayCents === null || !stay.name ? ["el precio total del alojamiento"] : []),
-        ...(stay.nights !== null && stay.nights !== nights ? [`las ${nights} noches del alojamiento (Airbnb mostraba ${stay.nights})`] : []),
-      ];
-      if (missing.length) return void (await write({ readings: { flight, stay }, missing }));
-      const legs = flight.outbound && flight.inbound ? { outbound: flight.outbound, inbound: flight.inbound } : {};
-      const saved = savePrices(planId, store.get(planId)!.proposals.find((p) => p.id === id)!, {
-        flightCents: flight.flightCents!,
-        ...legs,
-        stayCents: stay.stayCents!,
-        stay: { name: stay.name!.slice(0, 120), ...(stay.description ? { description: stay.description.slice(0, 200) } : {}), ...(stay.url ? { url: stay.url } : {}) },
-        seenOn: ["google-flights", "airbnb"],
-        sources: [
-          { label: "Google Flights", url: flight.pageUrl },
-          { label: "Airbnb", url: stay.url ?? stay.pageUrl },
-        ].filter((s) => /^https:\/\//.test(s.url)),
-      });
-      await write({ saved, readings: { flight, stay } });
+      await write({ readings: { flight, stay } });
     });
   });
 

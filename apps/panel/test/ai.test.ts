@@ -375,8 +375,25 @@ describe("checking a finalist in the browser", () => {
         asked.push(req);
         onProgress?.({ kind: "read", host: req.kind === "flight" ? "google.com" : "airbnb.es", url: req.url });
         return req.kind === "flight"
-          ? { outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, pageUrl: "https://www.google.com/travel/flights/booking?x=1" }
-          : { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "javascript:alert(1)" };
+          ? {
+              options: [
+                { outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: "El más barato" },
+                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: 900, passengers: 6, note: "Directo" },
+                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: null, passengers: null, note: "Sin precio" },
+              ],
+              pageUrl: "https://www.google.com/travel/flights/booking?x=1",
+            }
+          : req.stayName
+            ? { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "javascript:alert(1)" }
+            : {
+                listings: [
+                  { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nightlyEuros: null, rating: 4.9, url: "https://www.airbnb.es/rooms/987", recommended: true },
+                  { name: "Casa en Graça", description: null, totalEuros: null, nightlyEuros: 150, rating: 4.7, url: "https://www.airbnb.es/rooms/654", recommended: false },
+                  { name: "Ático en Baixa", description: null, totalEuros: 1800, nightlyEuros: null, rating: null, url: "javascript:alert(1)", recommended: true },
+                  { name: "Sin precio", description: null, totalEuros: null, nightlyEuros: null, rating: 5, url: null, recommended: false },
+                ],
+                pageUrl: "javascript:alert(1)",
+              };
       },
       site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
       siteUrl: ORIGIN,
@@ -399,14 +416,26 @@ describe("checking a finalist in the browser", () => {
     await json("/api/plans/noviembre/proposals/lisboa/review", "POST", { review: "approved" });
 
     const flight = await json("/api/plans/noviembre/proposals/lisboa/browse", "POST", { kind: "flight" });
-    expect(flight.lines).toEqual([
-      { progress: { kind: "read", host: "google.com", url: asked[0].url } },
-      { fields: { kind: "flight", outbound: null, inbound: null, flightCents: 12100, pageUrl: "https://www.google.com/travel/flights/booking?x=1" } },
+    // The best flights to pick from, the first filled in; one without a price is dropped.
+    expect(flight.lines[0]).toEqual({ progress: { kind: "read", host: "google.com", url: asked[0].url } });
+    expect(flight.lines[1].fields).toMatchObject({ kind: "flight", flightCents: 12100, pageUrl: "https://www.google.com/travel/flights/booking?x=1" });
+    expect(flight.lines[1].fields.options).toEqual([
+      { outbound: null, inbound: null, flightCents: 12100, note: "El más barato" },
+      { outbound: null, inbound: null, flightCents: 15000, note: "Directo" },
     ]);
     expect(asked[0].url).toMatch(/^https:\/\/www\.google\.com\/travel\/flights\?/);
+
+    // No stay chosen: an Airbnb search, its typical price and three to pick.
     const stay = await json("/api/plans/noviembre/proposals/lisboa/browse", "POST", { kind: "stay" });
+    const market = stay.lines.at(-1).fields;
     // A page address that isn't https is never passed on.
-    expect(stay.lines.at(-1).fields).toMatchObject({ name: "Piso en Alfama", stayCents: 140000, url: "https://www.airbnb.es/rooms/987", pageUrl: asked[1].url });
+    expect(market).toMatchObject({ kind: "stay", stayCents: null, pageUrl: asked[1].url });
+    // 1400, 150 × 7 = 1050 and 1800: the one without a price doesn't count.
+    expect(market.market).toMatchObject({ medianCents: 140000, minCents: 105000, maxCents: 180000, count: 3 });
+    expect(market.market.picks.map((p: any) => [p.name, p.url])).toEqual([
+      ["Piso en Alfama", "https://www.airbnb.es/rooms/987"],
+      ["Ático en Baixa", null],
+    ]);
 
     // Saved from the dialog: checked, and where.
     const saved = await json("/api/plans/noviembre/proposals/lisboa/prices", "POST", {
@@ -425,23 +454,15 @@ describe("checking a finalist in the browser", () => {
     expect(again.lines[0].provenance.seenOn).toEqual(["google-flights", "airbnb"]);
   });
 
-  it("checks both in one go and saves them when it read them whole; hands back what it didn't", async () => {
+  it("checks both in one go and hands them back to pick from, saving nothing", async () => {
     const site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => new Date("2026-10-10T12:00:00Z") });
-    let stayTotal: number | null = 1400;
     const panel = createPanel({
       store: new PanelStore(null),
       flights: {} as FlightProvider,
       browse: async (req) =>
         req.kind === "flight"
-          ? {
-              outbound: { from: "MAD", to: "LIS", departAt: "2026-11-07T08:00:00+01:00", arriveAt: "2026-11-07T08:20:00+00:00", carrier: "TAP", flightNumber: "TP1015", stops: 0 },
-              inbound: { from: "LIS", to: "MAD", departAt: "2026-11-14T19:00:00+00:00", arriveAt: "2026-11-14T21:20:00+01:00", carrier: "TAP", flightNumber: "TP1016", stops: 0 },
-              pricePerPersonEuros: 121,
-              totalEuros: null,
-              passengers: null,
-              pageUrl: "https://www.google.com/travel/flights/booking?x=1",
-            }
-          : { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: stayTotal, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "https://www.airbnb.es/rooms/987?check_in=x" },
+          ? { options: [{ outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: null }], pageUrl: "https://www.google.com/travel/flights/booking?x=1" }
+          : { listings: [{ name: "Piso en Alfama", description: null, totalEuros: 1400, nightlyEuros: null, rating: 4.9, url: "https://www.airbnb.es/rooms/987", recommended: true }], pageUrl: "https://www.airbnb.es/s/Lisboa/homes" },
       site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
       siteUrl: ORIGIN,
       now: () => new Date("2026-10-10T12:00:00Z"),
@@ -455,20 +476,11 @@ describe("checking a finalist in the browser", () => {
 
     const out = await lines("/api/plans/noviembre/proposals/lisboa/check-prices", "POST");
     expect(out.map((l) => l.site).filter(Boolean)).toEqual(["flight", "stay"]);
-    const saved = out.at(-1).saved;
-    expect(saved.outbound.priceCents + saved.inbound.priceCents).toBe(12100);
-    expect(saved.outbound.flightNumber).toBe("TP1015");
-    expect(saved.stays).toEqual([expect.objectContaining({ name: "Piso en Alfama", nightlyCents: 20000, url: "https://www.airbnb.es/rooms/987" })]);
-    expect(saved.provenance).toMatchObject({ kind: "organiser", flightDetails: true, seenOn: ["google-flights", "airbnb"] });
-    expect(saved.provenance.sources.map((s: any) => s.label)).toEqual(["Google Flights", "Airbnb"]);
-    expect((await lines("/api/plans/noviembre"))[0].proposals[0].stays[0].name).toBe("Piso en Alfama");
-
-    // Without the stay's total, nothing is saved: the readings come back.
-    stayTotal = null;
-    const partial = (await lines("/api/plans/noviembre/proposals/lisboa/check-prices", "POST")).at(-1);
-    expect(partial.saved).toBeUndefined();
-    expect(partial.missing).toEqual(["el precio total del alojamiento"]);
-    expect(partial.readings.flight.flightCents).toBe(12100);
+    const { readings } = out.at(-1);
+    expect(readings.flight.options).toHaveLength(1);
+    expect(readings.stay.market).toMatchObject({ medianCents: 140000, count: 1 });
+    // Nothing saved until the organiser picks.
+    expect((await lines("/api/plans/noviembre"))[0].proposals[0].stays).toEqual([]);
   });
 });
 

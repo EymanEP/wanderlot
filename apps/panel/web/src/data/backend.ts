@@ -180,15 +180,39 @@ export type Extracted =
   | { kind: "flight"; outbound: ExtractedLeg | null; inbound: ExtractedLeg | null; flightCents: number | null }
   | { kind: "stay"; name: string | null; description: string | null; stayCents: number | null; nights: number | null };
 
-// What Claude read off Google Flights or Airbnb in the browser, and where.
-export type Browsed = Extracted & { pageUrl: string | null; url?: string | null };
+// One of the best flights Google Flights showed, to pick from.
+export interface FlightChoice {
+  outbound: ExtractedLeg | null;
+  inbound: ExtractedLeg | null;
+  flightCents: number;
+  note: string | null;
+}
 
-// "Comprobar precios": both read, and saved when they were read whole; what
-// was missing otherwise, for the price dialog.
+// What an Airbnb search costs for the trip (whole places for the group, all
+// nights), and three to pick from.
+export interface StayPick {
+  name: string;
+  description: string | null;
+  rating: number | null;
+  url: string | null;
+  stayCents: number;
+}
+export interface StayMarket {
+  medianCents: number;
+  minCents: number;
+  maxCents: number;
+  count: number;
+  picks: StayPick[];
+}
+
+// What Claude read off Google Flights or Airbnb in the browser, and where:
+// for flights, the best few (the first filled in); for a stay not chosen
+// yet, the search's typical price.
+export type Browsed = Extracted & { pageUrl: string | null; url?: string | null; options?: FlightChoice[]; market?: StayMarket | null };
+
+// "Comprobar precios": both read, for the price dialog to pick from.
 export interface PriceCheck {
-  saved?: Proposal;
   readings: { flight: Browsed; stay: Browsed };
-  missing?: string[];
 }
 
 // Ajustes: the browsers on this laptop and the one "Comprobar precios" opens.
@@ -252,7 +276,7 @@ export interface PanelBackend {
   setPrices(planId: string, id: string, prices: PriceSave): Promise<Proposal>;
   // Claude reads the real page in a browser on the laptop; nothing is saved.
   browse(planId: string, id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void): Promise<Browsed>;
-  // Both, one after the other, saved when read whole (onSite: which starts).
+  // Both, one after the other, for the price dialog (onSite: which starts).
   checkPrices(planId: string, id: string, onStep?: (s: SearchStep) => void, onSite?: (site: "flight" | "stay") => void): Promise<PriceCheck>;
   browsers(): Promise<BrowserView>;
   leave(planId: string): Promise<LeavePage>;
@@ -419,7 +443,7 @@ export const httpBackend: PanelBackend = {
     await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/check-prices`, {}, (msg: { progress?: SearchStep; site?: "flight" | "stay" } & Partial<PriceCheck>) => {
       if (msg.progress) onStep?.(msg.progress);
       if (msg.site) onSite?.(msg.site);
-      if (msg.readings) out = { readings: msg.readings, ...(msg.saved ? { saved: msg.saved } : {}), ...(msg.missing ? { missing: msg.missing } : {}) };
+      if (msg.readings) out = { readings: msg.readings };
     });
     if (!out) throw new BackendError("El navegador terminó sin resultado");
     return out;

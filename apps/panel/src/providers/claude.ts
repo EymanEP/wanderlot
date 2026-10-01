@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { extractJsonSchema, extractPrompt } from "./extract.ts";
 import { guideJsonSchema, guidePrompt } from "./guide.ts";
-import { BROWSE_TOOLS, browseJsonSchema, browsePrompt } from "./browse.ts";
+import { BROWSE_TOOLS, browseJsonSchema, browsePrompt, schemaFor } from "./browse.ts";
 import { ResearchOutput, buildPrompt, outputSchema, toResults } from "./research.ts";
 import type { ResearchProgress, ResearchProvider } from "./types.ts";
 
@@ -198,7 +198,7 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
                   "stream-json",
                   "--verbose",
                   "--json-schema",
-                  JSON.stringify(browseJsonSchema(req.kind)),
+                  JSON.stringify(browseJsonSchema(schemaFor(req))),
                   // No built-in tools at all (no files, no shell, no web
                   // search), no other MCP servers or settings: only this
                   // browser, and only the tools for reading a page.
