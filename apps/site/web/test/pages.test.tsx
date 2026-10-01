@@ -53,6 +53,23 @@ describe("Plan", () => {
   });
 });
 
+describe("Días libres", () => {
+  it("lets me say I've got the days off, and shows where everyone is", async () => {
+    const user = userEvent.setup();
+    renderAt("/p/noviembre-2026");
+    const card = await screen.findByRole("region", { name: /^Días libres/ });
+    expect(within(card).getByText("3 de 6 con los días")).toBeTruthy();
+    const people = within(card).getByRole("list", { name: "Cómo va cada uno" });
+    expect(within(people).getAllByRole("listitem")[0]!.textContent).toMatch(/Eyman \(tú\).*Aún no los ha pedido/);
+    expect(within(card).queryByText(/Lo marcó/)).toBeNull();
+
+    await user.click(within(card).getByRole("button", { name: "Me los han aprobado" }));
+    expect(await within(card).findByText("4 de 6 con los días")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "Me los han aprobado" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(people).getAllByRole("listitem")[0]!.textContent).toMatch(/Días aprobados/);
+  });
+});
+
 describe("Proponer un destino", () => {
   it("sends an idea to the organiser and shows what's been suggested", async () => {
     const user = userEvent.setup();

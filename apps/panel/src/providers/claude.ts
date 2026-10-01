@@ -30,7 +30,7 @@ const runClaude: Runner = (args, onLine, signal) =>
     child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`claude salió con ${code}: ${err.trim()}`))));
   });
 
-type Block = { type: string; text?: string; name?: string; input?: Record<string, unknown> };
+type Block = { type: string; text?: string; name?: string; input?: Record<string, unknown>; is_error?: boolean; content?: unknown };
 type Event = {
   type?: string;
   subtype?: string;
@@ -58,8 +58,19 @@ export function progressOf(event: Event): ResearchProgress[] {
   });
 }
 
-// Runs `claude` and returns its structured answer, relaying its steps.
-async function answer(run: Runner, args: string[], signal?: AbortSignal, onProgress?: (p: ResearchProgress) => void): Promise<unknown> {
+// A tool's answer as text: a string, or a list of text blocks.
+const resultText = (content: unknown): string =>
+  typeof content === "string" ? content : Array.isArray(content) ? content.map((c: { text?: unknown }) => (typeof c?.text === "string" ? c.text : "")).join("\n") : "";
+
+// Runs `claude` and returns its structured answer, relaying its steps, and
+// each tool's outcome to whoever needs to know (the browser's, for one).
+async function answer(
+  run: Runner,
+  args: string[],
+  signal?: AbortSignal,
+  onProgress?: (p: ResearchProgress) => void,
+  onToolResult?: (ok: boolean, text: string) => void,
+): Promise<unknown> {
   let result: Event | undefined;
   await run(
     args,
@@ -71,7 +82,9 @@ async function answer(run: Runner, args: string[], signal?: AbortSignal, onProgr
         return;
       }
       if (event.type === "result") result = event;
-      else for (const p of progressOf(event)) onProgress?.(p);
+      else if (event.type === "user") {
+        for (const b of event.message?.content ?? []) if (b.type === "tool_result") onToolResult?.(!b.is_error, resultText(b.content));
+      } else for (const p of progressOf(event)) onProgress?.(p);
     },
     signal,
   );
@@ -88,9 +101,26 @@ const EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "im
 export interface BrowserConfig {
   // The Playwright MCP server's cli.js.
   mcpCli: string;
-  // "chrome", "msedge", "firefox"…: installed on the laptop.
-  channel: string;
+  // The one chosen in Ajustes (browsers.ts), asked on each run; null when
+  // there's none on this laptop.
+  browser: () => { id: string; name: string; path: string } | null;
+  // Each browser keeps its profile in a folder of its own in here.
   profileDir: string;
+  // Chromium refuses to start as root with its sandbox on (Linux only).
+  noSandbox?: boolean;
+}
+
+// Why the browser didn't open, in the organiser's words.
+export function browserError(name: string, path: string, text: string): string {
+  const line =
+    text
+      .split("\n")
+      .map((l) => l.replace(/^(###\s*)?Error:?\s*/i, "").replace(/^async initializeServer:\s*/i, "").trim())
+      .find((l) => l && !/^#+$/.test(l)) ?? "";
+  if (/not found|ENOENT|doesn't exist|does not exist|no such file/i.test(line)) return `No encontré ${name} en ${path}. Elige otro navegador en Ajustes.`;
+  if (/closed|SingletonLock|ProcessSingleton|in use/i.test(line))
+    return `${name} se cerró al abrirse. Si hay otra comprobación de precios en marcha, espera a que acabe; si no, cierra las ventanas de ${name} que abrió Wanderlot y prueba otra vez.`;
+  return `No se pudo abrir ${name}: ${line.slice(0, 200) || "error desconocido"}`;
 }
 
 // Everything in Playwright MCP that isn't reading a page: running code, files,
@@ -128,6 +158,8 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
     ...(browser
       ? {
           async browse(req, signal, onProgress) {
+            const b = browser.browser();
+            if (!b) throw new Error("No encontré Chrome, Brave, Edge ni Chromium en este ordenador. Instala uno y reinicia el panel.");
             const dir = await mkdtemp(join(tmpdir(), "wanderlot-navegador-"));
             try {
               const config = join(dir, "mcp.json");
@@ -137,12 +169,27 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
                   mcpServers: {
                     playwright: {
                       command: process.execPath,
-                      args: [browser.mcpCli, "--browser", browser.channel, "--user-data-dir", browser.profileDir, "--output-dir", dir, "--viewport-size", "1280x900"],
+                      args: [
+                        browser.mcpCli,
+                        "--executable-path",
+                        b.path,
+                        "--user-data-dir",
+                        join(browser.profileDir, b.id),
+                        "--output-dir",
+                        dir,
+                        "--viewport-size",
+                        "1280x900",
+                        ...(browser.noSandbox ? ["--no-sandbox"] : []),
+                      ],
                     },
                   },
                 }),
               );
-              return await answer(
+              // A browser that never opened leaves Claude with nothing to
+              // read: say why, rather than "I didn't see the price".
+              let opened = false;
+              let failure: string | null = null;
+              const raw = await answer(
                 run,
                 [
                   "-p",
@@ -168,7 +215,15 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
                 ],
                 signal,
                 onProgress,
+                (ok, text) => {
+                  // Opened means a page came back; closing a browser that
+                  // never opened "works" too.
+                  if (ok && /Page URL|### Page|### Snapshot/.test(text)) opened = true;
+                  else if (!ok) failure ??= text;
+                },
               );
+              if (!opened && failure) throw new Error(browserError(b.name, b.path, failure));
+              return raw;
             } finally {
               await rm(dir, { recursive: true, force: true });
             }

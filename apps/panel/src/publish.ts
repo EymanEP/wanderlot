@@ -1,7 +1,7 @@
 // Builds the snapshot the site receives and checks what the organiser should
 // confirm before it goes out (SPEC §2, §3).
 import { sha256Hex } from "./sha256.ts";
-import { Snapshot, totalPerPersonCents, trustState, type DatesView, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { Snapshot, totalPerPersonCents, trustState, type DatesView, type LeaveStatus, type LeaveView, type Destination, type GroupSettings, type SuggestionView, type VoteState } from "@wanderlot/core";
 import { StoreConflict, type PanelBackend, type PendingInvite, type PlanEntry } from "./store.ts";
 
 export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
@@ -24,14 +24,17 @@ export function buildSnapshot(entry: PlanEntry, now: Date): Snapshot {
   // The trip page goes once the organiser publishes it, for a destination
   // that is itself published.
   const trip = entry.tripPublished && entry.trip && destinations.some((d) => d.id === entry.trip!.destinationId) ? { trip: entry.trip } : {};
-  return Snapshot.parse({ plan: planFields, destinations, ...trip, publishedAt: now.toISOString() });
+  return Snapshot.parse({ plan: planFields, destinations, ...trip, ...settled(entry), publishedAt: now.toISOString() });
 }
+
+// Dates fixed without a vote: the site asks the group about days off.
+const settled = (entry: PlanEntry) => (entry.datesDecided ? { datesDecided: true } : {});
 
 // The trip with no destinations: what the site needs to run a date vote
 // before anything has been researched or approved.
 export function shellSnapshot(entry: PlanEntry, now: Date): Snapshot {
   const { status: _s, winnerDestinationId: _w, ...planFields } = entry.plan;
-  return Snapshot.parse({ plan: planFields, destinations: [], publishedAt: now.toISOString() });
+  return Snapshot.parse({ plan: planFields, destinations: [], ...settled(entry), publishedAt: now.toISOString() });
 }
 
 // What a publish would send, minus its timestamp: equal fingerprints mean
@@ -99,6 +102,12 @@ export interface SiteClient {
   putDates(planId: string, options: { dateFrom: string; dateTo: string }[], deadline: string | null): Promise<DatesView>;
   chooseDates(planId: string, optionId: string): Promise<DatesView>;
   deleteDates(planId: string): Promise<void>;
+  // The dates fixed without a vote, on the site at once; null undoes it.
+  settleDates(planId: string, window: { dateFrom: string; dateTo: string } | null): Promise<void>;
+  // Days off: who has them (null until the dates are decided), and the
+  // organiser's say on someone's behalf.
+  leave(planId: string): Promise<LeaveView | null>;
+  setLeave(planId: string, memberId: string, status: LeaveStatus): Promise<LeaveView | null>;
   // The panel's own data, kept by the site (ROADMAP 3.2).
   panelVersions(): Promise<Record<string, number>>;
   panelPlan(planId: string): Promise<{ entry: PlanEntry; version: number } | null>;
@@ -164,6 +173,9 @@ export function siteClient(baseUrl: string, adminToken: string, fetchImpl: typeo
     putDates: (planId, options, deadline) => call<DatesView>(`/plans/${planId}/dates`, "PUT", { options, deadline }),
     chooseDates: (planId, optionId) => call<DatesView>(`/plans/${planId}/dates/choose`, "POST", { optionId }),
     deleteDates: async (planId) => void (await call(`/plans/${planId}/dates`, "DELETE")),
+    settleDates: async (planId, window) => void (await call(`/plans/${planId}/dates/settled`, "PUT", window ?? { settled: false })),
+    leave: async (planId) => (await call<{ leave: LeaveView | null }>(`/plans/${planId}/leave`, "GET")).leave,
+    setLeave: async (planId, memberId, status) => (await call<{ leave: LeaveView | null }>(`/plans/${planId}/leave/${encodeURIComponent(memberId)}`, "PUT", { status })).leave,
     panelVersions: () => call<Record<string, number>>("/panel/plans", "GET"),
     async panelPlan(planId) {
       try {

@@ -7,6 +7,8 @@ import {
   type Ballot,
   type DateAnswer,
   type DatesView,
+  type LeaveStatus,
+  type LeaveView,
   type CommentView,
   type Destination,
   type Plan,
@@ -20,6 +22,7 @@ import {
   MOCK_NOW,
   ME,
   dates as mockDates,
+  leave as mockLeave,
   ballots as mockBallots,
   comments as mockComments,
   destinations as mockDestinations,
@@ -41,6 +44,8 @@ export interface PlanView {
   dates?: DatesView | null;
   // The trip page, once published (ROADMAP 2.2); older sites leave it out.
   trip?: TripPage | null;
+  // Who has the days off, once the dates are decided; older sites leave it out.
+  leave?: LeaveView | null;
 }
 
 export interface Results extends TallyResult {
@@ -66,6 +71,8 @@ export interface SiteSource {
   suggest(planId: string, place: string, note: string): Promise<SuggestionView[]>;
   // Your answers to the date vote, one per window.
   saveDates(planId: string, answers: Record<string, DateAnswer>, note: string): Promise<DatesView>;
+  // Whether you've got the trip's days off work.
+  saveLeave(planId: string, status: LeaveStatus): Promise<LeaveView>;
 }
 
 // Something the person should see, in their words.
@@ -117,6 +124,7 @@ export const httpSource: SiteSource = {
       method: "PUT",
       body: JSON.stringify({ answers, ...(note.trim() ? { note: note.trim() } : {}) }),
     }),
+  saveLeave: (planId, status) => request<LeaveView>(`/api/plans/${encodeURIComponent(planId)}/leave`, { method: "PUT", body: JSON.stringify({ status }) }),
 };
 
 // The mocks, played by the API's rules. `closed` previews the site after the vote.
@@ -136,6 +144,8 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
   ];
   const plan: Plan = closed ? { ...mockPlan, status: "closed", winnerDestinationId: "nap" } : mockPlan;
   let dates: DatesView = mockDates;
+  // The main plan's dates are decided: everyone says about their days off.
+  let leave: LeaveView = mockLeave;
   const inVote = mockDestinations.filter((d) => d.inVote);
   const tallied = () =>
     tally(
@@ -176,6 +186,7 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
         dates: planId === DATES_PLAN_ID ? dates : null,
         // After the vote, Nápoles has its trip page.
         trip: isMain && closed ? mockTripPage : null,
+        leave: isMain ? leave : null,
       };
     },
     async results(planId) {
@@ -219,6 +230,11 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
       const mine = { memberId: ME.id, answers, note: note.trim() || null, updatedAt: MOCK_NOW.toISOString() };
       dates = { ...dates, responses: [...dates.responses.filter((r) => r.memberId !== ME.id), mine] };
       return dates;
+    },
+    async saveLeave(planId, status) {
+      if (planId !== plan.id) throw new SourceError("las fechas del viaje aún no están decididas");
+      leave = { ...leave, people: leave.people.map((p) => (p.id === ME.id ? { ...p, status, at: MOCK_NOW.toISOString(), byOrganiser: false } : p)) };
+      return leave;
     },
     async suggest(_planId, place, note) {
       if (!place.trim()) throw new SourceError("Escribe el destino");

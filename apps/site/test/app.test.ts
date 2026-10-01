@@ -536,6 +536,40 @@ describe("with everyone signed in", () => {
     });
   });
 
+  describe("days off", () => {
+    it("lets each person say whether they have the days, for the dates decided", async () => {
+      // Dates not decided: nothing to ask.
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).leave).toBeNull();
+      expect((await as("ana", `/${PLAN}/leave`, "PUT", { status: "approved" })).status).toBe(409);
+
+      // Fixed by the organiser: the trip takes the dates, and everyone is asked.
+      expect((await admin(`/plans/${PLAN}/dates/settled`, "PUT", { dateFrom: "2026-11-05", dateTo: "2026-11-09" })).status).toBe(200);
+      const view = (await (await as("ana", `/${PLAN}`)).json()) as any;
+      expect(view.plan).toMatchObject({ dateFrom: "2026-11-05", dateTo: "2026-11-09", nights: 4 });
+      expect(view.leave.people).toHaveLength(FRIENDS.length);
+      expect(view.leave.people.every((p: any) => p.status === "not-asked")).toBe(true);
+
+      expect((await as("ana", `/${PLAN}/leave`, "PUT", { status: "on-holiday" })).status).toBe(400);
+      const after = (await (await as("ana", `/${PLAN}/leave`, "PUT", { status: "asked" })).json()) as any;
+      expect(after.people.find((p: any) => p.id === "ana")).toEqual({ id: "ana", name: "Ana", status: "asked", at: clock.toISOString(), byOrganiser: false, forOtherDates: false });
+      await as("ana", `/${PLAN}/leave`, "PUT", { status: "approved" });
+      // Everyone on the trip sees it; the export keeps it.
+      const seen = ((await (await as("bea", `/${PLAN}`)).json()) as any).leave.people.find((p: any) => p.id === "ana");
+      expect(seen.status).toBe("approved");
+      expect(((await (await admin("/export", "GET")).json()) as any).trips[0].leave.people[0]).toMatchObject({ id: "ana", status: "approved" });
+
+      // A published trip keeps them decided; a date vote reopened doesn't.
+      expect((await admin(`/plans/${PLAN}`, "PUT", { ...snapshot(four()), plan: { ...snapshot(four()).plan, dateFrom: "2026-11-05", dateTo: "2026-11-09", nights: 4 }, datesDecided: true })).status).toBe(200);
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).leave.people[0].status).toBe("approved");
+      await admin(`/plans/${PLAN}/dates`, "PUT", { options: [{ dateFrom: "2026-11-12", dateTo: "2026-11-16" }, { dateFrom: "2026-11-03", dateTo: "2026-11-07" }] });
+      expect(((await (await as("ana", `/${PLAN}`)).json()) as any).leave).toBeNull();
+
+      // Deleting the trip takes the answers too.
+      await admin(`/plans/${PLAN}`, "DELETE");
+      expect(await store.leaveAnswers(PLAN)).toEqual([]);
+    });
+  });
+
   describe("comments", () => {
     it("threads one level deep and lists the three most recent across the plan", async () => {
       const post = async (member: string, body: unknown) => (await (await as(member, `/${PLAN}/comments`, "POST", body)).json()) as any;

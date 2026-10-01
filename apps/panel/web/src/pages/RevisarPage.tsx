@@ -14,7 +14,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse, takeTask } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse, checkPrices, takeTask } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -61,6 +61,19 @@ export function RevisarPage() {
   }, [state.proposals, filter, hideUnverified, sort, now, plan]);
 
   const risky = approved.filter((p) => trustOf(p, now) !== "verified");
+
+  // "Comprobar precios": one at a time in the browser, the rest wait.
+  const checkingLine = (id: string) => {
+    const t = state.tasks.find((x) => x.kind === "prices" && x.status === "running" && x.planId === plan.id && x.proposalId === id);
+    return t ? (t.steps.length ? `mirando ${t.site === "stay" ? "Airbnb" : "Google Flights"}…` : "esperando al navegador…") : null;
+  };
+  const unchecked = state.status?.browse ? approved.filter((p) => trustOf(p, now) !== "verified" && !checkingLine(p.id)) : [];
+  // A check that came back incomplete opens its prices to finish by hand.
+  const waiting = state.tasks.filter((t) => t.kind === "browse" && t.status === "done" && t.planId === plan.id);
+  useEffect(() => {
+    if (!pricing && waiting[0]?.proposalId) setPricing(waiting[0].proposalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting.map((t) => t.id).join()]);
 
   // Whether the site is behind: checked again shortly after any change, once
   // the server has it.
@@ -127,6 +140,17 @@ export function RevisarPage() {
           subtitle={`${counts.all} propuestas generadas · ${counts.approved} aprobadas · ${counts.discarded} descartadas · ${counts.pending} por revisar`}
           actions={
             <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
+              {unchecked.length > 0 && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    for (const p of unchecked) checkPrices(p.id);
+                    toast(`${state.status?.ai?.name ?? "Claude"} comprobará ${unchecked.length === 1 ? "sus precios" : `los precios de ${unchecked.length}, uno detrás de otro,`} en ${state.status?.browser ?? "el navegador"}`);
+                  }}
+                >
+                  Comprobar precios de las aprobadas · {unchecked.length}
+                </Button>
+              )}
               <Button icon={<PlusIcon size={16} />} onClick={() => setAdding(true)}>
                 Añadir a mano
               </Button>
@@ -173,7 +197,7 @@ export function RevisarPage() {
             <EmptyState title="Nada que enseñar con estos filtros">Cambia el filtro de arriba para ver el resto de propuestas.</EmptyState>
           )
         ) : (
-          <section className="grid gap-6 md:grid-cols-2">
+          <section data-stagger className="grid gap-6 md:grid-cols-2">
             {list.map((p) => (
               <ReviewCard
                 key={p.id}
@@ -183,6 +207,8 @@ export function RevisarPage() {
                 verifying={state.verifying.includes(p.id)}
                 canVerify={state.status?.flights !== "none"}
                 canBrowse={!!state.status?.browse && p.review === "approved"}
+                onCheckPrices={() => checkPrices(p.id)}
+                checking={checkingLine(p.id)}
                 onReview={(r) => setReview(p.id, r)}
                 photos={state.editorial[p.id]?.photos ?? []}
                 onPickPhotos={() => setPicking(p.id)}

@@ -17,3 +17,4 @@ export * from "./forms/Field.tsx";
 export * from "./forms/Select.tsx";
 export * from "./forms/Controls.tsx";
 export * from "./Dialog.tsx";
+export * from "./motion.tsx";

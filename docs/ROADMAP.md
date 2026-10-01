@@ -15,8 +15,8 @@ What this roadmap covers:
 **Done:** the fixes (§1), Cuándo (2.1), El viaje (2.2) with Cómo llegar
 phase 1 (2.3) and the Tricount link (2.4), the export (2.5), the panel on the
 site (3.1), one store (3.2), other AIs (3.3, all but other local commands)
-and checking the finalists in the browser (3.4). Everything else is still a
-plan.
+checking the finalists in the browser (3.4) and days off (2.6). Everything
+else is still a plan.
 
 **Legend**
 
@@ -336,6 +336,28 @@ with:
 
 ---
 
+### 2.6 Días libres: everyone has the days off before booking · M · ⚙️
+
+**Why.** Everyone in the group works somewhere different. Once the dates are
+decided, each person has to ask for the days off, and nobody should book
+anything until they all have them. On the first trip this was tracked in the
+group chat.
+
+**Done.**
+- Once the dates are decided (chosen in a date vote, or fixed in the panel),
+  the site shows a "Días libres" card on the trip, in Fechas and in El viaje.
+  Each person marks: not asked yet, asked, approved or not given. Everyone
+  sees where the rest are.
+- The panel shows the same in Fechas. The organiser can mark it for someone,
+  and gets a message for the chat naming whoever hasn't confirmed. El viaje
+  has a step for it before the prices.
+- An answer is for the dates it was given for: change the dates and everyone
+  is asked again.
+- Fixing the dates in the panel now sends them to the site at once, without
+  publishing the rest. Site API version 13.
+
+---
+
 ## 3. The panel from anywhere, with any AI (or none)
 
 **Why.** Today the panel only runs on the organiser's laptop:
@@ -506,13 +528,17 @@ the background, so there they still search from the laptop.
 means opening Google Flights and Airbnb, taking screenshots and reading them
 in. The browser can do the opening and reading, with the organiser watching.
 
-**Done:** "Mirar en Google Flights" and "Mirar en Airbnb" in the price
-dialog, for approved proposals only, on the laptop's panel. The `claude`
-command drives a visible Chrome window through Playwright MCP and fills in
-the same fields as a screenshot; the organiser reviews and saves, and the
-site shows "Visto en Google Flights y Airbnb". See SPEC §8 for what the run
-may do. Not on the site's panel (there's no browser there), and never for a
-whole search: Google and Airbnb don't allow automated access, so this stays
+**Done:** "Comprobar precios" on approved proposals: on each card in
+Revisar, for all of them at once, and in El viaje. The `claude` command drives
+a visible window of the organiser's browser (Chrome, Brave, Edge or Chromium,
+found on the laptop and picked in Ajustes) through Playwright MCP. It reads
+the flight on Google Flights, then the stay on Airbnb, and saves both when it
+read them whole; anything incomplete opens in the price dialog to finish by
+hand. The dialog keeps "Mirar en Google Flights / Airbnb" for one page at a
+time, and the site shows "Visto en Google Flights y Airbnb". A browser that
+can't open says why instead of "no vi el precio". See SPEC §8 for what the
+run may do. Not on the site's panel (there's no browser there), and never for
+a whole search: Google and Airbnb don't allow automated access, so this stays
 a few pages checked at the organiser's request.
 
 ---

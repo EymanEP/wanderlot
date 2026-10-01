@@ -29,15 +29,24 @@ describe("PhotoMosaic", () => {
     const user = userEvent.setup();
     render(<PhotoMosaic city="Lisboa" photos={["a", "b", "c", "d", "e"].map(photo)} landmarks={[]} />);
     const grid = screen.getByRole("region", { name: "Fotos" });
-    // Hero plus four on a wide screen; the second small photo (c) is also the
-    // tile that holds the button on a phone.
+    // Hero plus four on a wide screen.
     const srcs = within(grid).getAllByRole("img").map((i) => (i as HTMLImageElement).src.split("/").pop());
-    expect(srcs).toEqual(["1280px-a.jpg", "1280px-b.jpg", "1280px-c.jpg", "1280px-c.jpg", "1280px-d.jpg", "1280px-e.jpg"]);
+    expect(srcs).toEqual(["1280px-a.jpg", "1280px-b.jpg", "1280px-c.jpg", "1280px-d.jpg", "1280px-e.jpg"]);
 
-    await user.click(within(grid).getAllByRole("button", { name: "Ver las 5 fotos" })[0]!);
+    await user.click(within(grid).getByRole("button", { name: "Ver las 5 fotos" }));
     const gallery = screen.getByRole("list", { name: "Fotos de Lisboa" });
     expect(within(gallery).getAllByRole("img")).toHaveLength(5);
     expect(within(gallery).getAllByRole("link", { name: "Autor e" })).toHaveLength(1);
+  });
+
+  it.each([1, 2, 3, 4])("lays out %i photos with no empty tile", (n) => {
+    render(<PhotoMosaic city="Lisboa" photos={["a", "b", "c", "d"].slice(0, n).map(photo)} landmarks={["Belém", "Alfama", "Sintra", "Baixa"]} />);
+    const grid = screen.getByRole("region", { name: "Fotos" });
+    // Every tile is a photo: none is left to a landmark's name.
+    expect(within(grid).getAllByRole("img")).toHaveLength(n);
+    expect(grid.children).toHaveLength(n + 1);
+    expect(within(grid).queryByText(/^\[/)).toBeNull();
+    expect(within(grid).getByRole("button", { name: n === 1 ? "Ver la foto" : `Ver las ${n} fotos` })).toBeTruthy();
   });
 
   it("shows the landmarks until photos are picked, with no gallery button", () => {

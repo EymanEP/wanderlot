@@ -1,7 +1,7 @@
 // Where the panel's data lives: its local server (apps/panel/src/app.ts), or
 // the mocks for previews and tests. Screens never call either directly; they
 // go through usePanel().
-import type { CheckedPrices, DatesView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, TripPage, VoteState } from "@wanderlot/core";
+import type { CheckedPrices, DatesView, LeaveStatus, LeaveView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, TripPage, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 
 export type Review = Proposal["review"];
@@ -32,7 +32,9 @@ export interface Status {
   // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4), or what it
   // lacks: the claude command, or the Playwright package (npm install).
   browse?: boolean;
-  browseMissing?: "claude" | "install";
+  // The browser it opens: "Brave", "Chrome"…
+  browser?: string;
+  browseMissing?: "claude" | "install" | "browser";
   // outdated: deployed from older code; some panel features need a redeploy.
   site: { url: string; reachable: boolean; outdated?: boolean; error?: string };
   // The panel the site serves at /admin (ROADMAP 3.1): an AI there only
@@ -145,6 +147,15 @@ export interface DatesPage {
   announcement: string | null;
 }
 
+// Days off (apps/panel/src/app.ts leavePage): who has them, once the dates
+// are decided, and the message for whoever hasn't said.
+export interface LeavePage {
+  leave: LeaveView | null;
+  reminder: string | null;
+  // The site is too old to ask.
+  outdated?: boolean;
+}
+
 // El viaje (apps/panel/src/app.ts tripView): the decided destination, the
 // trip page being prepared, and whether the site shows it.
 export interface TripView {
@@ -171,6 +182,20 @@ export type Extracted =
 
 // What Claude read off Google Flights or Airbnb in the browser, and where.
 export type Browsed = Extracted & { pageUrl: string | null; url?: string | null };
+
+// "Comprobar precios": both read, and saved when they were read whole; what
+// was missing otherwise, for the price dialog.
+export interface PriceCheck {
+  saved?: Proposal;
+  readings: { flight: Browsed; stay: Browsed };
+  missing?: string[];
+}
+
+// Ajustes: the browsers on this laptop and the one "Comprobar precios" opens.
+export interface BrowserView {
+  options: { id: string; name: string; path: string }[];
+  active: string | null;
+}
 
 // Checked prices, and where they were seen ("Mirar en…", ROADMAP 3.4).
 export interface PriceSave extends CheckedPrices {
@@ -227,6 +252,13 @@ export interface PanelBackend {
   setPrices(planId: string, id: string, prices: PriceSave): Promise<Proposal>;
   // Claude reads the real page in a browser on the laptop; nothing is saved.
   browse(planId: string, id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void): Promise<Browsed>;
+  // Both, one after the other, saved when read whole (onSite: which starts).
+  checkPrices(planId: string, id: string, onStep?: (s: SearchStep) => void, onSite?: (site: "flight" | "stay") => void): Promise<PriceCheck>;
+  browsers(): Promise<BrowserView>;
+  leave(planId: string): Promise<LeavePage>;
+  // The organiser's say on someone's behalf.
+  setLeave(planId: string, memberId: string, status: LeaveStatus): Promise<LeavePage>;
+  chooseBrowser(id: string): Promise<BrowserView>;
   // Added by hand, approved and checked from now.
   addProposal(planId: string, p: ManualProposal): Promise<Proposal>;
   ai(): Promise<AiView>;
@@ -290,6 +322,31 @@ async function call<T>(path: string, method = "GET", body?: unknown): Promise<T>
 
 const enc = encodeURIComponent;
 
+// A streamed answer (NDJSON): each line to `onLine`, until an {error}.
+async function ndjson<T>(path: string, body: unknown, onLine: (msg: T) => void): Promise<void> {
+  const res = await fetch(ROOT + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new BackendError(data.error ?? `Error ${res.status}`);
+  }
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line) continue;
+      const msg = JSON.parse(line) as T & { error?: string };
+      if (msg.error) throw new BackendError(msg.error);
+      onLine(msg);
+    }
+  }
+}
+
 export const httpBackend: PanelBackend = {
   now: () => new Date(),
   status: () => call<Status>("/api/status"),
@@ -349,31 +406,28 @@ export const httpBackend: PanelBackend = {
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
   async browse(planId, id, kind, onStep) {
-    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/proposals/${enc(id)}/browse`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }) });
-    if (!res.ok || !res.body) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new BackendError(data.error ?? `Error ${res.status}`);
-    }
-    // NDJSON: {progress} lines, then {fields} or {error}.
-    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += value;
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, nl).trim();
-        buffer = buffer.slice(nl + 1);
-        if (!line) continue;
-        const msg = JSON.parse(line) as { progress?: SearchStep; fields?: Browsed; error?: string };
-        if (msg.error) throw new BackendError(msg.error);
-        if (msg.progress) onStep?.(msg.progress);
-        if (msg.fields) return msg.fields;
-      }
-    }
-    throw new BackendError("El navegador terminó sin resultado");
+    let fields: Browsed | undefined;
+    await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/browse`, { kind }, (msg: { progress?: SearchStep; fields?: Browsed }) => {
+      if (msg.progress) onStep?.(msg.progress);
+      if (msg.fields) fields = msg.fields;
+    });
+    if (!fields) throw new BackendError("El navegador terminó sin resultado");
+    return fields;
   },
+  async checkPrices(planId, id, onStep, onSite) {
+    let out: PriceCheck | undefined;
+    await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/check-prices`, {}, (msg: { progress?: SearchStep; site?: "flight" | "stay" } & Partial<PriceCheck>) => {
+      if (msg.progress) onStep?.(msg.progress);
+      if (msg.site) onSite?.(msg.site);
+      if (msg.readings) out = { readings: msg.readings, ...(msg.saved ? { saved: msg.saved } : {}), ...(msg.missing ? { missing: msg.missing } : {}) };
+    });
+    if (!out) throw new BackendError("El navegador terminó sin resultado");
+    return out;
+  },
+  browsers: () => call<BrowserView>("/api/browser"),
+  leave: (planId) => call<LeavePage>(`/api/plans/${enc(planId)}/leave`),
+  setLeave: (planId, memberId, status) => call<LeavePage>(`/api/plans/${enc(planId)}/leave/${enc(memberId)}`, "PUT", { status }),
+  chooseBrowser: (id) => call<BrowserView>("/api/browser", "PUT", { id }),
   addProposal: (planId, p) => call<Proposal>(`/api/plans/${enc(planId)}/proposals`, "POST", p),
   ai: () => call<AiView>("/api/ai"),
   chooseAi: (id) => call<AiView>("/api/ai", "PUT", { id }),

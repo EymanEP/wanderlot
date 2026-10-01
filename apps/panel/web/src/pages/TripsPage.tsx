@@ -99,7 +99,7 @@ export function TripsPage() {
             Un viaje es una ventana de fechas, quién va y cuánto gastar. Luego buscas destinos, los apruebas y la cuadrilla vota.
           </EmptyState>
         ) : (
-          <ul className="m-0 grid list-none gap-4 p-0 md:grid-cols-2">
+          <ul data-stagger className="m-0 grid list-none gap-4 p-0 md:grid-cols-2">
             {list?.map((t) => {
               const current = state.plan?.id === t.plan.id;
               return (

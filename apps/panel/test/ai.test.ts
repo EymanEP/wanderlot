@@ -424,6 +424,52 @@ describe("checking a finalist in the browser", () => {
     const again = await json("/api/plans/noviembre/proposals/lisboa/prices", "POST", { flightCents: 12500 });
     expect(again.lines[0].provenance.seenOn).toEqual(["google-flights", "airbnb"]);
   });
+
+  it("checks both in one go and saves them when it read them whole; hands back what it didn't", async () => {
+    const site = createApp({ store: new SqliteStore(), adminToken: ADMIN, rp: { name: "Wanderlot", origin: ORIGIN }, now: () => new Date("2026-10-10T12:00:00Z") });
+    let stayTotal: number | null = 1400;
+    const panel = createPanel({
+      store: new PanelStore(null),
+      flights: {} as FlightProvider,
+      browse: async (req) =>
+        req.kind === "flight"
+          ? {
+              outbound: { from: "MAD", to: "LIS", departAt: "2026-11-07T08:00:00+01:00", arriveAt: "2026-11-07T08:20:00+00:00", carrier: "TAP", flightNumber: "TP1015", stops: 0 },
+              inbound: { from: "LIS", to: "MAD", departAt: "2026-11-14T19:00:00+00:00", arriveAt: "2026-11-14T21:20:00+01:00", carrier: "TAP", flightNumber: "TP1016", stops: 0 },
+              pricePerPersonEuros: 121,
+              totalEuros: null,
+              passengers: null,
+              pageUrl: "https://www.google.com/travel/flights/booking?x=1",
+            }
+          : { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: stayTotal, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "https://www.airbnb.es/rooms/987?check_in=x" },
+      site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
+      siteUrl: ORIGIN,
+      now: () => new Date("2026-10-10T12:00:00Z"),
+    });
+    const lines = async (path: string, method = "GET", body?: unknown) => {
+      const res = await panel.request(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return (await res.text()).split("\n").filter(Boolean).map((l) => JSON.parse(l)) as any[];
+    };
+    await lines("/api/plans/noviembre", "PUT", { name: "Noviembre", origin: "MAD", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, flexDays: 0, partySize: 6, maxPriceCents: null, status: "draft" });
+    await lines("/api/plans/noviembre/proposals", "POST", { place: { city: "Lisboa", country: "Portugal", iata: "LIS" }, category: "ciudad", flightCents: 15000 });
+
+    const out = await lines("/api/plans/noviembre/proposals/lisboa/check-prices", "POST");
+    expect(out.map((l) => l.site).filter(Boolean)).toEqual(["flight", "stay"]);
+    const saved = out.at(-1).saved;
+    expect(saved.outbound.priceCents + saved.inbound.priceCents).toBe(12100);
+    expect(saved.outbound.flightNumber).toBe("TP1015");
+    expect(saved.stays).toEqual([expect.objectContaining({ name: "Piso en Alfama", nightlyCents: 20000, url: "https://www.airbnb.es/rooms/987" })]);
+    expect(saved.provenance).toMatchObject({ kind: "organiser", flightDetails: true, seenOn: ["google-flights", "airbnb"] });
+    expect(saved.provenance.sources.map((s: any) => s.label)).toEqual(["Google Flights", "Airbnb"]);
+    expect((await lines("/api/plans/noviembre"))[0].proposals[0].stays[0].name).toBe("Piso en Alfama");
+
+    // Without the stay's total, nothing is saved: the readings come back.
+    stayTotal = null;
+    const partial = (await lines("/api/plans/noviembre/proposals/lisboa/check-prices", "POST")).at(-1);
+    expect(partial.saved).toBeUndefined();
+    expect(partial.missing).toEqual(["el precio total del alojamiento"]);
+    expect(partial.readings.flight.flightCents).toBe(12100);
+  });
 });
 
 describe("the guide from a long answer", () => {

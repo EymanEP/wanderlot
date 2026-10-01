@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Activity } from "./Activity.tsx";
 import { rangeLabel } from "@wanderlot/core";
-import { Brand, CheckIcon, ExternalIcon, Page, Select, StatusDot, TopBar, chipClasses, cn, useToast } from "@wanderlot/ui";
+import { Brand, CheckIcon, ExternalIcon, Page, PageTransition, Select, StatusDot, TopBar, chipClasses, cn, useToast } from "@wanderlot/ui";
 import { usePanel } from "../data/store.tsx";
 import { signOutHosted } from "./HostedGate.tsx";
 
@@ -227,18 +227,22 @@ function Frame({ trip, tone, children, onSlot }: { trip: boolean; tone: "white" 
 }
 
 // The panel's screens as one layout route: the frame stays mounted, each
-// screen fades in below it.
+// screen comes in below it (PageTransition).
 export function ShellLayout() {
   const [chrome, setChrome] = useState<{ trip: boolean; tone: "white" | "canvas" }>({ trip: true, tone: "white" });
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const { pathname } = useLocation();
   const set = (c: { trip: boolean; tone: "white" | "canvas" }) => setChrome((p) => (p.trip === c.trip && p.tone === c.tone ? p : c));
+  // A new screen starts at its top. Braces: scrollTo may return a Promise.
+  useLayoutEffect(() => {
+    window.scrollTo?.(0, 0);
+  }, [pathname]);
   return (
     <ChromeCtx.Provider value={{ ...chrome, slot, set }}>
       <Frame trip={chrome.trip} tone={chrome.tone} onSlot={setSlot}>
-        <div key={pathname} className="flex flex-1 flex-col motion-safe:animate-[page-in_160ms_ease-out]">
+        <PageTransition routeKey={pathname}>
           <Outlet />
-        </div>
+        </PageTransition>
       </Frame>
     </ChromeCtx.Provider>
   );

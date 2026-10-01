@@ -102,3 +102,57 @@ export function answeredAll(view: Pick<DatesView, "options" | "responses">, memb
 }
 
 export const DATE_ANSWER_LABEL: Record<DateAnswer, string> = { yes: "Sí", maybe: "Si hace falta", no: "No" };
+
+// --- Days off (vacaciones) ---------------------------------------------------
+// Everyone works somewhere different: before anything is booked, each person
+// says whether they've got the trip's days off. An answer is for the dates it
+// was given for; if the trip's dates change, it has to be given again.
+
+export const LEAVE_STATUSES = ["not-asked", "asked", "approved", "denied"] as const;
+export const LeaveStatus = z.enum(LEAVE_STATUSES);
+export type LeaveStatus = z.infer<typeof LeaveStatus>;
+
+export const LEAVE_LABEL: Record<LeaveStatus, string> = {
+  "not-asked": "Aún no los ha pedido",
+  asked: "Pedidos, esperando respuesta",
+  approved: "Días aprobados",
+  denied: "No se los dan",
+};
+
+// What each person answers, in their own words.
+export const LEAVE_CHOICE: Record<LeaveStatus, string> = {
+  "not-asked": "Aún no los he pedido",
+  asked: "Los he pedido",
+  approved: "Me los han aprobado",
+  denied: "No me los dan",
+};
+
+export interface LeavePerson {
+  id: string;
+  name: string;
+  status: LeaveStatus;
+  // When they last answered, for these dates; null: not yet.
+  at: string | null;
+  // The organiser marked it for them (they said so in the group chat).
+  byOrganiser: boolean;
+  // They had answered for dates the trip no longer has.
+  forOtherDates: boolean;
+}
+
+// The days-off check for a trip, once its dates are decided.
+export interface LeaveView {
+  dateFrom: string;
+  dateTo: string;
+  people: LeavePerson[];
+}
+
+export function leaveCounts(view: Pick<LeaveView, "people">): Record<LeaveStatus, number> {
+  const counts = { "not-asked": 0, asked: 0, approved: 0, denied: 0 };
+  for (const p of view.people) counts[p.status]++;
+  return counts;
+}
+
+// Everyone on the trip has their days: safe to book.
+export function allLeaveApproved(view: Pick<LeaveView, "people">): boolean {
+  return view.people.length > 0 && view.people.every((p) => p.status === "approved");
+}

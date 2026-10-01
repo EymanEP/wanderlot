@@ -1,9 +1,9 @@
 // The panel's state. <PanelProvider> loads everything through a backend (the
 // local server, or the mocks) and screens read and change it with usePanel().
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { avatarTint, initials, slugify, type GroupSettings, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
+import { avatarTint, initials, slugify, type GroupSettings, type LeaveStatus, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { AiId, AiView, Browsed, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { AiId, AiView, Browsed, BrowserView, LeavePage, PriceCheck, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -36,8 +36,10 @@ export interface GenerationState {
 export interface Task {
   id: string;
   planId: string;
-  kind: "guide" | "browse";
-  // browse: which proposal, and which site.
+  // prices: "Comprobar precios", both sites in a row, saved when read whole.
+  kind: "guide" | "browse" | "prices";
+  // browse and prices: which proposal, and which site (prices: the one
+  // being read now).
   proposalId?: string;
   site?: "flight" | "stay";
   city: string;
@@ -45,7 +47,7 @@ export interface Task {
   steps: SearchStep[];
   status: "running" | "done" | "failed";
   error?: string;
-  result?: TripPage | Browsed;
+  result?: TripPage | Browsed | PriceCheck;
   // Its result was picked up (by the price dialog, or El viaje).
   taken?: boolean;
 }
@@ -96,8 +98,13 @@ export interface PanelApi {
   setPrices: (id: string, prices: PriceSave) => Promise<void>;
   // Starts reading Google Flights or Airbnb for a finalist; see Task.
   browse: (id: string, kind: "flight" | "stay") => void;
+  // "Comprobar precios": both sites for a finalist, saved when read whole;
+  // otherwise its readings wait for the price dialog. See Task.
+  checkPrices: (id: string) => void;
   // A task's result was used, or its outcome seen: it can go.
   takeTask: (id: string) => void;
+  browsers: () => Promise<BrowserView>;
+  chooseBrowser: (id: string) => Promise<BrowserView>;
   addProposal: (p: ManualProposal) => Promise<Proposal>;
   ai: () => Promise<AiView>;
   chooseAi: (id: AiId) => Promise<AiView>;
@@ -122,6 +129,9 @@ export interface PanelApi {
   chooseDates: (optionId: string) => Promise<DatesPage>;
   cancelDates: () => Promise<DatesPage>;
   fixDates: (window: DateWindow | null) => Promise<void>;
+  // Days off: who has them, and the organiser's say on someone's behalf.
+  leave: () => Promise<LeavePage>;
+  setLeave: (memberId: string, status: LeaveStatus) => Promise<LeavePage>;
   organiser: () => Promise<OrganiserAccess>;
   setOrganiserPassword: (password: string | null) => Promise<OrganiserAccess>;
   trip: () => Promise<TripView>;
@@ -201,7 +211,10 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
   );
   // Runs a task: steps as they come, then its result or error.
   const runTask = useCallback(
-    (task: Omit<Task, "id" | "startedAt" | "steps" | "status">, work: (onStep: (s: SearchStep) => void) => Promise<TripPage | Browsed>) => {
+    (
+      task: Omit<Task, "id" | "startedAt" | "steps" | "status">,
+      work: (onStep: (s: SearchStep) => void, update: (change: Partial<Task>) => void) => Promise<TripPage | Browsed | PriceCheck>,
+    ) => {
       const id = `t${++taskSeq.current}`;
       // One of each at a time: a new one replaces what the last left behind.
       patch((s) => ({
@@ -210,7 +223,10 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
           { ...task, id, startedAt: Date.now(), steps: [], status: "running" },
         ],
       }));
-      work((step) => patchTask(id, (t) => ({ steps: [...t.steps.slice(-99), step] }))).then(
+      work(
+        (step) => patchTask(id, (t) => ({ steps: [...t.steps.slice(-99), step] })),
+        (change) => patchTask(id, () => change),
+      ).then(
         (result) => patchTask(id, () => ({ status: "done", result })),
         (e: Error) => patchTask(id, () => ({ status: "failed", error: e.message })),
       );
@@ -403,7 +419,36 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         if (state.tasks.some((t) => t.status === "running" && t.kind === "browse" && t.planId === pid && t.proposalId === id && t.site === kind)) return;
         runTask({ planId: pid, kind: "browse", proposalId: id, site: kind, city: p?.place.city ?? "" }, (onStep) => backend.browse(pid, id, kind, onStep));
       },
+      checkPrices(id) {
+        const pid = need();
+        const p = state.proposals.find((x) => x.id === id);
+        if (state.tasks.some((t) => t.status === "running" && t.kind === "prices" && t.planId === pid && t.proposalId === id)) return;
+        runTask({ planId: pid, kind: "prices", proposalId: id, site: "flight", city: p?.place.city ?? "" }, async (onStep, update) => {
+          const out = await backend.checkPrices(pid, id, onStep, (site) => update({ site }));
+          if (out.saved) {
+            const saved = out.saved;
+            patch((s) => ({ proposals: s.proposals.map((x) => (x.id === id ? saved : x)) }));
+          } else {
+            // Incomplete: each reading waits for the price dialog, as if
+            // read with "Mirar en…".
+            const now = Date.now();
+            patch((s) => ({
+              tasks: [
+                ...s.tasks.filter((t) => !(t.kind === "browse" && t.planId === pid && t.proposalId === id)),
+                ...(["flight", "stay"] as const).map((site): Task => ({ id: `t${++taskSeq.current}`, planId: pid, kind: "browse", proposalId: id, site, city: p?.place.city ?? "", startedAt: now, steps: [], status: "done", result: out.readings[site] })),
+              ],
+            }));
+          }
+          return out;
+        });
+      },
       takeTask: (id) => patch((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
+      browsers: () => backend.browsers(),
+      chooseBrowser: async (id) => {
+        const view = await backend.chooseBrowser(id);
+        patch((s) => ({ status: s.status ? { ...s.status, browser: view.options.find((o) => o.id === view.active)?.name ?? s.status.browser } : s.status }));
+        return view;
+      },
       async addProposal(p) {
         const added = await backend.addProposal(need(), p);
         patch((s) => ({ proposals: [...s.proposals, added], editorial: { ...s.editorial, [added.id]: { ...EMPTY_EDITORIAL, photoQueries: [added.place.city] } } }));
@@ -471,6 +516,8 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
       },
       exportData: (id) => backend.exportData(id),
       dates: () => backend.dates(need()),
+      leave: () => backend.leave(need()),
+      setLeave: (memberId, status) => backend.setLeave(need(), memberId, status),
       async proposeDates(windows, deadline) {
         const pid = need();
         const page = await backend.proposeDates(pid, windows, deadline);

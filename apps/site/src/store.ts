@@ -1,6 +1,6 @@
 // What the site keeps, behind one async interface: node:sqlite implements it
 // (sqlite.ts) and Cloudflare D1 (d1.ts) implement it, from the same migrations/.
-import type { Ballot, Comment, DateAnswer, DateOption, DateResponse, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
+import type { Ballot, Comment, DateAnswer, DateOption, DateResponse, GroupSettings, LeaveStatus, Member, PlanStatus, Snapshot } from "@wanderlot/core";
 
 export interface StoredPlan {
   snapshot: Snapshot;
@@ -65,6 +65,16 @@ export interface Flow {
   purpose: "register" | "login";
   inviteId: string | null;
   expiresAt: string;
+}
+
+// One person's days-off answer, for the dates it was given for.
+export interface LeaveAnswer {
+  memberId: string;
+  status: LeaveStatus;
+  dateFrom: string;
+  dateTo: string;
+  setBy: "member" | "organiser";
+  updatedAt: string;
 }
 
 export interface DatePoll {
@@ -175,6 +185,10 @@ export interface SiteStore {
   deleteDatePoll(planId: string): Promise<void>;
   dateResponses(planId: string): Promise<DateResponse[]>;
   putDateResponse(planId: string, memberId: string, answers: Record<string, DateAnswer>, note: string | null, at: string): Promise<void>;
+
+  // Days off: who has the trip's days off work.
+  leaveAnswers(planId: string): Promise<LeaveAnswer[]>;
+  putLeaveAnswer(planId: string, answer: LeaveAnswer): Promise<void>;
 
   // The panel's own data (ROADMAP 3.2): one JSON entry per trip, versioned.
   panelVersions(): Promise<Record<string, number>>;

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useToast } from "@wanderlot/ui";
+import { euros, flightPriceCents, stayShareCents } from "@wanderlot/core";
+import type { PriceCheck } from "../data/backend.ts";
 import { usePanel, type Task } from "../data/store.tsx";
 
 interface Item {
@@ -10,6 +12,18 @@ interface Item {
 }
 
 const SITE = { flight: "Google Flights", stay: "Airbnb" } as const;
+
+// How "Comprobar precios" ended, in a line.
+function pricesText(t: Task, status: string, plan: { nights: number; partySize: number } | null): string {
+  const of = t.city ? ` de ${t.city}` : "";
+  if (status !== "done") return `No se pudieron comprobar los precios${of}: ${t.error ?? "error"}`;
+  const r = t.result as PriceCheck;
+  if (r.saved && plan) {
+    const share = stayShareCents(r.saved.stays, plan.nights, plan.partySize) ?? 0;
+    return `Precios${of} comprobados y guardados: ${euros(flightPriceCents(r.saved) + share)} por persona`;
+  }
+  return `Faltan datos${of}: ${(r.missing ?? []).join(", ")}. Revísalo en sus precios`;
+}
 
 // What the AI is doing right now, in the top bar, wherever the organiser is
 // in the panel: a search, the trip's guide, a page read in the browser. Each
@@ -21,13 +35,19 @@ export function Activity() {
   const ai = state.status?.ai?.name ?? "Claude";
   const winner = state.plan?.winnerDestinationId;
 
-  const place = (t: Task) => (t.kind === "browse" && t.proposalId !== winner ? "/revisar" : "/viaje");
+  const place = (t: Task) => (t.kind !== "guide" && t.proposalId !== winner ? "/revisar" : "/viaje");
+  const doing = (t: Task) =>
+    t.kind === "guide"
+      ? `${ai} prepara la guía${t.city ? ` de ${t.city}` : ""}`
+      : t.kind === "prices"
+        ? `${ai} comprueba precios${t.city ? ` de ${t.city}` : ""} · ${SITE[t.site ?? "flight"]}`
+        : `${ai} mira ${SITE[t.site!]}${t.city ? ` · ${t.city}` : ""}`;
   const running: Item[] = [
     ...(state.generation?.running ? [{ key: "generation", label: `${ai} busca destinos · ${state.generation.received}`, to: "/generar" }] : []),
     ...(state.job?.status === "running" ? [{ key: "job", label: `${state.job.aiName} busca en segundo plano`, to: state.job.kind === "guide" ? "/viaje" : "/generar" }] : []),
     ...state.tasks
       .filter((t) => t.status === "running")
-      .map((t) => ({ key: t.id, label: t.kind === "guide" ? `${ai} prepara la guía${t.city ? ` de ${t.city}` : ""}` : `${ai} mira ${SITE[t.site!]}${t.city ? ` · ${t.city}` : ""}`, to: place(t) })),
+      .map((t) => ({ key: t.id, label: doing(t), to: place(t) })),
   ];
 
   // Say when something ends, with a way back to it from anywhere.
@@ -53,7 +73,9 @@ export function Activity() {
           ? status === "done"
             ? `Búsqueda terminada: ${state.generation?.received ?? 0} propuestas nuevas`
             : "La búsqueda se cortó"
-          : t?.kind === "guide"
+          : t?.kind === "prices"
+            ? pricesText(t, status, state.plan)
+            : t?.kind === "guide"
             ? status === "done"
               ? `La guía${t.city ? ` de ${t.city}` : ""} está lista`
               : `No se pudo preparar la guía: ${t.error ?? "error"}`

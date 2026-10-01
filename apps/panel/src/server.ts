@@ -14,6 +14,7 @@ import { AI_IDS, AiChoice, apiEntries, type AiId } from "./providers/ai.ts";
 import { pexels, unsplash, wikimedia, type PhotoSource } from "./providers/photos.ts";
 import { duffelProvider } from "./providers/duffel.ts";
 import { siteClient, sitePanelBackend } from "./publish.ts";
+import { BrowserChoice, findBrowsers } from "./browsers.ts";
 import { PanelStore } from "./store.ts";
 import { fileBackend, moveFileToSite } from "./file-store.ts";
 
@@ -89,8 +90,10 @@ const ai = new AiChoice(
   (id) => saveEnv("WANDERLOT_AI", id),
 );
 
-// "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): the claude command
-// drives a visible browser (Chrome by default) with a profile of its own.
+// "Comprobar precios" (ROADMAP 3.4): the claude command drives a visible
+// browser with a profile of its own: Chrome, Brave, Edge or Chromium,
+// whichever is installed, or the one chosen in Ajustes.
+const browsers = new BrowserChoice(findBrowsers(), process.env.WANDERLOT_BROWSER, (v) => saveEnv("WANDERLOT_BROWSER", v));
 let mcpCli: string | null = null;
 try {
   mcpCli = join(dirname(createRequire(import.meta.url).resolve("@playwright/mcp/package.json")), "cli.js");
@@ -101,17 +104,18 @@ const status: PanelStatus = {
   // The Duffel provider is still a stub (providers/duffel.ts): until it's
   // wired up, a key doesn't make flight search work, so don't offer it.
   flights: "none",
-  ...(!hasClaude ? { browseMissing: "claude" as const } : !mcpCli ? { browseMissing: "install" as const } : {}),
+  ...(!hasClaude ? { browseMissing: "claude" as const } : !mcpCli ? { browseMissing: "install" as const } : !browsers.chosen ? { browseMissing: "browser" as const } : {}),
   photos: photos.map((s) => s.name),
   store: onSite ? "site" : "file",
 };
 
 const browse =
-  hasClaude && mcpCli
+  hasClaude && mcpCli && browsers.chosen
     ? claudeProvider(undefined, {
         mcpCli,
-        channel: process.env.WANDERLOT_BROWSER ?? "chrome",
+        browser: () => browsers.chosen,
         profileDir: resolvePath(process.env.WANDERLOT_BROWSER_PROFILE ?? "data/browser"),
+        noSandbox: process.platform === "linux" && process.getuid?.() === 0,
       }).browse
     : undefined;
 
@@ -121,6 +125,7 @@ const app = createPanel({
   flights: duffelProvider(process.env.DUFFEL_API_KEY),
   ai,
   ...(browse ? { browse } : {}),
+  browsers,
   photos,
   // This server, and Vite's dev server in front of it.
   hosts: panelHosts([port, 5174]),

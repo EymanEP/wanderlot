@@ -30,46 +30,56 @@ function Credit({ photo }: { photo: PhotoData }) {
   );
 }
 
-// The hero and up to four more on a wide screen (two rows of two beside it),
-// the hero and two below it on a phone. The last tile opens every photo.
+// Wide screen: the hero and up to four more beside it, laid out for however
+// many there are, so no tile is ever left without a photo. Phone: the hero
+// and up to two below it.
+const WIDE: Record<number, string[]> = {
+  1: ["md:col-span-2 md:row-span-2"],
+  2: ["md:col-span-2", "md:col-span-2"],
+  3: ["md:col-span-2", "", ""],
+  4: ["", "", "", ""],
+};
+
 export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
   const [open, setOpen] = useState(false);
   const [hero, ...rest] = photos;
-  const all = photos.length > 0 && (
-    <Button size="sm" className="shadow-chip" onClick={() => setOpen(true)}>
-      {photos.length === 1 ? "Ver la foto" : `Ver las ${photos.length} fotos`}
-    </Button>
-  );
-  const tile = (i: number, className: string, withButton: boolean) => {
-    const photo = rest[i];
+
+  // No photos yet: the landmarks hold their places (the organiser's preview).
+  if (!hero) {
+    const placeholder = (i: number, className: string) => <Photo key={i} label={landmarks[i] ?? city} labelPosition="center" className={cn("rounded-xl p-3", className)} />;
     return (
-      <Photo
-        key={i}
-        label={photo ? undefined : (landmarks[i] ?? city)}
-        src={photo ? standardImageUrl(photo.url) : undefined}
-        alt={photo?.alt}
-        labelPosition="center"
-        className={cn("rounded-xl p-3", className)}
-        bottom={withButton ? all || undefined : photo ? <Credit photo={photo} /> : undefined}
-      />
+      <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
+        <Photo label={`Foto de ${city}`} className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1" />
+        {placeholder(0, "")}
+        {placeholder(1, "")}
+        {placeholder(2, "max-md:hidden")}
+        {placeholder(3, "max-md:hidden")}
+      </section>
     );
-  };
+  }
+
+  const shown = rest.slice(0, 4);
   return (
     <>
-      <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
+      <section aria-label="Fotos" className="relative grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
         <Photo
-          label={hero ? undefined : `Foto de ${city}`}
-          src={hero ? standardImageUrl(hero.url) : undefined}
-          alt={hero?.alt}
-          className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1"
-          bottom={hero ? <Credit photo={hero} /> : undefined}
+          src={standardImageUrl(hero.url)}
+          alt={hero.alt}
+          className={cn("col-span-2 rounded-2xl p-4", shown.length ? "row-span-2 max-md:row-span-1" : "row-span-2 md:col-span-4")}
+          bottom={<Credit photo={hero} />}
         />
-        {tile(0, "", false)}
-        {/* Second tile: holds the button on a phone, a photo on a wide screen. */}
-        {tile(1, "md:hidden", true)}
-        {tile(1, "max-md:hidden", false)}
-        {tile(2, "max-md:hidden", false)}
-        {tile(3, "max-md:hidden", true)}
+        {shown.map((photo, i) => (
+          <Photo
+            key={photo.url}
+            src={standardImageUrl(photo.url)}
+            alt={photo.alt}
+            className={cn("rounded-xl p-3", shown.length === 1 && "col-span-2", i >= 2 && "max-md:hidden", WIDE[shown.length]![i])}
+            bottom={<Credit photo={photo} />}
+          />
+        ))}
+        <Button size="sm" className="absolute top-3 right-3 shadow-chip" onClick={() => setOpen(true)}>
+          {photos.length === 1 ? "Ver la foto" : `Ver las ${photos.length} fotos`}
+        </Button>
       </section>
       <Dialog open={open} title={`Fotos de ${city}`} wide onClose={() => setOpen(false)} actions={<Button onClick={() => setOpen(false)}>Cerrar</Button>}>
         <ul aria-label={`Fotos de ${city}`} className="m-0 grid max-h-[65vh] list-none grid-cols-1 gap-4 overflow-y-auto p-0 sm:grid-cols-2">

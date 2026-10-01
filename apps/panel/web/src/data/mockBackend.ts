@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { DateWindows, TripPage, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { DateWindows, TripPage, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type LeaveStatus, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   DATES_PLAN_ID,
   MOCK_NOW,
@@ -17,7 +17,7 @@ import {
   plans as mockPlans,
   proposals as mockProposals,
 } from "@wanderlot/mocks";
-import type { AiOption, AiView, DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PanelJob, PlanEntry, Status, TripView, VoteView } from "./backend.ts";
+import type { AiOption, AiView, BrowserView, LeavePage, DatesPage, MemberAccess, OrganiserAccess, PanelBackend, PanelJob, PlanEntry, Status, TripView, VoteView } from "./backend.ts";
 
 // The order proposals "arrive" in during a mock search: the design's list.
 const ARRIVAL = ["lis", "nap", "rak", "bud", "tfs", "opo", "edi", "fco", "prg", "krk", "mla", "ath"];
@@ -102,12 +102,38 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
   const publishKey = (planId: string) => {
     const e = entry(planId);
     const approved = e.proposals.filter((p) => p.review === "approved");
-    return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null)]);
+    const t = trips.get(planId);
+    return JSON.stringify([e.plan, approved, approved.map((p) => e.editorial[p.id] ?? null), t?.published ? t.trip : null]);
   };
   // The panel at /admin: off until a password is set.
   let organiser: OrganiserAccess = { enabled: false, setAt: null, url: `${SITE_URL}/admin/` };
   // Date votes on the site, per plan.
   const datesBy = new Map<string, DatesView>([[DATES_PLAN_ID, mockDates]]);
+  // Days off: answers per plan, for the dates they were given for.
+  const leaveBy = new Map<string, Map<string, { status: LeaveStatus; dateFrom: string; dateTo: string; at: string; byOrganiser: boolean }>>();
+  const leavePage = (planId: string): LeavePage => {
+    const e = entry(planId);
+    const d = datesBy.get(planId);
+    const settled = d ? d.status === "closed" && !!d.chosenOptionId : !!e.datesDecided;
+    if (!settled) return { leave: null, reminder: null };
+    const { dateFrom, dateTo } = e.plan;
+    const going = participants.get(planId) ?? [];
+    const answers = leaveBy.get(planId) ?? new Map();
+    const people = members
+      .filter((m) => going.includes(m.id))
+      .map((m) => {
+        const a = answers.get(m.id);
+        const current = !!a && a.dateFrom === dateFrom && a.dateTo === dateTo;
+        return { id: m.id, name: m.name, status: current ? a!.status : ("not-asked" as const), at: current ? a!.at : null, byOrganiser: current && a!.byOrganiser, forOtherDates: !!a && !current };
+      });
+    const missing = people.filter((p) => p.status !== "approved" && p.status !== "denied").map((p) => p.name);
+    const who = missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`;
+    return {
+      leave: { dateFrom, dateTo, people },
+      reminder: missing.length ? `${e.plan.name}, ${rangeLabel(dateFrom, dateTo)}: antes de reservar nada, ¿os han aprobado los días en el trabajo? ${who} por confirmarlo. Se marca aquí: ${SITE_URL}/p/${planId}` : null,
+    };
+  };
+
   const datesPage = (planId: string): DatesPage => {
     const d = datesBy.get(planId) ?? null;
     const going = participants.get(planId) ?? [];
@@ -205,6 +231,14 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
     return job;
   };
   const aiView = (): AiView => ({ options: aiOptions, active: aiActive, canChoose: !hosted });
+  // Brave and Chrome on this pretend laptop.
+  let browserView: BrowserView = {
+    options: [
+      { id: "chrome", name: "Chrome", path: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" },
+      { id: "brave", name: "Brave", path: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" },
+    ],
+    active: "chrome",
+  };
 
   const patchMember = (id: string, patch: Partial<MemberAccess>) => {
     members = members.map((m) => (m.id === id ? { ...m, ...patch } : m));
@@ -218,9 +252,35 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       const ai = a && name ? { research: a.id, ai: { name, search: a.search, images: a.images, background: a.background } } : { research: "none" as const };
       return hosted
         ? { ...ai, flights: "none", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true }, hosted: true, store: "site" }
-        : { ...ai, browse: true, flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
+        : { ...ai, browse: true, browser: browserView.options.find((o) => o.id === browserView.active)?.name ?? "Chrome", flights: "duffel", photos: ["wikimedia"], site: { url: SITE_URL, reachable: true } };
     },
     ai: async () => aiView(),
+    browsers: async () => browserView,
+    async chooseBrowser(id) {
+      if (!browserView.options.some((o) => o.id === id)) throw new Error("Ese navegador no está instalado en este ordenador");
+      browserView = { ...browserView, active: id };
+      return browserView;
+    },
+    // "Comprobar precios": both pages, then saved as the server does.
+    async checkPrices(planId, id, onStep, onSite) {
+      onSite?.("flight");
+      const flight = await this.browse(planId, id, "flight", onStep);
+      onSite?.("stay");
+      const stay = await this.browse(planId, id, "stay", onStep);
+      if (flight.kind !== "flight" || stay.kind !== "stay") throw new Error("lectura inesperada");
+      const saved = await this.setPrices(planId, id, {
+        flightCents: flight.flightCents!,
+        ...(flight.outbound && flight.inbound ? { outbound: flight.outbound, inbound: flight.inbound } : {}),
+        stayCents: stay.stayCents!,
+        stay: { name: stay.name!, ...(stay.description ? { description: stay.description } : {}), ...(stay.url ? { url: stay.url } : {}) },
+        seenOn: ["google-flights", "airbnb"],
+        sources: [
+          { label: "Google Flights", url: flight.pageUrl! },
+          { label: "Airbnb", url: stay.url ?? stay.pageUrl! },
+        ],
+      });
+      return { saved, readings: { flight, stay } };
+    },
     async chooseAi(id) {
       if (hosted || !aiOptions.find((o) => o.id === id)?.ready) throw new Error("Esa IA no está configurada");
       aiActive = id;
@@ -553,6 +613,16 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       entries.set(planId, { ...e, plan, datesDecided: true, proposals: moved ? e.proposals.map(markForOtherDates) : e.proposals });
       return { ...datesPage(planId), plan };
     },
+    leave: async (planId) => leavePage(planId),
+    async setLeave(planId, memberId, status) {
+      const page = leavePage(planId);
+      if (!page.leave) throw new Error("las fechas del viaje aún no están decididas");
+      if (!page.leave.people.some((p) => p.id === memberId)) throw new Error("esa persona no va a este viaje");
+      const answers = leaveBy.get(planId) ?? new Map();
+      answers.set(memberId, { status, dateFrom: page.leave.dateFrom, dateTo: page.leave.dateTo, at: MOCK_NOW.toISOString(), byOrganiser: true });
+      leaveBy.set(planId, answers);
+      return leavePage(planId);
+    },
     async fixDates(planId, window) {
       const e = entry(planId);
       if (!window) {
@@ -612,10 +682,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       trips.set(planId, { trip: parsed.data, published: trips.get(planId)?.published ?? false });
       return tripView(planId);
     },
-    async publishTrip(planId, published) {
+    async publishTrip(planId, on) {
       const t = trips.get(planId);
-      if (published && !tripView(planId).trip) throw new Error("prepara la página del viaje antes de publicarla");
-      if (t) trips.set(planId, { ...t, published });
+      if (on && !tripView(planId).trip) throw new Error("prepara la página del viaje antes de publicarla");
+      if (t) trips.set(planId, { ...t, published: on });
+      // The whole trip goes, as on the server.
+      published.set(planId, { at: MOCK_NOW.toISOString(), key: publishKey(planId) });
       return tripView(planId);
     },
     async exportData(planId) {

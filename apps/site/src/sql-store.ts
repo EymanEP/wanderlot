@@ -1,7 +1,7 @@
 // SiteStore in SQL, once, over any SQLite that can run a query: node:sqlite
 // (sqlite.ts) or Cloudflare D1 (d1.ts). Both use the schema in migrations/.
 import type { Ballot, Comment, DateAnswer, DateResponse, GroupSettings, Member, PlanStatus, Snapshot } from "@wanderlot/core";
-import type { DatePoll, Flow, Invite, MemberPin, OrganiserLogin, OrganiserSession, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
+import type { DatePoll, Flow, LeaveAnswer, Invite, MemberPin, OrganiserLogin, OrganiserSession, Passkey, Session, SiteStore, StoredPlan, Suggestion } from "./store.ts";
 
 export type Row = Record<string, unknown>;
 export type Value = string | number | null;
@@ -68,6 +68,7 @@ export class SqlStore implements SiteStore {
     await this.run("delete from suggestions where plan_id = ?", planId);
     await this.run("delete from plan_members where plan_id = ?", planId);
     await this.deleteDatePoll(planId);
+    await this.run("delete from leave_answers where plan_id = ?", planId);
     return (await this.run("delete from plans where id = ?", planId)) > 0;
   }
 
@@ -422,6 +423,31 @@ export class SqlStore implements SiteStore {
       JSON.stringify(answers),
       note,
       at,
+    );
+  }
+
+  async leaveAnswers(planId: string): Promise<LeaveAnswer[]> {
+    return (await this.all("select * from leave_answers where plan_id = ? order by updated_at, rowid", planId)).map((r) => ({
+      memberId: r.member_id as string,
+      status: r.status as LeaveAnswer["status"],
+      dateFrom: r.date_from as string,
+      dateTo: r.date_to as string,
+      setBy: r.set_by as LeaveAnswer["setBy"],
+      updatedAt: r.updated_at as string,
+    }));
+  }
+
+  async putLeaveAnswer(planId: string, a: LeaveAnswer) {
+    await this.run(
+      `insert into leave_answers (plan_id, member_id, status, date_from, date_to, set_by, updated_at) values (?, ?, ?, ?, ?, ?, ?)
+       on conflict(plan_id, member_id) do update set status = excluded.status, date_from = excluded.date_from, date_to = excluded.date_to, set_by = excluded.set_by, updated_at = excluded.updated_at`,
+      planId,
+      a.memberId,
+      a.status,
+      a.dateFrom,
+      a.dateTo,
+      a.setBy,
+      a.updatedAt,
     );
   }
 

@@ -190,8 +190,8 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
-| `WANDERLOT_BROWSER` | panel | `chrome`: the browser "Mirar en Google Flights / Airbnb" opens (`msedge`, `firefox`…) |
-| `WANDERLOT_BROWSER_PROFILE` | panel | `data/browser`: that browser's own profile, kept between runs |
+| `WANDERLOT_BROWSER` | panel | the first of Chrome, Brave, Edge, Chromium found: the browser "Comprobar precios" opens (`chrome`, `brave`, `edge`, `chromium` or a path); Ajustes changes it |
+| `WANDERLOT_BROWSER_PROFILE` | panel | `data/browser`: where each browser keeps its own profile, between runs |
 
 ## State
 
@@ -205,10 +205,15 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   weather and photo subjects. None has been run against the real service
   from CI; they're tested with recorded shapes. With no AI, destinations can
   be added by hand.
-- The finalists' prices can be checked in the browser: "Mirar en Google
-  Flights / Airbnb" has the `claude` command read the real pages in a Chrome
-  window on the laptop (Playwright MCP), for the organiser to review. Not
-  yet run against the real sites from CI.
+- The finalists' prices can be checked in the browser: "Comprobar precios"
+  has the `claude` command read the flight on Google Flights and the stay on
+  Airbnb, in a window of the organiser's own browser (Chrome, Brave, Edge or
+  Chromium; Playwright MCP). It saves both when it reads them whole. Tested
+  end to end with the real `claude` command and Chromium against a local
+  page; not yet run against the real sites from CI.
+- Days off: once the dates are decided, each person says on the site whether
+  they've got the days off work, and the organiser follows it in the panel
+  before booking anything.
 - Photos: Revisar's picker searches Wikimedia (no key), Unsplash and Pexels
   (with keys) and publishes the chosen ones with their credits (SPEC §6).
 - The organiser follows the vote in the panel: who has voted, a reminder for

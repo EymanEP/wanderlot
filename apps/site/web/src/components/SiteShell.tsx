@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router";
 import { rangeLabel } from "@wanderlot/core";
-import { Brand, InfoPill, Page, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
+import { Brand, InfoPill, Page, PageTransition, TopBar, cn, navLinkClasses } from "@wanderlot/ui";
 import { AccountMenu } from "./AccountMenu.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { PlanProvider, useSite } from "../data/store.tsx";
@@ -70,11 +70,11 @@ function Chrome() {
         }
         end={<AccountMenu me={me} />}
       />
-      <div className="flex flex-1 flex-col pb-20 md:pb-0">
+      <PageTransition routeKey={pathname} className="pb-20 md:pb-0">
         <PageErrorBoundary>
           <Outlet />
         </PageErrorBoundary>
-      </div>
+      </PageTransition>
       <nav
         aria-label="Secciones"
         className={cn("fixed inset-x-0 bottom-0 z-30 grid border-t border-line-soft bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden", { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" }[nav.length])}

@@ -93,6 +93,28 @@
   body {
     @apply bg-surface font-sans text-ink antialiased;
   }
+  /* A modal open: the page behind it stays put. The gutter keeps the page
+     from shifting when its scrollbar goes. */
+  html {
+    scrollbar-gutter: stable;
+  }
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+  dialog {
+    overscroll-behavior: contain;
+  }
+  /* The backdrop fades in with the dialog (where the browser can). */
+  @media (prefers-reduced-motion: no-preference) {
+    dialog[open]::backdrop {
+      animation: backdrop-in 0.25s ease-out;
+    }
+  }
+  @keyframes backdrop-in {
+    from {
+      opacity: 0;
+    }
+  }
   a {
     @apply text-accent hover:text-accent-hover;
   }

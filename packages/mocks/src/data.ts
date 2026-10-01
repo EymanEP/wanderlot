@@ -6,6 +6,8 @@ import {
   type Ballot,
   type Comment,
   type DatesView,
+  type LeavePerson,
+  type LeaveView,
   type TripPage,
   type Destination,
   type Photo,
@@ -564,4 +566,16 @@ export const tripPage: TripPage = {
   tricountUrl: "https://tricount.com/es/grupo51-napoles",
   sources: [{ label: "Turismo de Nápoles", url: "https://www.visitnaples.eu/" }],
   preparedAt: "2026-09-24T19:00:00Z",
+};
+
+// --- days off ---------------------------------------------------------------
+
+// Who has the main plan's days off work, once its dates are decided.
+export const leave: LeaveView = {
+  dateFrom: OUT,
+  dateTo: BACK,
+  people: members.map((m, i): LeavePerson => {
+    const status = (["not-asked", "approved", "approved", "asked", "approved", "not-asked"] as const)[i]!;
+    return { id: m.id, name: m.name, status, at: status === "not-asked" ? null : "2026-09-26T09:30:00Z", byOrganiser: m.id === "laura", forOtherDates: false };
+  }),
 };

@@ -17,7 +17,9 @@ import {
   DEFAULT_SETTINGS,
   DateAnswer,
   DateWindows,
+  LeaveStatus,
   answeredAll,
+  type LeaveView,
   nightsOf,
   type DatesView,
   SITE_API_VERSION,
@@ -252,6 +254,34 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const responses = (await store.dateResponses(planId)).filter((r) => going.has(r.memberId));
     const { updatedAt: _at, ...rest } = poll;
     return { ...rest, responses };
+  }
+
+  // Days off: once the dates are decided (a date vote chose them, or the
+  // organiser fixed them), who has the trip's days off work.
+  async function leaveView(planId: string): Promise<LeaveView | null> {
+    const plan = await store.getPlan(planId);
+    if (!plan) return null;
+    const poll = await store.datePoll(planId);
+    const settled = poll ? poll.status === "closed" && !!poll.chosenOptionId : !!plan.snapshot.datesDecided;
+    if (!settled) return null;
+    const { dateFrom, dateTo } = plan.snapshot.plan;
+    const going = new Set(await store.planMembers(planId));
+    const answers = new Map((await store.leaveAnswers(planId)).map((a) => [a.memberId, a]));
+    const people = (await store.members())
+      .filter((m) => going.has(m.id))
+      .map((m) => {
+        const a = answers.get(m.id);
+        const current = !!a && a.dateFrom === dateFrom && a.dateTo === dateTo;
+        return {
+          id: m.id,
+          name: m.name,
+          status: current ? a!.status : ("not-asked" as const),
+          at: current ? a!.updatedAt : null,
+          byOrganiser: current && a!.setBy === "organiser",
+          forOtherDates: !!a && !current && a.status !== "not-asked",
+        };
+      });
+    return { dateFrom, dateTo, people };
   }
 
   // --- pages -----------------------------------------------------------------
@@ -642,6 +672,45 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return c.json({ ok: true });
   });
 
+  // "Fijar estas fechas" in the panel: the trip takes them here at once,
+  // without publishing the rest, and the group is asked about days off.
+  // {settled: false} undoes it.
+  admin.put("/plans/:planId/dates/settled", async (c) => {
+    const planId = c.req.param("planId");
+    const plan = await store.getPlan(planId);
+    if (!plan) return c.json({ error: "not found" }, 404);
+    const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const body = z
+      .union([z.object({ dateFrom: day, dateTo: day }).refine((d) => d.dateTo > d.dateFrom), z.object({ settled: z.literal(false) })])
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {dateFrom, dateTo} or {settled: false}" }, 400);
+    const snapshot =
+      "dateFrom" in body.data
+        ? { ...plan.snapshot, plan: { ...plan.snapshot.plan, dateFrom: body.data.dateFrom, dateTo: body.data.dateTo, nights: nightsOf(body.data) }, datesDecided: true }
+        : { ...plan.snapshot, datesDecided: false };
+    await store.upsertSnapshot(snapshot);
+    return c.json({ leave: await leaveView(planId) });
+  });
+
+  // Days off, for the panel: everyone's answer, and the organiser's say on
+  // someone's behalf (they told them in the group chat).
+  admin.get("/plans/:planId/leave", async (c) => {
+    const planId = c.req.param("planId");
+    if (!(await store.getPlan(planId))) return c.json({ error: "not found" }, 404);
+    return c.json({ leave: await leaveView(planId) });
+  });
+
+  admin.put("/plans/:planId/leave/:memberId", async (c) => {
+    const { planId, memberId } = c.req.param();
+    const body = z.object({ status: LeaveStatus }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status}" }, 400);
+    const view = await leaveView(planId);
+    if (!view) return c.json({ error: "las fechas del viaje aún no están decididas" }, 409);
+    if (!view.people.some((p) => p.id === memberId)) return c.json({ error: "esa persona no va a este viaje" }, 404);
+    await store.putLeaveAnswer(planId, { memberId, status: body.data.status, dateFrom: view.dateFrom, dateTo: view.dateTo, setBy: "organiser", updatedAt: iso() });
+    return c.json({ leave: await leaveView(planId) });
+  });
+
   // --- the panel's own data (ROADMAP 3.2) ---
 
   const sealed = sealer(adminToken);
@@ -750,6 +819,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
           })),
           suggestions: suggestions.map(({ planId: _plan, ...s }) => s),
           dates: await datesView(p.id),
+          leave: await leaveView(p.id),
         };
       }),
     );
@@ -911,7 +981,20 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       dates: await datesView(plan.snapshot.plan.id),
       // The trip page, once the organiser publishes it (ROADMAP 2.2).
       trip: plan.snapshot.trip ?? null,
+      // Who has the days off, once the dates are decided.
+      leave: await leaveView(plan.snapshot.plan.id),
     });
+  });
+
+  // Your days off: asked for, approved or not, for the trip's dates.
+  api.put("/:planId/leave", async (c) => {
+    const planId = c.req.param("planId");
+    const body = z.object({ status: LeaveStatus }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status}" }, 400);
+    const view = await leaveView(planId);
+    if (!view) return c.json({ error: "las fechas del viaje aún no están decididas" }, 409);
+    await store.putLeaveAnswer(planId, { memberId: c.get("member").id, status: body.data.status, dateFrom: view.dateFrom, dateTo: view.dateTo, setBy: "member", updatedAt: iso() });
+    return c.json(await leaveView(planId));
   });
 
   // Your answers to the date vote: one for every window, and a note.

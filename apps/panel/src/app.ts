@@ -3,7 +3,7 @@
 import { Hono, type Context } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type Proposal, type VoteState } from "@wanderlot/core";
+import { LeaveStatus, googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import { airbnbUrl, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
@@ -13,10 +13,11 @@ import type { GuideRequest } from "./providers/guide.ts";
 import { EstimateOutput, ResearchOutput, toResults, type Researcher } from "./providers/research.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
+import type { BrowserChoice } from "./browsers.ts";
 
 import { SiteError, buildSnapshot, publishWarnings, shellSnapshot, snapshotFingerprint, type MemberStatus, type SiteClient } from "./publish.ts";
 import { StoreConflict, type PanelJob, type PanelStore, type PlanEntry } from "./store.ts";
-import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage, type PendingInvite } from "./announce.ts";
+import { datesChosenMessage, datesOpenedMessage, datesReminderMessage, leaveReminderMessage, inviteUrl, voteClosedMessage, voteOpenedMessage, voteReminderMessage, type PendingInvite } from "./announce.ts";
 
 // What this computer can do, found at startup (SPEC §8).
 export interface PanelStatus {
@@ -28,10 +29,12 @@ export interface PanelStatus {
   // The panel served by the site at /admin (ROADMAP 3.1). Its AI reads
   // screenshots, and searches in the background (3.3).
   hosted?: boolean;
-  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4), or what it
-  // lacks: the claude command, or the Playwright package (npm install).
+  // "Comprobar precios" works here (ROADMAP 3.4), in which browser, or what
+  // it lacks: the claude command, the Playwright package (npm install), or a
+  // Chromium browser (Chrome, Brave, Edge).
   browse?: boolean;
-  browseMissing?: "claude" | "install";
+  browser?: string;
+  browseMissing?: "claude" | "install" | "browser";
   // Where trips are kept: the site's database, or (with a site too old for
   // that) the laptop's data/panel.json.
   store?: "site" | "file";
@@ -46,6 +49,8 @@ export interface PanelOptions {
   // "Mirar en Google Flights / Airbnb" for the finalists: the `claude`
   // command driving a browser on this laptop (ROADMAP 3.4).
   browse?: ResearchProvider["browse"];
+  // The browsers it can open, and the one in use (Ajustes).
+  browsers?: BrowserChoice;
   ai?: AiChoice;
   photos?: PhotoSource[];
   site: SiteClient;
@@ -189,6 +194,7 @@ export function createPanel({
   research,
   ai: aiChoice,
   browse,
+  browsers,
   photos = [],
   hosts,
   site,
@@ -209,13 +215,14 @@ export function createPanel({
 
   // The AI in use now: the one chosen in Ajustes, or the one given.
   const currentAi = (): ResearchProvider | null => (aiChoice ? aiChoice.provider() : (research ?? null));
+  const browsing = (): Partial<PanelStatus> => (browse ? { browse: true, ...(browsers?.chosen ? { browser: browsers.chosen.name } : {}) } : {});
   const statusNow = (): PanelStatus => {
-    if (!aiChoice) return { ...status, ...(browse ? { browse: true } : {}) };
+    if (!aiChoice) return { ...status, ...browsing() };
     const a = aiChoice.active?.option;
     const { ai: _was, ...rest } = status;
     // As the screens say it: "Preparar con Claude", "OpenAI está buscando".
     const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
-    return { ...rest, ...(browse ? { browse: true } : {}), research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
+    return { ...rest, ...browsing(), research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
   };
   // The panel at /admin searches in the background, which needs an AI that
   // can (ROADMAP 3.3).
@@ -338,6 +345,21 @@ export function createPanel({
       return c.json({ error: (e as Error).message }, 409);
     }
     return c.json(aiChoice.view());
+  });
+
+  // Ajustes: the browsers "Comprobar precios" can open here, and which one.
+  app.get("/api/browser", (c) => c.json(browsers?.view() ?? { options: [], active: null }));
+
+  app.put("/api/browser", async (c) => {
+    const body = z.object({ id: z.string().min(1).max(20) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {id}" }, 400);
+    if (!browsers) return c.json({ error: "Aquí no se puede elegir navegador" }, 409);
+    try {
+      browsers.choose(body.data.id);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 409);
+    }
+    return c.json(browsers.view());
   });
 
   app.get("/api/settings", async (c) => c.json(await site.settings()));
@@ -643,6 +665,30 @@ export function createPanel({
     return c.json(await searchAll(photos, q, count, c.req.raw.signal));
   });
 
+  // Saves prices checked by hand or read in the browser: checked from now,
+  // and where they were seen (SPEC §3).
+  const savePrices = (planId: string, proposal: Proposal, data: z.infer<typeof PricesBody>): Proposal => {
+    const prev = proposal.provenance;
+    // Times checked now, or on an earlier check that this one keeps.
+    const flightDetails = data.outbound !== undefined || (prev.kind !== "claude" && !prev.forOtherDates && (prev.kind === "api" || prev.flightDetails === true));
+    // Where it was seen: now, or on an earlier check still for these dates.
+    const kept = prev.kind === "organiser" && !prev.forOtherDates ? (prev.seenOn ?? []) : [];
+    const seenOn = [...new Set([...kept, ...(data.seenOn ?? [])])];
+    const sources = [...(prev.kind === "api" ? [] : prev.sources), ...(data.sources ?? [])].filter((s, i, all) => all.findIndex((x) => x.url === s.url) === i).slice(-10);
+    const updated: Proposal = {
+      ...applyCheckedPrices(proposal, data, store.get(planId)!.plan.nights),
+      provenance: {
+        kind: "organiser",
+        checkedAt: now().toISOString(),
+        sources,
+        ...(flightDetails ? { flightDetails: true } : {}),
+        ...(seenOn.length ? { seenOn } : {}),
+      },
+    };
+    store.update(planId, (e) => ({ entry: { ...e!, proposals: e!.proposals.map((p) => (p.id === proposal.id ? updated : p)) }, result: null }));
+    return updated;
+  };
+
   // The organiser checked the real prices (the airline, the booking site) and
   // types them in as those sites show them: one person's flights there and
   // back, and the whole stay for the group. Counts as checked from now, like an API
@@ -655,25 +701,7 @@ export function createPanel({
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
-    const prev = proposal.provenance;
-    // Times checked now, or on an earlier check that this one keeps.
-    const flightDetails = body.data.outbound !== undefined || (prev.kind !== "claude" && !prev.forOtherDates && (prev.kind === "api" || prev.flightDetails === true));
-    // Where it was seen: now, or on an earlier check still for these dates.
-    const kept = prev.kind === "organiser" && !prev.forOtherDates ? (prev.seenOn ?? []) : [];
-    const seenOn = [...new Set([...kept, ...(body.data.seenOn ?? [])])];
-    const sources = [...(prev.kind === "api" ? [] : prev.sources), ...(body.data.sources ?? [])].filter((s, i, all) => all.findIndex((x) => x.url === s.url) === i).slice(-10);
-    const updated: Proposal = {
-      ...applyCheckedPrices(proposal, body.data, entry.plan.nights),
-      provenance: {
-        kind: "organiser",
-        checkedAt: now().toISOString(),
-        sources,
-        ...(flightDetails ? { flightDetails: true } : {}),
-        ...(seenOn.length ? { seenOn } : {}),
-      },
-    };
-    store.update(planId, (e) => ({ entry: { ...e!, proposals: e!.proposals.map((p) => (p.id === id ? updated : p)) }, result: null }));
-    return c.json(updated);
+    return c.json(savePrices(planId, proposal, body.data));
   });
 
   // "Añadir a mano" (ROADMAP 3.3): a destination the organiser found and
@@ -743,45 +771,108 @@ export function createPanel({
     }
   });
 
-  // "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): Claude reads the real
-  // page in a browser window on this laptop, for a finalist only. Streams
-  // {progress} lines, then the price dialog's fields or {error}. Nothing is
-  // saved here: the organiser reviews and saves, as with a screenshot.
-  app.post("/api/plans/:planId/proposals/:id/browse", async (c) => {
-    const { planId, id } = c.req.param();
-    const body = z.object({ kind: z.enum(["flight", "stay"]) }).safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {kind}" }, 400);
+  // "Comprobar precios" (ROADMAP 3.4): Claude reads the real page in a
+  // browser window on this laptop, for a finalist only.
+  type Browsed = ReturnType<typeof extractedFields> & { pageUrl: string; url?: string | null };
+  let browserTurn: Promise<void> = Promise.resolve();
+  const browseCheck = (planId: string, id: string): { entry: PlanEntry; proposal: Proposal } | { error: string; status: 404 | 409 } => {
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
-    if (!entry || !proposal) return c.json({ error: "not found" }, 404);
-    if (!browse) return c.json({ error: "Mirar en Google Flights o Airbnb necesita el comando claude en este ordenador." }, 409);
-    if (proposal.review !== "approved") return c.json({ error: "Mira en el navegador solo las propuestas que vais a usar: apruébala primero." }, 409);
+    if (!entry || !proposal) return { error: "not found", status: 404 };
+    if (!browse) return { error: "Comprobar precios en el navegador necesita el comando claude en este ordenador.", status: 409 };
+    if (proposal.review !== "approved") return { error: "Comprueba en el navegador solo las propuestas que vais a usar: apruébala primero.", status: 409 };
+    return { entry, proposal };
+  };
+  const readPage = async (entry: PlanEntry, proposal: Proposal, kind: "flight" | "stay", signal: AbortSignal, onProgress: (p: ResearchProgress) => void): Promise<Browsed> => {
     const { plan } = entry;
     const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize };
     const stay = baseStay(proposal.stays);
     const listing = stay?.url && /airbnb\./.test(stay.url) ? stay.url : undefined;
     const req: BrowseRequest =
-      body.data.kind === "flight"
+      kind === "flight"
         ? { kind: "flight", url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context }
         : { kind: "stay", url: airbnbUrl(context, listing), context, ...(listing && stay ? { stayName: stay.name } : {}) };
-
+    // One window at a time: the browser's profile can't be opened twice.
+    const turn = browserTurn.then(() => browse!(req, signal, onProgress));
+    browserTurn = turn.then(
+      () => {},
+      () => {},
+    );
+    const raw = (await turn) as { url?: unknown; pageUrl?: unknown };
+    const https = (u: unknown) => (typeof u === "string" && /^https:\/\/[^\s]+$/.test(u) ? u : null);
+    let fields;
+    try {
+      fields = extractedFields(req.kind, raw);
+    } catch {
+      throw new Error("No he sabido leer la página. Prueba otra vez, o pon los precios a mano.");
+    }
+    return { ...fields, pageUrl: https(raw.pageUrl) ?? req.url, ...(req.kind === "stay" ? { url: https(raw.url) } : {}) };
+  };
+  const ndjson = (c: Context, work: (write: (line: unknown) => Promise<void>) => Promise<void>) => {
     c.header("content-type", "application/x-ndjson");
     return stream(c, async (s) => {
       let writing = Promise.resolve();
       const write = (line: unknown) => (writing = writing.then(async () => void (await s.writeln(JSON.stringify(line)))));
       try {
-        const raw = (await browse(req, c.req.raw.signal, (p) => void write({ progress: p }))) as { url?: unknown; pageUrl?: unknown };
-        const https = (u: unknown) => (typeof u === "string" && /^https:\/\/[^\s]+$/.test(u) ? u : null);
-        let fields;
-        try {
-          fields = extractedFields(req.kind, raw);
-        } catch {
-          throw new Error("No he sabido leer la página. Prueba otra vez, o pon los precios a mano.");
-        }
-        await write({ fields: { ...fields, pageUrl: https(raw.pageUrl) ?? req.url, ...(req.kind === "stay" ? { url: https(raw.url) } : {}) } });
+        await work(write);
       } catch (err) {
         await write({ error: humanError(err) });
       }
+    });
+  };
+
+  // One site at a time ("Mirar en…" in the price dialog). Streams {progress}
+  // lines, then the dialog's fields or {error}. Nothing is saved here.
+  app.post("/api/plans/:planId/proposals/:id/browse", async (c) => {
+    const { planId, id } = c.req.param();
+    const body = z.object({ kind: z.enum(["flight", "stay"]) }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {kind}" }, 400);
+    const found = browseCheck(planId, id);
+    if ("error" in found) return c.json({ error: found.error }, found.status);
+    return ndjson(c, async (write) => {
+      const fields = await readPage(found.entry, found.proposal, body.data.kind, c.req.raw.signal, (p) => void write({ progress: p }));
+      await write({ fields });
+    });
+  });
+
+  // "Comprobar precios": the flight on Google Flights, then the stay on
+  // Airbnb, and saved straight away when both were read whole, as if typed
+  // in (publishing stays the organiser's say). What came back incomplete is
+  // handed back for the price dialog instead. Streams {site} as each starts,
+  // {progress}, then {saved} with the proposal, or {readings, missing}.
+  app.post("/api/plans/:planId/proposals/:id/check-prices", async (c) => {
+    const { planId, id } = c.req.param();
+    const found = browseCheck(planId, id);
+    if ("error" in found) return c.json({ error: found.error }, found.status);
+    const { entry, proposal } = found;
+    return ndjson(c, async (write) => {
+      const read = async (kind: "flight" | "stay") => {
+        await write({ site: kind });
+        return readPage(entry, proposal, kind, c.req.raw.signal, (p) => void write({ progress: p }));
+      };
+      const flight = await read("flight");
+      const stay = await read("stay");
+      if (flight.kind !== "flight" || stay.kind !== "stay") throw new Error("lectura inesperada");
+      const nights = store.get(planId)!.plan.nights;
+      const missing = [
+        ...(flight.flightCents === null ? ["el precio del vuelo"] : []),
+        ...(stay.stayCents === null || !stay.name ? ["el precio total del alojamiento"] : []),
+        ...(stay.nights !== null && stay.nights !== nights ? [`las ${nights} noches del alojamiento (Airbnb mostraba ${stay.nights})`] : []),
+      ];
+      if (missing.length) return void (await write({ readings: { flight, stay }, missing }));
+      const legs = flight.outbound && flight.inbound ? { outbound: flight.outbound, inbound: flight.inbound } : {};
+      const saved = savePrices(planId, store.get(planId)!.proposals.find((p) => p.id === id)!, {
+        flightCents: flight.flightCents!,
+        ...legs,
+        stayCents: stay.stayCents!,
+        stay: { name: stay.name!.slice(0, 120), ...(stay.description ? { description: stay.description.slice(0, 200) } : {}), ...(stay.url ? { url: stay.url } : {}) },
+        seenOn: ["google-flights", "airbnb"],
+        sources: [
+          { label: "Google Flights", url: flight.pageUrl },
+          { label: "Airbnb", url: stay.url ?? stay.pageUrl },
+        ].filter((s) => /^https:\/\//.test(s.url)),
+      });
+      await write({ saved, readings: { flight, stay } });
     });
   });
 
@@ -1074,6 +1165,17 @@ export function createPanel({
 
   // --- Fechas (ROADMAP 2.1) -------------------------------------------------
 
+  // Dates fixed (or unfixed) here show on the site at once, without
+  // publishing the rest: the group can ask for the days off. Best effort: a
+  // trip not on the site yet, or a site too old, gets them on the next publish.
+  const settleOnSite = async (planId: string, window: { dateFrom: string; dateTo: string } | null) => {
+    try {
+      if ((await site.version()) >= 13) await site.settleDates(planId, window);
+    } catch (e) {
+      if (!(e instanceof SiteError && e.status === 404)) throw e;
+    }
+  };
+
   const OLD_SITE_DATES =
     "Tu sitio tiene una versión anterior al panel y no sabe votar fechas. Actualízalo con npm run deploy:site y vuelve a probar.";
 
@@ -1173,15 +1275,48 @@ export function createPanel({
       const plan = { ...e!.plan, dateFrom, dateTo, nights: nightsOf({ dateFrom, dateTo }) };
       return { entry: { ...e!, plan, datesDecided: true, proposals: moved ? e!.proposals.map(markForOtherDates) : e!.proposals }, result: null };
     });
+    await settleOnSite(planId, { dateFrom, dateTo });
     return c.json(store.get(planId));
   });
 
   // Back to undecided, to talk about them again.
-  app.delete("/api/plans/:planId/dates/fix", (c) => {
+  app.delete("/api/plans/:planId/dates/fix", async (c) => {
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
     store.update(planId, (e) => ({ entry: { ...e!, datesDecided: false }, result: null }));
+    await settleOnSite(planId, null);
     return c.json(store.get(planId));
+  });
+
+  // --- Days off -------------------------------------------------------------
+
+  // The group says on the site whether they've got the days off; the
+  // organiser follows it here and can mark it for someone. With the message
+  // for the group chat while anyone's missing.
+  const leavePage = async (planId: string, leave: LeaveView | null) => {
+    const entry = store.get(planId)!;
+    const missing = leave?.people.filter((p) => p.status !== "approved" && p.status !== "denied").map((p) => p.name) ?? [];
+    return { leave, reminder: leave && missing.length ? leaveReminderMessage(entry.plan, leave, siteUrl, missing) : null };
+  };
+
+  app.get("/api/plans/:planId/leave", async (c) => {
+    const planId = c.req.param("planId");
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    if ((await site.version()) < 13) return c.json({ ...(await leavePage(planId, null)), outdated: true });
+    const leave = await site.leave(planId).catch((e) => {
+      // Not on the site yet: nobody to ask.
+      if (e instanceof SiteError && e.status === 404) return null;
+      throw e;
+    });
+    return c.json(await leavePage(planId, leave));
+  });
+
+  app.put("/api/plans/:planId/leave/:memberId", async (c) => {
+    const { planId, memberId } = c.req.param();
+    if (!store.get(planId)) return c.json({ error: "not found" }, 404);
+    const body = z.object({ status: LeaveStatus }).safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "expected {status}" }, 400);
+    return c.json(await leavePage(planId, await site.setLeave(planId, memberId, body.data.status)));
   });
 
   app.delete("/api/plans/:planId/dates", async (c) => {
