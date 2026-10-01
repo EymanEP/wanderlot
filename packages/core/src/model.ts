@@ -232,6 +232,9 @@ export const Snapshot = z
     destinations: z.array(Destination),
     // The trip page, once published; older snapshots don't have one.
     trip: TripPage.optional(),
+    // The organiser settled the dates without a vote ("Fijar estas fechas"):
+    // the group is asked about days off from then on.
+    datesDecided: z.boolean().optional(),
     publishedAt: isoDateTime,
   })
   .superRefine((s, ctx) => {
@@ -329,5 +332,6 @@ export interface SuggestionView {
 // 6: deleting a trip. 7: going somewhere other than the vote's winner; export.
 // 8: the date vote. 9: the trip page. 10: the panel's data on the site, and
 // the panel at /admin. 11: research by other AIs, including estimates
-// without sources. 12: searching from /admin in the background.
-export const SITE_API_VERSION = 12;
+// without sources. 12: searching from /admin in the background. 13: days off,
+// and settling the dates on the site without publishing.
+export const SITE_API_VERSION = 13;

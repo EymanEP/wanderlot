@@ -66,6 +66,7 @@ export function browsePrompt(req: BrowseRequest): string {
     "Si sale un aviso de cookies, elige rechazar o solo las necesarias. Si sale un CAPTCHA o piden iniciar sesión, espera hasta 90 segundos con browser_wait_for a que la persona lo resuelva en la ventana; si sigue ahí, deja los datos a null.",
     "No reserves, no pagues, no inicies sesión y no rellenes datos personales. Quédate en esa web y lee solo lo necesario, con las menos páginas posible.",
     "Usa solo lo que ves en la página: si un dato no aparece, pon null. En pageUrl pon la dirección de la página donde lo has leído.",
+    "Si el navegador no se abre o da error, no busques otra forma: deja los datos a null.",
   ];
   if (req.kind === "flight") {
     return [

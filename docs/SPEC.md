@@ -279,6 +279,28 @@ it or alongside.
   then fewest no, then most "si hace falta"). **Elegir** closes the date vote
   and gives the trip those dates, in the panel and in the site's snapshot;
   prices checked for other dates are flagged (§3). Proposing again reopens it.
+- Or, without a vote, the organiser **fixes** the dates in the panel ("Fijar
+  estas fechas"). The site takes them at once, without publishing anything
+  else (`PUT /api/admin/plans/:id/dates/settled`), and the snapshot carries
+  `datesDecided: true` from then on.
+
+### Days off (vacaciones)
+Everyone works somewhere different, so before anything is booked each person
+confirms they've got the trip's days off.
+- It starts once the dates are decided: a date vote chose them, or the
+  organiser fixed them. A reopened date vote, or dates unfixed, puts it away.
+- Each person on the trip answers on the site: **Aún no los he pedido**,
+  **Los he pedido**, **Me los han aprobado** or **No me los dan**. Everyone
+  on the trip sees everyone's answer: it's for coordinating, like Fechas.
+- The organiser follows it in the panel (Fechas, and a step in El viaje
+  before the prices). They can mark it for someone who told them in the
+  group chat; the site then says "Lo marcó … por ti". The panel has a message
+  for the chat naming whoever hasn't confirmed.
+- An answer is for the dates it was given for. If the dates change, everyone
+  is back to "Aún no los ha pedido", and anyone who had answered is flagged
+  as having answered for other dates.
+- Nothing is blocked: it's a check, not a gate. El viaje ticks the step only
+  when everyone has the days, and says who is missing.
 
 ---
 
@@ -529,30 +551,47 @@ Sites before API version 11 refuse sourceless research, so the panel asks for
 a redeploy before publishing an estimate to one.
 
 ### Checking finalists in the browser (local panel only)
-"Mirar en Google Flights" and "Mirar en Airbnb" in the price dialog, for
-**approved** proposals only (the ones the group will vote on, or the decided
-destination in El viaje). The `claude` command drives a visible browser on
-the organiser's laptop through Playwright MCP (`@playwright/mcp`), opens the
-Google Flights search for the route and dates, or the chosen Airbnb listing
-(or an Airbnb search for a whole place for the group) with the dates and
-people, and reads the price, the flights' times and the listing into the same
-fields as a screenshot. Nothing is saved until the organiser reviews and
-saves; the proposal is then `organiser` provenance with `seenOn`
-(`google-flights`, `airbnb`) and the pages in `sources`, and the site says
-"Visto en Google Flights y Airbnb".
-
-- The run gets no built-in tools (`--restricted --tools ""`), no other MCP
-  servers or settings (`--strict-mcp-config`), and only the Playwright tools
-  for reading a page (navigate, snapshot, click, type…); running scripts,
-  files, cookies and storage by hand are refused outright.
-- The browser is Chrome by default (`WANDERLOT_BROWSER`), with a profile of
-  its own in `data/browser` (`WANDERLOT_BROWSER_PROFILE`) kept between runs,
-  so a cookie choice or a solved CAPTCHA is remembered. The organiser sees
-  the window and clears any consent page or CAPTCHA; Claude waits for them.
-- Google's and Airbnb's terms don't allow automated access. This checks a
-  handful of pages, one at a time, on the organiser's own machine and at
-  their request, as they would by hand; it is not a crawler, and never runs
-  in Generar, on the site, or on its own.
+"Comprobar precios" checks a finalist's real prices in one go: Claude reads
+the flight on Google Flights, then the stay on Airbnb, and saves both when it
+read them whole. It is offered for **approved** proposals only: on each card
+in Revisar, for all of them at once ("Comprobar precios de las aprobadas",
+one after another), and in El viaje for the decided destination. Publishing
+is still the organiser's say, so a price saved this way reaches the group
+only when they publish. The price dialog keeps "Mirar en Google Flights" and
+"Mirar en Airbnb" to read one page into its fields, for review.
+- **How it reads.** The `claude` command drives a visible browser on the
+  organiser's laptop through Playwright MCP (`@playwright/mcp`). It opens the
+  Google Flights search for the route and dates, or the chosen Airbnb listing
+  (or an Airbnb search for a whole place for the group) with the dates and
+  people. It reads the price, the flights' times and the listing into the
+  same fields as a screenshot.
+- **What gets saved.** A reading missing the flight's price, the stay's
+  total, or with other nights is not saved: it opens in the price dialog to
+  finish by hand. A saved one is `organiser` provenance with `seenOn`
+  (`google-flights`, `airbnb`) and the pages in `sources`, and the site says
+  "Visto en Google Flights y Airbnb".
+- **What the run may use.** It gets no built-in tools (`--restricted --tools
+  ""`) and no other MCP servers or settings (`--strict-mcp-config`). It has
+  only the Playwright tools for reading a page (navigate, snapshot, click,
+  type…). Running scripts, files, and cookies or storage by hand are refused
+  outright.
+- **The browser.** Any Chromium on the laptop: Chrome, Brave, Edge or
+  Chromium. The panel finds where each installs itself (macOS, Windows,
+  Linux) and starts it by its path (`--executable-path`). Ajustes picks one
+  (`WANDERLOT_BROWSER`, which takes a name or a path), and Chrome comes
+  first when nothing is set. Each browser gets a profile of its own under
+  `data/browser/<browser>` (`WANDERLOT_BROWSER_PROFILE`), apart from the
+  organiser's, kept between runs so a cookie choice or a solved CAPTCHA is
+  remembered. It opens as a new window, not a tab in the organiser's own
+  browser. The organiser sees it and clears any consent page or CAPTCHA, and
+  Claude waits for them. One window at a time: further checks queue.
+- **When the browser can't open.** If no page ever opened (not installed,
+  closed on start), the panel says why ("No encontré Brave en …") instead of
+  "no vi el precio".
+- **Terms.** Google's and Airbnb's terms don't allow automated access. This
+  checks a handful of pages, one at a time, on the organiser's own machine
+  and at their request, as they would by hand. It is not a crawler, and it
+  never runs in Generar, on the site, or on its own.
 
 ### Flights (optional)
 `FlightProvider` searches and verifies fares; it is the only way to `api`
@@ -593,8 +632,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` | `/api/session` | member | `{ member }` or `401` |
 | `DELETE` | `/api/session` | member | signs this device out |
 | `GET` | `/api/plans` | member | the trips they're on, for the "Tus viajes" page at `/`: `{ id, name, status, dateFrom, dateTo, partySize, winnerCity, destinations, voteDeadline, votedByMe, datesOpen?, datesAnsweredByMe?, tripReady? }` |
-| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation + `dates` (the date vote with everyone's answers, or `null`) + `trip` (the trip page, or `null`; site API version 9) |
+| `GET` | `/api/plans/:planId` | member | plan + destinations + own ballot + participation + `dates` (the date vote with everyone's answers, or `null`) + `trip` (the trip page, or `null`; site API version 9) + `leave` (days off, or `null` until the dates are decided; version 13) |
 | `PUT` | `/api/plans/:planId/dates` | member | `{ answers: { optionId: yes \| maybe \| no }, note? }` for every window; `409` once the dates are chosen |
+| `PUT` | `/api/plans/:planId/leave` | member | `{ status: not-asked \| asked \| approved \| denied }` for the trip's current dates; returns the `LeaveView` `{ dateFrom, dateTo, people: [{ id, name, status, at, byOrganiser, forOtherDates }] }`; `409` until the dates are decided. Site API version 13 |
 | `PUT` | `/api/plans/:planId/ballot` | member | `{ ranking }`; `409` unless voting |
 | `GET` | `/api/plans/:planId/results` | member | `403` until closed |
 | `GET` | `/api/plans/:planId/comments?destinationId=&limit=` | member | newest first, each with `likes` and `likedByMe` |
@@ -612,6 +652,9 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `PUT` | `/api/admin/plans/:planId/winner` | panel | `{ destinationId }`, only among those tied for first; or `{ destinationId, override: true, note? }`, any destination in the vote once closed (choosing the vote's own winner clears the note). Results carry `winnerId` (where they're going), `voteWinnerId` and `decidedNote`. Site API version 7 |
 | `GET` / `PUT` / `DELETE` | `/api/admin/plans/:planId/dates` | panel | the date vote (§4 Dates): `DatesView` `{ status: open \| closed, options: [{ id, dateFrom, dateTo }], deadline, chosenOptionId, responses: [{ memberId, answers: { optionId: yes \| maybe \| no }, note, updatedAt }] }` or `null` / `{ options: [{ dateFrom, dateTo }] (2–5), deadline? }` proposes or changes the windows, keeping answers to the ones that stay, and reopens it / removes it. Site API version 8 |
 | `POST` | `/api/admin/plans/:planId/dates/choose` | panel | `{ optionId }`: closes the date vote and sets the snapshot's `dateFrom`, `dateTo` and `nights` |
+| `PUT` | `/api/admin/plans/:planId/dates/settled` | panel | `{ dateFrom, dateTo }`: dates fixed without a vote, into the snapshot at once with `datesDecided: true`; `{ settled: false }` undoes it. `{ leave }`. Site API version 13 |
+| `GET` | `/api/admin/plans/:planId/leave` | panel | `{ leave }`: days off (§4), or `null` until the dates are decided |
+| `PUT` | `/api/admin/plans/:planId/leave/:memberId` | panel | `{ status }`: the organiser marks it for someone on the trip (`byOrganiser`); `404` for someone not on it |
 | `GET` | `/api/admin/panel/plans` | panel | the panel's trips (§2): `{ planId: version }` |
 | `GET` / `PUT` | `/api/admin/panel/plans/:planId` | panel | `{ entry, version }` / `{ entry, version }` saves if the stored version is still `version` (0: new), `entry: null` deletes; `{ version }` or `409`. Site API version 10 |
 | `GET` / `PUT` | `/api/admin/panel/invites[/:memberId]` | panel | unused invite links, unsealed for the panel: `{ memberId: { token, expiresAt } }` / `{ invite }` (null removes) |
@@ -619,7 +662,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | `GET` / `POST` / `DELETE` | `/admin/api/session` | organiser | whether signed in (`404` while `/admin` is off) / `{ password }` starts an organiser session (`401`, `429` when locked) / signs out |
 | any | `/admin/api/*` | organiser | the panel's API (below), for the panel the site serves; `401` without an organiser session |
 | `GET` | `/admin/*` | anyone | the panel's page; it asks for the password |
-| `GET` | `/api/admin/export?plan=` | panel | everything the group made, one trip or all: `{ format: "wanderlot-export", version: 1, exportedAt, settings, members, trips }`, each trip its snapshot, status, winner, note, members, ballots, comments with likes and ideas. No PIN hashes, passkeys, sessions or invites. Site API version 7 |
+| `GET` | `/api/admin/export?plan=` | panel | everything the group made, one trip or all: `{ format: "wanderlot-export", version: 1, exportedAt, settings, members, trips }`, each trip its snapshot, status, winner, note, members, ballots, comments with likes, ideas, date vote and days off. No PIN hashes, passkeys, sessions or invites. Site API version 7 |
 | `PUT` | `/api/admin/members` | panel | `[{ id, name }]`: adds or renames members; `409` if a name clashes |
 | `GET` / `PUT` | `/api/admin/plans/:planId/members` | panel | who is on the trip: `[memberId]` |
 | `GET` | `/api/admin/members` | panel | each member's invite, passkeys and sessions (§5) |
@@ -633,7 +676,11 @@ Member routes under `/api/plans/:planId` answer `404` to anyone not on the trip.
 ### Panel screens
 One frame (top bar, trip bar) stays mounted while the screens change below
 it, and each screen shows what it loaded on the last visit at once while it
-reads it again. Work the AI does for a while — a search, the trip's guide,
+reads it again. Each screen comes in with a short movement (GSAP: it fades
+and rises, its cards one after another), and dialogs lift in; none of it for
+whoever asks their system for reduced motion. While a dialog is open the page
+behind it doesn't scroll. The site moves the same way, and coming back to a
+trip there shows it at once while it's read again. Work the AI does for a while — a search, the trip's guide,
 reading Google Flights or Airbnb — belongs to the panel rather than to a
 screen: it carries on while the organiser moves around, shows in the top bar
 ("Claude prepara la guía de Praga"), says when it ends from wherever they
@@ -662,6 +709,9 @@ serves the same API at `/admin/api` for the organiser (§5), without research.
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
 | `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ flightCents, stayCents?, outbound?, inbound?, stay? }` (one person's flights there and back; the whole stay for the group; the flights' real times, together; the stay's name, description and link) |
 | `POST` | `/api/plans/:planId/proposals/:id/extract` | `{ kind: flight \| stay, images: [{ mediaType, data }] }` (1–4 screenshots, base64): what Claude read, for the price dialog; saves nothing. The `claude` command gets only the Read tool, only on a temporary folder holding the images |
+| `POST` | `/api/plans/:planId/proposals/:id/browse` | `{ kind: flight \| stay }`: "Mirar en…", one page read in the browser (§8); streams NDJSON `{progress}`, then `{fields}` or `{error}`; saves nothing. Approved proposals only |
+| `POST` | `/api/plans/:planId/proposals/:id/check-prices` | "Comprobar precios": both pages, one after the other; streams `{site}` as each starts and `{progress}`, then `{saved, readings}` when both were read whole (saved as with `/prices`, with `seenOn` and `sources`) or `{readings, missing}` |
+| `GET` / `PUT` | `/api/browser` | Ajustes: `{ options: [{ id, name, path }], active }`, the browsers found on this laptop / `{ id }` picks one (kept in `.env`) |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/clear-unapproved` | deletes every proposal not approved (to review or discarded) with its notes and photos; `{ removed }` |
 | `POST` | `/api/plans/:planId/proposals/:id/verify` | re-price on the flight API |
@@ -676,8 +726,10 @@ serves the same API at `/admin/api` for the organiser (§5), without research.
 | `GET` / `PUT` / `DELETE` | `/api/plans/:planId/dates` | Fechas: `{ dates, people, reminder, announcement }` / `{ options, deadline? }` proposes or changes the windows (publishing the trip without destinations if it isn't on the site yet) and adds the group-chat `message` / removes the date vote. `409` without people on the trip, or on a site older than API version 8 |
 | `POST` | `/api/plans/:planId/dates/choose` | `{ optionId }`: the trip takes those dates here and on the site; checked prices are flagged `forOtherDates` |
 | `POST` | `/api/plans/:planId/dates/fix` | `{ dateFrom, dateTo }`: "Ya sabemos las fechas", settled without a vote (refused while one is open); checked prices for other dates are flagged. The trip bar ticks Cuándo once the dates are settled, this way or by choosing (`datesDecided` in the panel's entry) |
-| `DELETE` | `/api/plans/:planId/dates/fix` | back to undecided |
-| `GET` / `PUT` | `/api/plans/:planId/trip` | El viaje: `{ destination, trip, published }` (the decided destination's proposal, the trip page being prepared, whether the site shows it) / save the organiser's edits (`409` until a destination is decided) |
+| `DELETE` | `/api/plans/:planId/dates/fix` | back to undecided. Both this and fixing send the dates to the site at once (site API version 13; best effort) |
+| `GET` | `/api/plans/:planId/leave` | days off: `{ leave, reminder }` (`leave` null until the dates are decided or while the trip isn't on the site; `outdated: true` on a site older than API version 13) |
+| `PUT` | `/api/plans/:planId/leave/:memberId` | `{ status }`: marked by the organiser |
+| `GET` / `PUT` | `/api/plans/:planId/trip` | El viaje: `{ destination, trip, published }` (the decided destination's proposal, the trip page being prepared, whether the site shows it) / save the organiser's edits (`409` until a destination is decided). Once published, El viaje asks `publish-status` whether anything changed since (prices, dates, the guide) and offers "Publicar cambios" |
 | `POST` | `/api/plans/:planId/trip/prepare` | `{ home? }`: research drafts the guide and how to get there; streams NDJSON `{progress}` lines, then `{trip}` or `{error}`. Keeps the stay's details and the Tricount link; saves `home` as the group's `homeTown`. `409` without a decided destination or without Claude |
 | `POST` | `/api/plans/:planId/trip/publish` | `{ published }`: publishes the trip with its page, or takes the page down. `409` on a site older than API version 9 |
 | `GET` | `/api/export?plan=` | the site's export (above), for Viajes to download; `409` on a site older than API version 7 |

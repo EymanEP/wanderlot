@@ -39,6 +39,7 @@ import {
   type BadgeTone,
   type DateRange,
 } from "@wanderlot/ui";
+import { LeaveCard } from "../components/LeaveCard.tsx";
 import { MessageDialog } from "../components/MessageDialog.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { TripDates, datesSummary } from "../components/TripDates.tsx";
@@ -163,6 +164,9 @@ export function FechasPage() {
         {!page && !error && <Skeleton className="h-64 rounded-card" />}
 
         {page && !view && !editing && <SettleDates decided={state.datesDecided} plan={plan} min={addDaysIso(today, 1)} onFix={fixDates} />}
+
+        {/* Decided: whether everyone has the days off, before booking. */}
+        {page && !editing && (state.datesDecided || !!chosen) && <LeaveCard />}
 
         {page && !view && !editing && !state.datesDecided && (
           <Heading as="h2" size="subheading" className="-mb-2">

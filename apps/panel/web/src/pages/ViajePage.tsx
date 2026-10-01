@@ -2,6 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import {
   TransportMode,
+  allLeaveApproved,
+  leaveCounts,
   checkedLabel,
   longDate,
   rangeLabel,
@@ -34,6 +36,7 @@ import {
 } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { JobCard } from "../components/JobCard.tsx";
+import { useLeave } from "../components/LeaveCard.tsx";
 import { PriceDialog } from "../components/PriceDialog.tsx";
 import type { ScreenshotImage, SearchStep, TripView } from "../data/backend.ts";
 import { useLoad, usePanel, usePlan } from "../data/store.tsx";
@@ -97,7 +100,7 @@ function stepText(step: SearchStep): string {
 // step says what's next and does it in place; the AI's work carries on if
 // the organiser goes elsewhere in the panel (store.tsx, Task).
 export function ViajePage() {
-  const { state, trip, prepareTrip, saveTrip, publishTrip, setPrices, extract, browse, takeTask, now, clearJob } = usePanel();
+  const { state, trip, prepareTrip, saveTrip, publishTrip, publishStatus, setPrices, extract, browse, checkPrices, takeTask, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const { data: view, error, reload, set: setView } = useLoad(`trip:${plan.id}:${plan.winnerDestinationId ?? ""}`, trip);
@@ -148,12 +151,34 @@ export function ViajePage() {
   // The panel's own copy, so checked prices show at once.
   const destination = view?.destination ? (state.proposals.find((p) => p.id === view.destination!.id) ?? view.destination) : null;
   const readings = destination ? state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === destination.id) : [];
-  const reading = readings.find((t) => t.status === "running");
+  const checking = destination ? state.tasks.find((t) => t.kind === "prices" && t.status === "running" && t.planId === plan.id && t.proposalId === destination.id) : undefined;
+  const reading = checking ?? readings.find((t) => t.status === "running");
+  const site = reading?.site === "stay" ? "Airbnb" : "Google Flights";
   // A reading that finished opens the prices to review and save.
   useEffect(() => {
     if (readings.some((t) => t.status !== "running")) setPricing(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readings.map((t) => `${t.id}:${t.status}`).join()]);
+
+  // Days off: before booking anything, everyone should have them.
+  const leave = useLeave().data?.leave;
+
+  // Once published, whether the site is behind: prices checked, dates fixed
+  // or the guide saved since (the site only changes when it's published).
+  const [behind, setBehind] = useState(false);
+  useEffect(() => {
+    if (!view?.published) return setBehind(false);
+    let live = true;
+    publishStatus().then(
+      (s) => live && setBehind(s.changed),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+    // Not on `publishStatus` itself: it's a new function on every panel change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, plan, state.proposals]);
 
   const edit = (patch: Partial<TripPage>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -194,6 +219,7 @@ export function ViajePage() {
       if (dirty) await saveTrip(clean(draft));
       setView(await publishTrip(published));
       setDirty(false);
+      setBehind(false);
       toast(published ? "Página del viaje publicada" : "Página del viaje retirada del sitio");
     } catch (e) {
       toast(`No se pudo: ${(e as Error).message}`);
@@ -229,7 +255,8 @@ export function ViajePage() {
   const preparing = guide?.status === "running" || job?.status === "running" || starting;
   const canPrepare = state.status?.research !== "none" && (!hosted || !!state.status?.ai?.background);
   const ai = state.status?.ai?.name ?? "Claude";
-  const published = !!view?.published && !dirty;
+  const published = !!view?.published && !dirty && !behind;
+  const publishLabel = view?.published ? (dirty ? "Guardar y publicar" : behind ? "Publicar cambios" : "Publicada") : "Publicar el viaje";
 
   return (
     <PanelShell>
@@ -247,7 +274,7 @@ export function ViajePage() {
                   </Button>
                 )}
                 <Button variant="primary" disabled={busy || preparing || published} onClick={() => void publish(true)}>
-                  {view?.published ? (dirty ? "Guardar y publicar" : "Publicada") : "Publicar el viaje"}
+                  {publishLabel}
                 </Button>
               </div>
             )
@@ -269,6 +296,26 @@ export function ViajePage() {
             <Heading size="subheading">Antes de publicar</Heading>
             <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
               <Check done title={`Destino decidido: ${destination.place.city}`} />
+              {leave && leave.people.length > 0 && (
+                <Check
+                  done={allLeaveApproved(leave)}
+                  title={allLeaveApproved(leave) ? "Todos tienen los días libres" : `Días libres: ${leaveCounts(leave).approved} de ${leave.people.length} aprobados`}
+                  {...(!allLeaveApproved(leave)
+                    ? {
+                        detail: leaveCounts(leave).denied
+                          ? `A ${leave.people.filter((p) => p.status === "denied").map((p) => p.name).join(" y ")} no le dan los días: habladlo antes de reservar.`
+                          : `Falta ${leave.people.filter((p) => p.status !== "approved").map((p) => p.name).join(", ")}. Mejor no reservar nada hasta que estén todos.`,
+                      }
+                    : {})}
+                  action={
+                    !allLeaveApproved(leave) && (
+                      <Link to="/fechas" className={buttonClasses({ size: "sm", variant: "ghost" })}>
+                        Ver quién falta
+                      </Link>
+                    )
+                  }
+                />
+              )}
               <Check
                 done={checked}
                 title={
@@ -280,25 +327,20 @@ export function ViajePage() {
                 }
                 detail={
                   reading
-                    ? `${ai} está mirando ${reading.site === "flight" ? "Google Flights" : "Airbnb"} en la ventana del navegador${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
+                    ? `${ai} está mirando ${site} en una ventana de ${state.status?.browser ?? "tu navegador"}${checking ? ` (${reading.site === "stay" ? "2" : "1"} de 2)` : ""}${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
                     : checked
                       ? "La página del viaje los muestra tal cual."
                       : state.status?.browse
-                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} puede mirarlos en Google Flights y Airbnb por ti, o pégalos tú.`
+                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} los mira en Google Flights y Airbnb y los guarda, o pégalos tú.`
                         : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
                 }
                 busy={!!reading}
                 action={
                   <span className="flex flex-wrap gap-2">
-                    {state.status?.browse && !checked && (
-                      <>
-                        <Button size="sm" variant="secondary" disabled={!!reading} onClick={() => browse(destination.id, "flight")}>
-                          Mirar en Google Flights
-                        </Button>
-                        <Button size="sm" variant="secondary" disabled={!!reading} onClick={() => browse(destination.id, "stay")}>
-                          Mirar en Airbnb
-                        </Button>
-                      </>
+                    {state.status?.browse && (
+                      <Button size="sm" variant={checked ? "ghost" : "secondary"} disabled={!!reading} onClick={() => checkPrices(destination.id)}>
+                        {reading ? "Comprobando…" : checked ? "Comprobar otra vez" : "Comprobar precios"}
+                      </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setPricing(true)}>
                       {checked ? "Cambiar precios" : "Ponerlos a mano"}
@@ -370,12 +412,13 @@ export function ViajePage() {
               </Check>
               <Check
                 done={published}
-                title={view?.published ? (dirty ? "Hay cambios sin publicar" : "Publicada en el sitio") : "Publícala para el grupo"}
+                title={view?.published ? (dirty || behind ? "Hay cambios sin publicar" : "Publicada en el sitio") : "Publícala para el grupo"}
+                {...(behind && !dirty ? { detail: "Algo cambió desde que la publicaste (precios, fechas o la guía), y el grupo aún ve lo de antes." } : {})}
                 action={
                   draft &&
                   !published && (
                     <Button size="sm" variant="primary" disabled={busy || preparing} onClick={() => void publish(true)}>
-                      {view?.published ? "Guardar y publicar" : "Publicar el viaje"}
+                      {publishLabel}
                     </Button>
                   )
                 }

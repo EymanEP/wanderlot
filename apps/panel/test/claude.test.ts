@@ -165,7 +165,8 @@ describe("the schema handed to `claude --json-schema`", () => {
 
 describe("claude checking a finalist in the browser", () => {
   const context = { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 };
-  const browser = { mcpCli: "/opt/pw/cli.js", channel: "chrome", profileDir: "/home/ana/wanderlot/data/browser" };
+  const brave = { id: "brave", name: "Brave", path: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" };
+  const browser = { mcpCli: "/opt/pw/cli.js", browser: () => brave, profileDir: "/home/ana/wanderlot/data/browser" };
 
   it("gives claude only the browser, only the tools to read a page, and cleans up", async () => {
     let args: string[] = [];
@@ -193,13 +194,38 @@ describe("claude checking a finalist in the browser", () => {
       expect(args[args.indexOf("--disallowedTools") + 1]).toContain(`mcp__playwright__${t}`);
     }
     // A visible browser with a profile of its own, kept between runs.
-    expect(config.mcpServers.playwright.args).toEqual(expect.arrayContaining(["/opt/pw/cli.js", "--browser", "chrome", "--user-data-dir", browser.profileDir]));
+    // The browser chosen in Ajustes, by its path: Brave as well as Chrome.
+    expect(config.mcpServers.playwright.args).toEqual(expect.arrayContaining(["/opt/pw/cli.js", "--executable-path", brave.path, "--user-data-dir", "/home/ana/wanderlot/data/browser/brave"]));
+    expect(config.mcpServers.playwright.args).not.toContain("--no-sandbox");
     expect(config.mcpServers.playwright.args).not.toContain("--headless");
     const prompt = args[args.indexOf("-p") + 1]!;
     expect(prompt).toMatch(/No reserves, no pagues, no inicies sesión/);
     expect(prompt).toMatch(/CAPTCHA/);
     // The temporary folder is gone.
     expect(existsSync(join(args[args.indexOf("--mcp-config") + 1]!, ".."))).toBe(false);
+  });
+
+  it("says why when the browser never opened, rather than that it saw nothing", async () => {
+    const provider = claudeProvider(async (_a, onLine) => {
+      onLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__playwright__browser_navigate", input: { url: "https://www.airbnb.es/s/x" } }] } }));
+      onLine(
+        JSON.stringify({
+          type: "user",
+          message: { content: [{ type: "tool_result", is_error: true, content: "### Error\nError: async initializeServer: Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome" }] },
+        }),
+      );
+      onLine(resultLine({ name: null, description: null, totalEuros: null, nights: null, url: null, pageUrl: null }));
+    }, browser);
+    await expect(provider.browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).rejects.toThrow(`No encontré Brave en ${brave.path}`);
+  });
+
+  it("keeps the reading when the page opened, even if a later step failed", async () => {
+    const provider = claudeProvider(async (_a, onLine) => {
+      onLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: [{ type: "text", text: "### Page\n- Page URL: https://www.airbnb.es/s/x" }] }] } }));
+      onLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", is_error: true, content: "Timeout" }] } }));
+      onLine(resultLine({ name: "Casa", description: null, totalEuros: 520, nights: 4, url: null, pageUrl: null }));
+    }, browser);
+    await expect(provider.browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ totalEuros: 520 });
   });
 
   it("isn't offered without a browser", () => {

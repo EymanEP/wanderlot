@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "./Button.tsx";
 import { Heading, Text } from "./Typography.tsx";
+import { animateOpen } from "./motion.tsx";
 
 export interface DialogProps {
   open: boolean;
@@ -25,7 +26,10 @@ export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Can
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal?.();
+    if (open && !d.open) {
+      d.showModal?.();
+      animateOpen(d);
+    }
     if (!open && d.open) d.close();
   }, [open]);
   return (

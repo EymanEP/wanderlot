@@ -15,6 +15,7 @@ import {
 } from "@wanderlot/core";
 import { Avatar, Badge, Button, Card, ChoiceChip, EmptyState, Field, Footer, Heading, Main, SectionHeader, Text, TextArea, cn, useToast } from "@wanderlot/ui";
 import { useAuth } from "../data/auth.tsx";
+import { LeaveCard } from "../components/LeaveCard.tsx";
 import { useSite, type Person } from "../data/store.tsx";
 import { names } from "../lib/view.ts";
 
@@ -97,6 +98,8 @@ function Dates({ dates }: { dates: DatesView }) {
           )}
         </Card>
       </section>
+
+      {chosen && <LeaveCard />}
 
       <div className="flex flex-col gap-7 lg:flex-row">
         <section aria-labelledby="tu-respuesta" className="flex min-w-0 flex-1 flex-col gap-3.5">

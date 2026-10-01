@@ -91,3 +91,9 @@ export function datesReminderMessage(plan: Pick<Plan, "id" | "name">, siteUrl: s
 export function datesChosenMessage(plan: Pick<Plan, "id" | "name">, option: DateOption, siteUrl: string): string {
   return `Fechas de ${plan.name} decididas: ${rangeLabel(option.dateFrom, option.dateTo)}. Ya podéis pedir los días. ${new URL(`/p/${plan.id}/fechas`, siteUrl)}`;
 }
+
+// Days off: who still has to say they've got them, before anything is booked.
+export function leaveReminderMessage(plan: Pick<Plan, "id" | "name">, dates: { dateFrom: string; dateTo: string }, siteUrl: string, missing: string[]): string {
+  const who = missing.length === 1 ? `Falta ${missing[0]}` : `Faltan ${missing.slice(0, -1).join(", ")} y ${missing.at(-1)}`;
+  return `${plan.name}, ${rangeLabel(dates.dateFrom, dates.dateTo)}: antes de reservar nada, ¿os han aprobado los días en el trabajo? ${who} por confirmarlo. Se marca aquí: ${new URL(`/p/${plan.id}`, siteUrl)}`;
+}

@@ -32,6 +32,7 @@ import {
   buttonClasses,
   cn,
 } from "@wanderlot/ui";
+import { LeaveCard } from "../components/LeaveCard.tsx";
 import { FlightLegRow, FlightTotalRow, StayOption } from "../components/DestinationParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
@@ -99,6 +100,8 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
         </div>
         <Money flight={flight} stayShare={stayShare} tricountUrl={trip.tricountUrl} />
       </section>
+
+      <LeaveCard />
 
       {hero && (
         <Photo src={standardImageUrl(hero.url)} alt={hero.alt} className="h-[220px] rounded-card sm:h-[300px]" aria-label={`Foto de ${d.place.city}`} />

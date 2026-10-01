@@ -238,6 +238,17 @@ try {
   await ana.getByText(new RegExp(`^Del \\S+ ${3} al \\S+ ${7} · salida`)).waitFor();
   console.log("✓ panel ↔ site: dates proposed, answered and chosen");
 
+  // 6d. Days off: with the dates decided, Ana says she has them on the
+  // site, and the organiser sees it in the panel before booking.
+  const daysOff = ana.getByRole("region", { name: /^Días libres/ });
+  await daysOff.getByRole("button", { name: "Me los han aprobado" }).click();
+  await daysOff.getByText("1 de 2 con los días").waitFor();
+  await org.reload();
+  const leave = org.getByRole("region", { name: /^Días libres/ });
+  await leave.getByText("1 de 2 aprobados").waitFor();
+  assert.equal(await leave.getByRole("button", { name: "Días libres de Ana" }).textContent(), "Días aprobados");
+  console.log("✓ site → panel: Ana has her days off");
+
   // 7. Ana votes on her phone; the organiser follows it and closes early.
   await ana.getByRole("link", { name: "Repartir mis puntos" }).click();
   for (const points of [3, 2, 1]) await ana.getByRole("button", { name: `Darle ${points} ${points === 1 ? "punto" : "puntos"}` }).first().click();

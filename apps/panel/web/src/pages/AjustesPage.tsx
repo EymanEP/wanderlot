@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Card, EmptyState, Heading, Notice, PageHeader, RadioCard, Skeleton, Text, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
-import type { AiOption, AiView, Status } from "../data/backend.ts";
+import type { AiOption, AiView, BrowserView, Status } from "../data/backend.ts";
 import { useLoad, usePanel } from "../data/store.tsx";
 
 // What each AI can do, in a line; on the site, whether it can search there.
@@ -13,11 +13,23 @@ function abilities(o: AiOption, hosted: boolean): string {
   ].join(" · ");
 }
 
-// "Mirar en Google Flights / Airbnb" (ROADMAP 3.4): whether it works on this
-// laptop, what it lacks, and where to find it.
+// "Comprobar precios" (ROADMAP 3.4): whether it works on this laptop, in
+// which browser (any Chromium: Chrome, Brave, Edge), or what it lacks.
 function BrowserCard({ status }: { status: Status }) {
+  const { browsers, chooseBrowser } = usePanel();
+  const toast = useToast();
+  const { data: view, set } = useLoad<BrowserView>("browsers", browsers);
+  const pick = async (id: string) => {
+    try {
+      const next = await chooseBrowser(id);
+      set(next);
+      toast(`Ahora abre ${next.options.find((o) => o.id === next.active)?.name ?? "ese navegador"}`);
+    } catch (e) {
+      toast(`No se pudo: ${(e as Error).message}`);
+    }
+  };
   return (
-    <Card as="section" variant="raised" aria-labelledby="navegador" className="flex flex-col gap-2">
+    <Card as="section" variant="raised" aria-labelledby="navegador" className="flex flex-col gap-3">
       <span className="flex flex-wrap items-center gap-2">
         <Heading id="navegador" size="subheading">
           Precios reales en el navegador
@@ -26,11 +38,20 @@ function BrowserCard({ status }: { status: Status }) {
       </span>
       <Text tone="muted" size="sm">
         {status.browse
-          ? "En las propuestas aprobadas (Revisar, «mirar precios reales») y en El viaje, «Mirar en Google Flights» y «Mirar en Airbnb» abren una ventana de Chrome en este ordenador y Claude lee el precio. Si sale un aviso de cookies o un CAPTCHA, resuélvelo en la ventana."
+          ? `En las propuestas aprobadas (Revisar) y en El viaje, «Comprobar precios» abre una ventana de ${status.browser ?? "tu navegador"} en este ordenador: Claude mira el vuelo en Google Flights y el alojamiento en Airbnb, y guarda los precios si los lee enteros. La ventana usa un perfil suyo, aparte del tuyo: si sale un aviso de cookies o un CAPTCHA, resuélvelo ahí y lo recordará.`
           : status.browseMissing === "install"
-            ? "Falta el paquete del navegador: ejecuta npm install en la carpeta de Wanderlot y reinicia el panel (npm run panel). Hace falta Chrome instalado."
-            : "Necesita el comando claude (Claude Code) en este ordenador. Instálalo y reinicia el panel."}
+            ? "Falta el paquete del navegador: ejecuta npm install en la carpeta de Wanderlot y reinicia el panel (npm run panel)."
+            : status.browseMissing === "browser"
+              ? "No encontré Chrome, Brave, Edge ni Chromium en este ordenador. Instala uno y reinicia el panel, o pon la ruta del tuyo en WANDERLOT_BROWSER, en el archivo .env."
+              : "Necesita el comando claude (Claude Code) en este ordenador. Instálalo y reinicia el panel."}
       </Text>
+      {status.browse && view && view.options.length > 1 && (
+        <div role="radiogroup" aria-label="Navegador" className="flex flex-col gap-2">
+          {view.options.map((o) => (
+            <RadioCard key={o.id} name="navegador" title={o.name} description={o.path} checked={view.active === o.id} onChange={() => void pick(o.id)} />
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

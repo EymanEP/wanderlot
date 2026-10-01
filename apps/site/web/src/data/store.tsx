@@ -2,7 +2,7 @@
 // from (the real API or the mocks); <PlanProvider> loads one plan through it
 // and hands screens a ready view with useSite().
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { avatarTint, initials, type CommentView, type DateAnswer, type DatesView, type Destination, type Plan, type PlanSummary, type TripPage } from "@wanderlot/core";
+import { avatarTint, initials, type CommentView, type DateAnswer, type DatesView, type Destination, type LeaveStatus, type LeaveView, type Plan, type PlanSummary, type TripPage } from "@wanderlot/core";
 import { EmptyState, Main, Skeleton, buttonClasses } from "@wanderlot/ui";
 import type { Results, SiteSource } from "./source.ts";
 
@@ -72,6 +72,9 @@ export interface SiteApi {
   saveDates: (answers: Record<string, DateAnswer>, note: string) => Promise<void>;
   // The trip page, once the organiser publishes it (ROADMAP 2.2).
   trip: TripPage | null;
+  // Who has the days off, once the dates are decided.
+  leave: LeaveView | null;
+  saveLeave: (status: LeaveStatus) => Promise<void>;
   liked: string[];
   saved: string[];
   saveRanking: (ranking: string[]) => Promise<void>;
@@ -104,9 +107,14 @@ interface Loaded {
   comments: CommentView[];
 }
 
+// What each plan last loaded, per source: coming back to a trip shows it at
+// once, and it's read again behind the scenes.
+const visited = new WeakMap<SiteSource, Map<string, Loaded>>();
+
 export function PlanProvider({ planId, children }: { planId: string; children: ReactNode }) {
   const source = useSource();
-  const [data, setData] = useState<Loaded | null | "missing" | Error>(null);
+  const seen = visited.get(source) ?? visited.set(source, new Map()).get(source)!;
+  const [data, setData] = useState<Loaded | null | "missing" | Error>(() => seen.get(planId) ?? null);
   const [saved, setSaved] = useState<string[]>(readSaved);
 
   const load = useCallback(async () => {
@@ -122,15 +130,21 @@ export function PlanProvider({ planId, children }: { planId: string; children: R
 
   useEffect(() => {
     let live = true;
-    setData(null);
+    setData(seen.get(planId) ?? null);
     load().then(
       (d) => live && setData(d),
-      (e: Error) => live && setData(e),
+      // Shown from the last visit: keep it rather than an error.
+      (e: Error) => live && setData((was) => (was && typeof was === "object" && !(was instanceof Error) ? was : e)),
     );
     return () => {
       live = false;
     };
-  }, [load]);
+  }, [load, planId, seen]);
+
+  // Kept for the next visit.
+  useEffect(() => {
+    if (data && data !== "missing" && !(data instanceof Error)) seen.set(planId, data);
+  }, [data, planId, seen]);
 
   const api = useMemo<SiteApi | null>(() => {
     if (!data || data === "missing" || data instanceof Error) return null;
@@ -155,6 +169,11 @@ export function PlanProvider({ planId, children }: { planId: string; children: R
       liked: comments.filter((c) => c.likedByMe).map((c) => c.id),
       dates: view.dates ?? null,
       trip: view.trip ?? null,
+      leave: view.leave ?? null,
+      async saveLeave(status) {
+        const leave = await source.saveLeave(view.plan.id, status);
+        setData((d) => (d && typeof d === "object" && !(d instanceof Error) ? { ...d, view: { ...d.view, leave } } : d));
+      },
       async saveDates(answers, note) {
         const dates = await source.saveDates(view.plan.id, answers, note);
         setData((d) => (d && typeof d === "object" && !(d instanceof Error) ? { ...d, view: { ...d.view, dates } } : d));

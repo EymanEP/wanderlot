@@ -23,6 +23,7 @@ import {
   cn,
 } from "@wanderlot/ui";
 import { CommentCard } from "../components/CommentCard.tsx";
+import { LeaveCard } from "../components/LeaveCard.tsx";
 import { SuggestDialog } from "../components/SuggestDialog.tsx";
 import { DestinationCard } from "../components/DestinationCard.tsx";
 import { useAuth } from "../data/auth.tsx";
@@ -117,6 +118,8 @@ export function PlanPage() {
         }
       />
 
+      <LeaveCard />
+
       <section className="flex flex-col gap-3 border-b border-line-soft pb-0.5 sm:flex-row sm:items-end sm:justify-between">
         <IconTabs label="Categoría" tabs={TABS} value={category} onChange={setCategory} />
         <button
@@ -171,7 +174,7 @@ export function PlanPage() {
       ) : ordered.length === 0 ? (
         <EmptyState title="Ningún destino con estos filtros">Prueba con otra categoría o quita algún filtro.</EmptyState>
       ) : (
-        <section aria-label="Destinos" className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <section aria-label="Destinos" data-stagger className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {ordered.map((d) => (
             <DestinationCard
               key={d.id}

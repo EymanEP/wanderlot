@@ -804,7 +804,7 @@ describe("Mirar en Google Flights / Airbnb", () => {
     await user.click(screen.getByRole("button", { name: /^Aprobadas/ }));
     const card = screen.getAllByRole("article")[0]!;
     const city = card.getAttribute("aria-label")!;
-    await user.click(within(card).getByRole("button", { name: /precios/ }));
+    await user.click(within(card).getByRole("button", { name: "ponerlos a mano" }));
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
 
     await user.click(dialog.getByRole("button", { name: "Mirar en Google Flights" }));
@@ -814,6 +814,19 @@ describe("Mirar en Google Flights / Airbnb", () => {
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
     expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
+  });
+
+  it("checks both in one go from the card, and saves them", async () => {
+    const user = userEvent.setup();
+    renderAt("/revisar");
+    await screen.findByRole("button", { name: /^Publicar/ });
+    await user.click(screen.getByRole("button", { name: /^Aprobadas/ }));
+    const card = screen.getAllByRole("article").find((a) => within(a).queryByRole("button", { name: "comprobar precios" }))!;
+    const city = card.getAttribute("aria-label")!;
+    await user.click(within(card).getByRole("button", { name: "comprobar precios" }));
+    expect(await screen.findByText(new RegExp(`^Precios de ${city} comprobados y guardados: .+ por persona$`), {}, { timeout: 3000 })).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 
   it("isn't offered for a proposal not approved", async () => {
@@ -841,6 +854,31 @@ describe("Cuándo", () => {
     expect(screen.queryByRole("region", { name: "Votación de fechas" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Volver a decidirlas" }));
     expect(await screen.findByRole("heading", { name: "¿Ya sabéis las fechas?" })).toBeTruthy();
+  });
+});
+
+describe("Días libres", () => {
+  it("asks about days off once the dates are fixed, and lets the organiser mark them", async () => {
+    const user = userEvent.setup();
+    renderAt("/fechas");
+    const card = (await screen.findByRole("heading", { name: "¿Ya sabéis las fechas?" })).closest("div")!.parentElement!;
+    expect(screen.queryByRole("region", { name: /^Días libres/ })).toBeNull();
+    await user.click(within(card).getByRole("button", { name: "Fijar estas fechas" }));
+
+    const leave = await screen.findByRole("region", { name: /^Días libres/ });
+    expect(within(leave).getByText(/^0 de \d+ aprobados$/)).toBeTruthy();
+    const people = within(leave).getAllByRole("listitem");
+    const first = people[0]!;
+    const name = first.querySelector("span.font-semibold")!.textContent!;
+    await user.click(within(first).getByRole("button", { name: `Días libres de ${name}` }));
+    await user.click(within(first).getByRole("option", { name: "Días aprobados" }));
+    expect(await within(leave).findByText(/^1 de \d+ aprobados$/)).toBeTruthy();
+    expect(within(first).getByText("Marcado por ti")).toBeTruthy();
+
+    await user.click(within(leave).getByRole("button", { name: "Recordar a quien falta" }));
+    const message = (await screen.findByRole("textbox", { name: "Mensaje para el grupo" })) as HTMLTextAreaElement;
+    expect(message.value).toMatch(/antes de reservar nada, ¿os han aprobado los días en el trabajo\?/);
+    expect(message.value).not.toContain(name);
   });
 });
 
@@ -877,9 +915,9 @@ describe("Moving around while the AI works", () => {
     expect(screen.queryByRole("status", { name: /En marcha/ })).toBeNull();
   });
 
-  it("reads Google Flights from El viaje and opens the prices to review", async () => {
+  it("checks the prices from El viaje in one go and saves them", async () => {
     const user = userEvent.setup();
-    const backend = mockBackend({ tickMs: 2, verifyMs: 2 });
+    const backend = mockBackend({ tickMs: 150, verifyMs: 2 });
     const plan = (await backend.plan("noviembre-2026"))!.plan;
     // Edimburgo won, and its prices are research's: not checked yet.
     await backend.review("noviembre-2026", "edi", "approved");
@@ -894,11 +932,41 @@ describe("Moving around while the AI works", () => {
       </MemoryRouter>,
     );
     const checklist = await screen.findByLabelText("Antes de publicar");
-    await user.click(within(checklist).getByRole("button", { name: "Mirar en Google Flights" }));
-    const dialog = await waitForDialog();
-    expect(await within(dialog).findByText(/^Ida · /)).toBeTruthy();
-    await user.click(within(dialog).getByRole("button", { name: "Guardar como comprobados" }));
-    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights")).toBeTruthy();
+    await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
+    expect(await within(checklist).findByText(/está mirando Google Flights en una ventana de Chrome \(1 de 2\)/)).toBeTruthy();
+    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights y Airbnb", {}, { timeout: 3000 })).toBeTruthy();
+    expect(document.querySelector("dialog[open]")).toBeNull();
+  });
+});
+
+describe("El viaje once published", () => {
+  beforeEach(() => localStorage.setItem("wanderlot:panel-plan", "noviembre-2026"));
+
+  it("says when the site is behind the panel, and publishes the changes", async () => {
+    const user = userEvent.setup();
+    const backend = mockBackend({ tickMs: 2, verifyMs: 2 });
+    const plan = (await backend.plan("noviembre-2026"))!.plan;
+    await backend.review("noviembre-2026", "edi", "approved");
+    await backend.savePlan({ ...plan, status: "closed", winnerDestinationId: "edi" });
+    await backend.prepareTrip("noviembre-2026", "", () => {});
+    await backend.publishTrip("noviembre-2026", true);
+    render(
+      <MemoryRouter initialEntries={["/viaje"]}>
+        <ToastProvider>
+          <PanelProvider backend={backend}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const checklist = await screen.findByLabelText("Antes de publicar");
+    expect(await within(checklist).findByText("Publicada en el sitio")).toBeTruthy();
+
+    // Prices checked after publishing: the group still sees the old ones.
+    await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
+    expect(await within(checklist).findByText("Hay cambios sin publicar", {}, { timeout: 3000 })).toBeTruthy();
+    await user.click(within(checklist).getByRole("button", { name: "Publicar cambios" }));
+    expect(await within(checklist).findByText("Publicada en el sitio")).toBeTruthy();
   });
 });
 

@@ -464,6 +464,45 @@ describe("panel → site", () => {
     expect((await oldSite.request(`/api/plans/${PLAN}/dates`)).status).toBe(409);
   });
 
+  it("asks the group about days off once the dates are fixed, and starts over if they move", async () => {
+    await json("/api/members", "PUT", FRIENDS);
+    await json(`/api/plans/${PLAN}/participants`, "PUT", ["ana", "bea"]);
+    // Not on the site yet: nobody to ask.
+    expect((await json(`/api/plans/${PLAN}/leave`)).data).toEqual({ leave: null, reminder: null });
+    await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: false, suggestThings: false });
+    await json(`/api/plans/${PLAN}/proposals/lis/review`, "POST", { review: "approved" });
+    await json(`/api/plans/${PLAN}/publish`, "POST", { confirm: true });
+    // On the site, dates not decided: not yet.
+    expect((await json(`/api/plans/${PLAN}/leave`)).data.leave).toBeNull();
+
+    // Fixed in the panel: the site has them at once, without publishing.
+    await json(`/api/plans/${PLAN}/dates/fix`, "POST", { dateFrom: "2026-11-05", dateTo: "2026-11-09" });
+    const page = (await json(`/api/plans/${PLAN}/leave`)).data;
+    expect(page.leave).toMatchObject({ dateFrom: "2026-11-05", dateTo: "2026-11-09" });
+    expect(page.leave.people.map((p: any) => [p.name, p.status])).toEqual([
+      ["ana", "not-asked"],
+      ["bea", "not-asked"],
+    ]);
+    expect(page.reminder).toBe(`Noviembre 2026, 5 – 9 nov: antes de reservar nada, ¿os han aprobado los días en el trabajo? Faltan ana y bea por confirmarlo. Se marca aquí: ${SITE}/p/${PLAN}`);
+    const exported = (await (await site.request("/api/admin/export", { headers: { authorization: `Bearer ${ADMIN}` } })).json()) as any;
+    expect(exported.trips[0].plan).toMatchObject({ dateFrom: "2026-11-05", dateTo: "2026-11-09", nights: 4 });
+
+    // Bea told the organiser in the chat.
+    const marked = (await json(`/api/plans/${PLAN}/leave/bea`, "PUT", { status: "approved" })).data;
+    expect(marked.leave.people[1]).toMatchObject({ id: "bea", status: "approved", byOrganiser: true });
+    expect(marked.reminder).toContain("Falta ana por confirmarlo");
+    expect((await json(`/api/plans/${PLAN}/leave/fer`, "PUT", { status: "approved" })).status).toBe(404);
+
+    // Other dates: her answer was for the old ones.
+    await json(`/api/plans/${PLAN}/dates/fix`, "POST", { dateFrom: "2026-11-12", dateTo: "2026-11-16" });
+    const moved = (await json(`/api/plans/${PLAN}/leave`)).data.leave.people[1];
+    expect(moved).toMatchObject({ status: "not-asked", forOtherDates: true });
+
+    // Undecided again: no more asking.
+    await json(`/api/plans/${PLAN}/dates/fix`, "DELETE");
+    expect((await json(`/api/plans/${PLAN}/leave`)).data.leave).toBeNull();
+  });
+
   it("prepares the trip page with Claude, takes edits and publishes it with the trip", async () => {
     await json("/api/members", "PUT", FRIENDS);
     await json(`/api/plans/${PLAN}/participants`, "PUT", ["ana", "bea"]);
