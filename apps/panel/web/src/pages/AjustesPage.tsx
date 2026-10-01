@@ -38,7 +38,7 @@ function BrowserCard({ status }: { status: Status }) {
       </span>
       <Text tone="muted" size="sm">
         {status.browse
-          ? `En las propuestas aprobadas (Revisar) y en El viaje, «Comprobar precios» abre una ventana de ${status.browser ?? "tu navegador"} en este ordenador: Claude mira el vuelo en Google Flights y el alojamiento en Airbnb, y guarda los precios si los lee enteros. La ventana usa un perfil suyo, aparte del tuyo: si sale un aviso de cookies o un CAPTCHA, resuélvelo ahí y lo recordará.`
+          ? `En las propuestas aprobadas (Revisar) y en El viaje, «Comprobar precios» abre una ventana de ${status.browser ?? "tu navegador"} en este ordenador: Claude mira el vuelo en Google Flights y el alojamiento en Airbnb, y te trae los mejores vuelos y lo que cuesta alojarse (con unos pocos sitios propuestos) para que elijas. La ventana usa un perfil suyo, aparte del tuyo: si sale un aviso de cookies o un CAPTCHA, resuélvelo ahí y lo recordará.`
           : status.browseMissing === "install"
             ? "Falta el paquete del navegador: ejecuta npm install en la carpeta de Wanderlot y reinicia el panel (npm run panel)."
             : status.browseMissing === "browser"

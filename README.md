@@ -208,9 +208,11 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - The finalists' prices can be checked in the browser: "Comprobar precios"
   has the `claude` command read the flight on Google Flights and the stay on
   Airbnb, in a window of the organiser's own browser (Chrome, Brave, Edge or
-  Chromium; Playwright MCP). It saves both when it reads them whole. Tested
-  end to end with the real `claude` command and Chromium against a local
-  page; not yet run against the real sites from CI.
+  Chromium; Playwright MCP). It brings back the 5 best flights to pick one,
+  and the stay's typical price (median of an Airbnb search) with three
+  suggestions. Tested
+  end to end with the real `claude` command and Chromium against local
+  pages; not yet run against the real sites from CI.
 - Days off: once the dates are decided, each person says on the site whether
   they've got the days off work, and the organiser follows it in the panel
   before booking anything.

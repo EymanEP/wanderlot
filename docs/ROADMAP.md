@@ -531,12 +531,12 @@ in. The browser can do the opening and reading, with the organiser watching.
 **Done:** "Comprobar precios" on approved proposals: on each card in
 Revisar, for all of them at once, and in El viaje. The `claude` command drives
 a visible window of the organiser's browser (Chrome, Brave, Edge or Chromium,
-found on the laptop and picked in Ajustes) through Playwright MCP. It reads
-the flight on Google Flights, then the stay on Airbnb, and saves both when it
-read them whole; anything incomplete opens in the price dialog to finish by
-hand. The dialog keeps "Mirar en Google Flights / Airbnb" for one page at a
-time, and the site shows "Visto en Google Flights y Airbnb". A browser that
-can't open says why instead of "no vi el precio". See SPEC §8 for what the
+found on the laptop and picked in Ajustes) through Playwright MCP. It brings
+back the 5 best round trips from Google Flights to pick one. For the stay it
+brings the typical price of a whole place on Airbnb (median and range of up
+to 20 listings) and three suggestions: pick one, or keep the typical price
+and choose the place by hand later. The site shows "Visto en Google Flights y
+Airbnb". A browser that can't open says why instead of "no vi el precio". See SPEC §8 for what the
 run may do. Not on the site's panel (there's no browser there), and never for
 a whole search: Google and Airbnb don't allow automated access, so this stays
 a few pages checked at the organiser's request.

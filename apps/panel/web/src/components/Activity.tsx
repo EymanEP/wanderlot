@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
 import { useToast } from "@wanderlot/ui";
-import { euros, flightPriceCents, stayShareCents } from "@wanderlot/core";
-import type { PriceCheck } from "../data/backend.ts";
 import { usePanel, type Task } from "../data/store.tsx";
 
 interface Item {
@@ -14,15 +12,10 @@ interface Item {
 const SITE = { flight: "Google Flights", stay: "Airbnb" } as const;
 
 // How "Comprobar precios" ended, in a line.
-function pricesText(t: Task, status: string, plan: { nights: number; partySize: number } | null): string {
+function pricesText(t: Task, status: string): string {
   const of = t.city ? ` de ${t.city}` : "";
   if (status !== "done") return `No se pudieron comprobar los precios${of}: ${t.error ?? "error"}`;
-  const r = t.result as PriceCheck;
-  if (r.saved && plan) {
-    const share = stayShareCents(r.saved.stays, plan.nights, plan.partySize) ?? 0;
-    return `Precios${of} comprobados y guardados: ${euros(flightPriceCents(r.saved) + share)} por persona`;
-  }
-  return `Faltan datos${of}: ${(r.missing ?? []).join(", ")}. Revísalo en sus precios`;
+  return `Precios${of} leídos: elige vuelo y alojamiento`;
 }
 
 // What the AI is doing right now, in the top bar, wherever the organiser is
@@ -74,7 +67,7 @@ export function Activity() {
             ? `Búsqueda terminada: ${state.generation?.received ?? 0} propuestas nuevas`
             : "La búsqueda se cortó"
           : t?.kind === "prices"
-            ? pricesText(t, status, state.plan)
+            ? pricesText(t, status)
             : t?.kind === "guide"
             ? status === "done"
               ? `La guía${t.city ? ` de ${t.city}` : ""} está lista`

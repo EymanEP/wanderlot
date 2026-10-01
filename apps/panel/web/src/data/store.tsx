@@ -36,7 +36,7 @@ export interface GenerationState {
 export interface Task {
   id: string;
   planId: string;
-  // prices: "Comprobar precios", both sites in a row, saved when read whole.
+  // prices: "Comprobar precios", both sites in a row, for the dialog.
   kind: "guide" | "browse" | "prices";
   // browse and prices: which proposal, and which site (prices: the one
   // being read now).
@@ -98,8 +98,8 @@ export interface PanelApi {
   setPrices: (id: string, prices: PriceSave) => Promise<void>;
   // Starts reading Google Flights or Airbnb for a finalist; see Task.
   browse: (id: string, kind: "flight" | "stay") => void;
-  // "Comprobar precios": both sites for a finalist, saved when read whole;
-  // otherwise its readings wait for the price dialog. See Task.
+  // "Comprobar precios": both sites for a finalist; the readings wait for
+  // the price dialog, to pick a flight and a stay. See Task.
   checkPrices: (id: string) => void;
   // A task's result was used, or its outcome seen: it can go.
   takeTask: (id: string) => void;
@@ -425,20 +425,14 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         if (state.tasks.some((t) => t.status === "running" && t.kind === "prices" && t.planId === pid && t.proposalId === id)) return;
         runTask({ planId: pid, kind: "prices", proposalId: id, site: "flight", city: p?.place.city ?? "" }, async (onStep, update) => {
           const out = await backend.checkPrices(pid, id, onStep, (site) => update({ site }));
-          if (out.saved) {
-            const saved = out.saved;
-            patch((s) => ({ proposals: s.proposals.map((x) => (x.id === id ? saved : x)) }));
-          } else {
-            // Incomplete: each reading waits for the price dialog, as if
-            // read with "Mirar en…".
-            const now = Date.now();
-            patch((s) => ({
-              tasks: [
-                ...s.tasks.filter((t) => !(t.kind === "browse" && t.planId === pid && t.proposalId === id)),
-                ...(["flight", "stay"] as const).map((site): Task => ({ id: `t${++taskSeq.current}`, planId: pid, kind: "browse", proposalId: id, site, city: p?.place.city ?? "", startedAt: now, steps: [], status: "done", result: out.readings[site] })),
-              ],
-            }));
-          }
+          // Each reading waits for the price dialog, to pick and save.
+          const now = Date.now();
+          patch((s) => ({
+            tasks: [
+              ...s.tasks.filter((t) => !(t.kind === "browse" && t.planId === pid && t.proposalId === id)),
+              ...(["flight", "stay"] as const).map((site): Task => ({ id: `t${++taskSeq.current}`, planId: pid, kind: "browse", proposalId: id, site, city: p?.place.city ?? "", startedAt: now, steps: [], status: "done", result: out.readings[site] })),
+            ],
+          }));
           return out;
         });
       },
