@@ -5,7 +5,7 @@ import { stream } from "hono/streaming";
 import { z } from "zod";
 import { LeaveStatus, googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
-import { airbnbUrl, browsedFields, schemaFor, type Browsed, type BrowseRequest } from "./providers/browse.ts";
+import { browsedFields, type Browsed, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
 import { AI_IDS, AiChoice, type AiId, type AiView } from "./providers/ai.ts";
 import type { BackgroundTask, FlightProvider, ResearchProgress, ResearchProvider, ResearchResult, SearchRequest } from "./providers/types.ts";
@@ -29,7 +29,7 @@ export interface PanelStatus {
   // The panel served by the site at /admin (ROADMAP 3.1). Its AI reads
   // screenshots, and searches in the background (3.3).
   hosted?: boolean;
-  // "Comprobar precios" works here (ROADMAP 3.4), in which browser, or what
+  // "Comprobar vuelos" works here (ROADMAP 3.4), in which browser, or what
   // it lacks: the claude command, the Playwright package (npm install), or a
   // Chromium browser (Chrome, Brave, Edge).
   browse?: boolean;
@@ -347,7 +347,7 @@ export function createPanel({
     return c.json(aiChoice.view());
   });
 
-  // Ajustes: the browsers "Comprobar precios" can open here, and which one.
+  // Ajustes: the browsers "Comprobar vuelos" can open here, and which one.
   app.get("/api/browser", (c) => c.json(browsers?.view() ?? { options: [], active: null }));
 
   app.put("/api/browser", async (c) => {
@@ -771,26 +771,21 @@ export function createPanel({
     }
   });
 
-  // "Comprobar precios" (ROADMAP 3.4): Claude reads the real page in a
+  // "Comprobar vuelos" (ROADMAP 3.4): Claude reads the real page in a
   // browser window on this laptop, for a finalist only.
   let browserTurn: Promise<void> = Promise.resolve();
   const browseCheck = (planId: string, id: string): { entry: PlanEntry; proposal: Proposal } | { error: string; status: 404 | 409 } => {
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return { error: "not found", status: 404 };
-    if (!browse) return { error: "Comprobar precios en el navegador necesita el comando claude en este ordenador.", status: 409 };
+    if (!browse) return { error: "Comprobar vuelos en el navegador necesita el comando claude en este ordenador.", status: 409 };
     if (proposal.review !== "approved") return { error: "Comprueba en el navegador solo las propuestas que vais a usar: apruébala primero.", status: 409 };
     return { entry, proposal };
   };
-  const readPage = async (entry: PlanEntry, proposal: Proposal, kind: "flight" | "stay", signal: AbortSignal, onProgress: (p: ResearchProgress) => void): Promise<Browsed> => {
+  const readFlights = async (entry: PlanEntry, proposal: Proposal, signal: AbortSignal, onProgress: (p: ResearchProgress) => void): Promise<Browsed> => {
     const { plan } = entry;
     const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize };
-    const stay = baseStay(proposal.stays);
-    const listing = stay?.url && /airbnb\./.test(stay.url) ? stay.url : undefined;
-    const req: BrowseRequest =
-      kind === "flight"
-        ? { kind: "flight", url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context }
-        : { kind: "stay", url: airbnbUrl(context, listing), context, ...(listing && stay ? { stayName: stay.name } : {}) };
+    const req: BrowseRequest = { url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context };
     // One window at a time: the browser's profile can't be opened twice.
     const turn = browserTurn.then(() => browse!(req, signal, onProgress));
     browserTurn = turn.then(
@@ -799,9 +794,9 @@ export function createPanel({
     );
     const raw = await turn;
     try {
-      return browsedFields(schemaFor(req), raw, plan, req.url);
+      return browsedFields(raw, req.url);
     } catch {
-      throw new Error("No he sabido leer la página. Prueba otra vez, o pon los precios a mano.");
+      throw new Error("No he sabido leer Google Flights. Prueba otra vez, o pon el precio a mano.");
     }
   };
   const ndjson = (c: Context, work: (write: (line: unknown) => Promise<void>) => Promise<void>) => {
@@ -817,38 +812,19 @@ export function createPanel({
     });
   };
 
-  // One site at a time ("Mirar en…" in the price dialog). Streams {progress}
-  // lines, then the dialog's fields or {error}. Nothing is saved here.
+  // "Comprobar vuelos": the best round trips on Google Flights, priced as
+  // on the booking page, for the price dialog to pick one. Streams
+  // {progress} lines, then {fields} or {error}. Nothing is saved here. The
+  // stay is checked by hand on Airbnb.
   app.post("/api/plans/:planId/proposals/:id/browse", async (c) => {
     const { planId, id } = c.req.param();
-    const body = z.object({ kind: z.enum(["flight", "stay"]) }).safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "expected {kind}" }, 400);
+    const body = z.object({ kind: z.literal("flight").default("flight") }).safeParse((await c.req.json().catch(() => null)) ?? {});
+    if (!body.success) return c.json({ error: "El alojamiento se mira a mano en Airbnb: aquí solo se comprueban los vuelos." }, 400);
     const found = browseCheck(planId, id);
     if ("error" in found) return c.json({ error: found.error }, found.status);
     return ndjson(c, async (write) => {
-      const fields = await readPage(found.entry, found.proposal, body.data.kind, c.req.raw.signal, (p) => void write({ progress: p }));
+      const fields = await readFlights(found.entry, found.proposal, c.req.raw.signal, (p) => void write({ progress: p }));
       await write({ fields });
-    });
-  });
-
-  // "Comprobar precios": the flight on Google Flights, then the stay on
-  // Airbnb, one after the other. Nothing is saved: the best flights and the
-  // stay (its price, or what a search costs with a few to pick from) go to
-  // the price dialog, where the organiser picks and saves. Streams {site} as
-  // each starts, {progress}, then {readings}.
-  app.post("/api/plans/:planId/proposals/:id/check-prices", async (c) => {
-    const { planId, id } = c.req.param();
-    const found = browseCheck(planId, id);
-    if ("error" in found) return c.json({ error: found.error }, found.status);
-    const { entry, proposal } = found;
-    return ndjson(c, async (write) => {
-      const read = async (kind: "flight" | "stay") => {
-        await write({ site: kind });
-        return readPage(entry, proposal, kind, c.req.raw.signal, (p) => void write({ progress: p }));
-      };
-      const flight = await read("flight");
-      const stay = await read("stay");
-      await write({ readings: { flight, stay } });
     });
   });
 

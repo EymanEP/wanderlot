@@ -90,7 +90,7 @@ const ai = new AiChoice(
   (id) => saveEnv("WANDERLOT_AI", id),
 );
 
-// "Comprobar precios" (ROADMAP 3.4): the claude command drives a visible
+// "Comprobar vuelos" (ROADMAP 3.4): the claude command drives a visible
 // browser with a profile of its own: Chrome, Brave, Edge or Chromium,
 // whichever is installed, or the one chosen in Ajustes.
 const browsers = new BrowserChoice(findBrowsers(), process.env.WANDERLOT_BROWSER, (v) => saveEnv("WANDERLOT_BROWSER", v));

@@ -1,4 +1,4 @@
-// The browsers "Comprobar precios" can open (ROADMAP 3.4): any Chromium on
+// The browsers "Comprobar vuelos" can open (ROADMAP 3.4): any Chromium on
 // the laptop, found where each one installs itself. Playwright MCP starts it
 // by its path, so it works with Brave or Edge as well as Chrome, without
 // installing anything else.

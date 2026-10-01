@@ -232,3 +232,13 @@ export function googleFlightsUrl(from: string, to: string, dateFrom: string, dat
   const q = `Flights from ${from} to ${to} on ${dateFrom} through ${dateTo}`;
   return `https://www.google.com/travel/flights?hl=es&curr=EUR&q=${encodeURIComponent(q)}`;
 }
+
+// The stay, checked by hand on Airbnb: the listing already chosen for the
+// trip's dates and people, or a search for a whole place for the group.
+export function airbnbUrl(trip: { city: string; dateFrom: string; dateTo: string; partySize: number }, listing?: string | null): string {
+  if (listing && /^https:\/\/(www\.)?airbnb\.[a-z.]+\/rooms\/\d+/.test(listing)) {
+    const u = new URL(listing);
+    return `${u.origin}${u.pathname}?check_in=${trip.dateFrom}&check_out=${trip.dateTo}&adults=${trip.partySize}`;
+  }
+  return `https://www.airbnb.es/s/${encodeURIComponent(trip.city)}/homes?checkin=${trip.dateFrom}&checkout=${trip.dateTo}&adults=${trip.partySize}&room_types%5B%5D=Entire%20home%2Fapt`;
+}

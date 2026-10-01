@@ -190,7 +190,7 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 | `DUFFEL_API_KEY` | panel | — |
 | `UNSPLASH_ACCESS_KEY`, `PEXELS_API_KEY` | panel | — (optional photo search) |
 | `CLAUDE_BIN` | panel | `claude` |
-| `WANDERLOT_BROWSER` | panel | the first of Chrome, Brave, Edge, Chromium found: the browser "Comprobar precios" opens (`chrome`, `brave`, `edge`, `chromium` or a path); Ajustes changes it |
+| `WANDERLOT_BROWSER` | panel | the first of Chrome, Brave, Edge, Chromium found: the browser "Comprobar vuelos" opens (`chrome`, `brave`, `edge`, `chromium` or a path); Ajustes changes it |
 | `WANDERLOT_BROWSER_PROFILE` | panel | `data/browser`: where each browser keeps its own profile, between runs |
 
 ## State
@@ -205,14 +205,14 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   weather and photo subjects. None has been run against the real service
   from CI; they're tested with recorded shapes. With no AI, destinations can
   be added by hand.
-- The finalists' prices can be checked in the browser: "Comprobar precios"
-  has the `claude` command read the flight on Google Flights and the stay on
-  Airbnb, in a window of the organiser's own browser (Chrome, Brave, Edge or
-  Chromium; Playwright MCP). It brings back the 5 best flights to pick one,
-  and the stay's typical price (median of an Airbnb search) with three
-  suggestions. Tested
-  end to end with the real `claude` command and Chromium against local
-  pages; not yet run against the real sites from CI.
+- The finalists' flights can be checked in the browser: "Comprobar vuelos"
+  has the `claude` command read Google Flights in a window of the
+  organiser's own browser (Chrome, Brave, Edge or Chromium; Playwright MCP)
+  and bring back the 5 best flights, priced as on the booking page, to pick
+  one. The stay is checked by hand: the price dialog links to Airbnb with the
+  trip's dates and people. Tested end to end with the real `claude` command
+  and Chromium against local pages; not yet run against the real site from
+  CI.
 - Days off: once the dates are decided, each person says on the site whether
   they've got the days off work, and the organiser follows it in the panel
   before booking anything.

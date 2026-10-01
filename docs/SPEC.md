@@ -551,43 +551,23 @@ Sites before API version 11 refuse sourceless research, so the panel asks for
 a redeploy before publishing an estimate to one.
 
 ### Checking finalists in the browser (local panel only)
-"Comprobar precios" reads a finalist's real prices in one go, for the
-organiser to pick from: the flight on Google Flights, then the stay on
-Airbnb. It is offered for **approved** proposals only: on each card in
-Revisar, for all of them at once ("Comprobar precios de las aprobadas", one
-after another), and in El viaje for the decided destination. Nothing is saved
-until the organiser picks and saves in the price dialog, which opens with
-what was read. The dialog keeps "Mirar en Google Flights" and "Mirar en
-Airbnb" to read one page again.
-- **Flights.** Up to 5 of the best round trips (Google's best, the cheapest
-  if it isn't among them), best first, each with a few words on why ("El más
-  barato", "Directo, por la mañana"). The price in Google's results list can
-  change by the end, so Claude follows each one, picking the way out and then
-  the way back, to Google's booking page ("Reservar con…"). There it reads
-  the cheapest price per person, who sells it, and the return flight, then
-  goes back for the next option, without ever booking. The dialog shows that
-  price ("Precio al reservar con Ryanair (en la lista ponía 129 €)"); one it
-  couldn't follow that far says its price is the list's and may change. The
-  first is filled in; picking another fills its price and times, and its
-  booking page becomes the source.
-- **The stay.** With a listing already chosen, its price for the dates, as
-  before. Without one, Claude reads up to 20 cards of an Airbnb search for a
-  whole place for the group, without opening each. The dialog shows the
-  **typical price**: the median of the totals, with the range and the price
-  per person. A card showing only a price per night counts as that times the
-  nights. It also shows three Claude would suggest (well rated, room for
-  everyone, good value). The organiser picks one of them, or keeps the
-  typical price for now: the stay is then "Por elegir en Airbnb", with the
-  median and the search as its link, to choose by hand later.
+"Comprobar vuelos" reads a finalist's flights on Google Flights, for the
+organiser to pick one. It is offered for **approved** proposals only: on each
+card in Revisar, for all of them at once ("Comprobar vuelos de las aprobadas",
+one after another), in El viaje for the decided destination, and as "Mirar en
+Google Flights" in the price dialog. Nothing is saved until the organiser
+picks and saves in the price dialog, which opens with what was read.
+- **The stay is checked by hand.** Airbnb's pages couldn't be read reliably,
+  so the price dialog links to Airbnb instead: to the chosen listing with the
+  trip's dates and people, or to a search for a whole place for the group.
+  The organiser types the total, or reads it from a screenshot.
 - **How it reads.** The `claude` command drives a visible browser on the
   organiser's laptop through Playwright MCP (`@playwright/mcp`). It opens the
-  Google Flights search for the route and dates, or the chosen Airbnb listing
-  (or an Airbnb search for a whole place for the group) with the dates and
-  people. It reads the price, the flights' times and the listing into the
-  same fields as a screenshot.
+  Google Flights search for the route and dates and reads the flights into
+  the same fields as a screenshot.
 - **What gets saved.** What the organiser picks, as `organiser` provenance
-  with `seenOn` (`google-flights`, `airbnb`) and the pages in `sources`; the
-  site says "Visto en Google Flights y Airbnb".
+  with `seenOn: ["google-flights"]` and the booking page in `sources`; the
+  site says "Visto en Google Flights". (Older checks may carry `airbnb` too.)
 - **What the run may use.** It gets no built-in tools (`--restricted --tools
   ""`) and no other MCP servers or settings (`--strict-mcp-config`). It has
   only the Playwright tools for reading a page (navigate, snapshot, click,
@@ -608,14 +588,11 @@ Airbnb" to read one page again.
   "no vi el precio". When the page opened but nothing could be read (a
   CAPTCHA, a notice, an empty list), Claude says what got in the way, and
   the dialog shows it. Each run's steps are kept until the next one of its
-  kind in `data/browser/ultima-comprobacion-<flight|stay|search>.ndjson`, to
+  kind in `data/browser/ultima-comprobacion-vuelos.ndjson`, to
   see what happened on a site.
 - **Reading.** On a long page Claude searches for the prices
-  (`browser_find`) rather than reading it all. On Airbnb it turns on "show
-  the total price" when there is such a switch. It reads "X € por N noches"
-  as the total and "X € noche" as a price per night. Links written as
-  `/rooms/…` are made whole.
-- **Terms.** Google's and Airbnb's terms don't allow automated access. This
+  (`browser_find`) rather than reading it all.
+- **Terms.** Google's terms don't allow automated access. This
   checks a handful of pages, one at a time, on the organiser's own machine
   and at their request, as they would by hand. It is not a crawler, and it
   never runs in Generar, on the site, or on its own.
@@ -708,7 +685,7 @@ and rises, its cards one after another), and dialogs lift in; none of it for
 whoever asks their system for reduced motion. While a dialog is open the page
 behind it doesn't scroll. The site moves the same way, and coming back to a
 trip there shows it at once while it's read again. Work the AI does for a while — a search, the trip's guide,
-reading Google Flights or Airbnb — belongs to the panel rather than to a
+reading Google Flights — belongs to the panel rather than to a
 screen: it carries on while the organiser moves around, shows in the top bar
 ("Claude prepara la guía de Praga"), says when it ends from wherever they
 are, and its result waits on its screen. An answer that doesn't fit what the
@@ -736,8 +713,7 @@ serves the same API at `/admin/api` for the organiser (§5), without research.
 | `GET` / `PUT` | `/api/plans/:planId/suggestions[/:id]` | the group's ideas / `{ status }`, e.g. dismissed |
 | `POST` | `/api/plans/:planId/proposals/:id/prices` | prices checked by hand: `{ flightCents, stayCents?, outbound?, inbound?, stay? }` (one person's flights there and back; the whole stay for the group; the flights' real times, together; the stay's name, description and link) |
 | `POST` | `/api/plans/:planId/proposals/:id/extract` | `{ kind: flight \| stay, images: [{ mediaType, data }] }` (1–4 screenshots, base64): what Claude read, for the price dialog; saves nothing. The `claude` command gets only the Read tool, only on a temporary folder holding the images |
-| `POST` | `/api/plans/:planId/proposals/:id/browse` | `{ kind: flight \| stay }`: "Mirar en…", one page read in the browser (§8); streams NDJSON `{progress}`, then `{fields}` or `{error}`; saves nothing. A flight reading carries `options` (up to 5: `{ outbound, inbound, flightCents, note }`, the first filled in); a stay without a listing chosen carries `market` (`{ medianCents, minCents, maxCents, count, picks }`, or null). Approved proposals only |
-| `POST` | `/api/plans/:planId/proposals/:id/check-prices` | "Comprobar precios": both pages, one after the other; streams `{site}` as each starts and `{progress}`, then `{readings: { flight, stay }}` for the price dialog; saves nothing |
+| `POST` | `/api/plans/:planId/proposals/:id/browse` | "Comprobar vuelos": Google Flights read in the browser (§8); streams NDJSON `{progress}`, then `{fields}` or `{error}`; saves nothing. `fields.options` holds up to 5 flights (`{ outbound, inbound, flightCents, listedCents, checkedToEnd, bookWith, bookingUrl, note }`), the first filled in, and `problem` says what got in the way. `{ kind: "stay" }` is refused: the stay is checked by hand. Approved proposals only |
 | `GET` / `PUT` | `/api/browser` | Ajustes: `{ options: [{ id, name, path }], active }`, the browsers found on this laptop / `{ id }` picks one (kept in `.env`) |
 | `POST` | `/api/plans/:planId/proposals/:id/review` | `{ review: pending \| approved \| discarded }` |
 | `POST` | `/api/plans/:planId/proposals/clear-unapproved` | deletes every proposal not approved (to review or discarded) with its notes and photos; `{ removed }` |

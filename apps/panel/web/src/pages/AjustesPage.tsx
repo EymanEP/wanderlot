@@ -13,7 +13,7 @@ function abilities(o: AiOption, hosted: boolean): string {
   ].join(" · ");
 }
 
-// "Comprobar precios" (ROADMAP 3.4): whether it works on this laptop, in
+// "Comprobar vuelos" (ROADMAP 3.4): whether it works on this laptop, in
 // which browser (any Chromium: Chrome, Brave, Edge), or what it lacks.
 function BrowserCard({ status }: { status: Status }) {
   const { browsers, chooseBrowser } = usePanel();
@@ -38,7 +38,7 @@ function BrowserCard({ status }: { status: Status }) {
       </span>
       <Text tone="muted" size="sm">
         {status.browse
-          ? `En las propuestas aprobadas (Revisar) y en El viaje, «Comprobar precios» abre una ventana de ${status.browser ?? "tu navegador"} en este ordenador: Claude mira el vuelo en Google Flights y el alojamiento en Airbnb, y te trae los mejores vuelos y lo que cuesta alojarse (con unos pocos sitios propuestos) para que elijas. La ventana usa un perfil suyo, aparte del tuyo: si sale un aviso de cookies o un CAPTCHA, resuélvelo ahí y lo recordará.`
+          ? `En las propuestas aprobadas (Revisar) y en El viaje, «Comprobar vuelos» abre una ventana de ${status.browser ?? "tu navegador"} en este ordenador: Claude mira Google Flights y te trae los mejores vuelos, con el precio de la página de reserva, para que elijas uno. El alojamiento se mira a mano en Airbnb (el diálogo de precios tiene el enlace). La ventana usa un perfil suyo, aparte del tuyo: si sale un aviso de cookies o un CAPTCHA, resuélvelo ahí y lo recordará.`
           : status.browseMissing === "install"
             ? "Falta el paquete del navegador: ejecuta npm install en la carpeta de Wanderlot y reinicia el panel (npm run panel)."
             : status.browseMissing === "browser"

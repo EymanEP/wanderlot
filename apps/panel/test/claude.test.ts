@@ -180,7 +180,7 @@ describe("claude checking a finalist in the browser", () => {
       onLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__playwright__browser_navigate", input: { url: "https://www.google.com/travel/flights?q=x" } }] } }));
       onLine(resultLine({ outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, pageUrl: "https://www.google.com/travel/flights?q=x" }));
     }, browser);
-    const raw = await provider.browse!({ kind: "flight", url: "https://www.google.com/travel/flights?q=x", context }, undefined, (p) => steps.push(p));
+    const raw = await provider.browse!({ url: "https://www.google.com/travel/flights?q=x", context }, undefined, (p) => steps.push(p));
     expect(raw).toMatchObject({ pricePerPersonEuros: 121 });
     expect(steps).toEqual([{ kind: "read", host: "google.com", url: "https://www.google.com/travel/flights?q=x" }]);
 
@@ -216,28 +216,28 @@ describe("claude checking a finalist in the browser", () => {
           message: { content: [{ type: "tool_result", is_error: true, content: "### Error\nError: async initializeServer: Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome" }] },
         }),
       );
-      onLine(resultLine({ name: null, description: null, totalEuros: null, nights: null, url: null, pageUrl: null }));
+      onLine(resultLine({ options: [], pageUrl: null, problem: null }));
     }, browser);
-    await expect(provider.browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).rejects.toThrow(`No encontré Brave en ${brave.path}`);
+    await expect(provider.browse!({ url: "https://www.airbnb.es/s/x", context }, undefined)).rejects.toThrow(`No encontré Brave en ${brave.path}`);
   });
 
   it("keeps the reading when the page opened, even if a later step failed", async () => {
     const provider = claudeProvider(async (_a, onLine) => {
       onLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: [{ type: "text", text: "### Page\n- Page URL: https://www.airbnb.es/s/x" }] }] } }));
       onLine(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", is_error: true, content: "Timeout" }] } }));
-      onLine(resultLine({ name: "Casa", description: null, totalEuros: 520, nights: 4, url: null, pageUrl: null }));
+      onLine(resultLine({ options: [], pageUrl: "https://www.google.com/travel/flights", problem: "ok" }));
     }, browser);
-    await expect(provider.browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ totalEuros: 520 });
+    await expect(provider.browse!({ url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ problem: "ok" });
   });
 
   it("keeps each run's steps, and checks anyway when they can't be kept", async () => {
-    const lines = [JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "### Page\n- Page URL: https://www.airbnb.es/s/x" }] } }), resultLine({ listings: [], pageUrl: null, problem: "Un CAPTCHA no se fue" })];
+    const lines = [JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "### Page\n- Page URL: https://www.airbnb.es/s/x" }] } }), resultLine({ options: [], pageUrl: null, problem: "Un CAPTCHA no se fue" })];
     const runner = async (_a: string[], onLine: (l: string) => void) => lines.forEach(onLine);
-    await claudeProvider(runner, browser).browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined);
-    expect(readFileSync(join(profileDir, "ultima-comprobacion-search.ndjson"), "utf8").trim().split("\n")).toEqual(lines);
+    await claudeProvider(runner, browser).browse!({ url: "https://www.airbnb.es/s/x", context }, undefined);
+    expect(readFileSync(join(profileDir, "ultima-comprobacion-vuelos.ndjson"), "utf8").trim().split("\n")).toEqual(lines);
     // A profile folder that can't be made: the check still runs.
-    const blocked = join(profileDir, "ultima-comprobacion-search.ndjson", "x");
-    await expect(claudeProvider(runner, { ...browser, profileDir: blocked }).browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ problem: "Un CAPTCHA no se fue" });
+    const blocked = join(profileDir, "ultima-comprobacion-vuelos.ndjson", "x");
+    await expect(claudeProvider(runner, { ...browser, profileDir: blocked }).browse!({ url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ problem: "Un CAPTCHA no se fue" });
   });
 
   it("isn't offered without a browser", () => {

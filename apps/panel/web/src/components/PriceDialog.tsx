@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
-import { baseStay, euros, eurosGrouped, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
+import { airbnbUrl, baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
 import { Button, DataRow, Dialog, Field, Notice, RadioCard, TextInput } from "@wanderlot/ui";
-import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep, StayMarket } from "../data/backend.ts";
+import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
 
 export interface PriceDialogProps {
@@ -14,11 +14,11 @@ export interface PriceDialogProps {
   onExtract?: (kind: "flight" | "stay", images: ScreenshotImage[]) => Promise<Extracted>;
   // Which AI reads them: "Claude", "OpenAI".
   aiName?: string;
-  // "Mirar en Google Flights / Airbnb": Claude reads the real page in a
+  // "Mirar en Google Flights": Claude reads the real page in a
   // browser on the laptop (ROADMAP 3.4). Only for the finalists. The reading
   // is a task in the panel (store.tsx), so it carries on if the dialog closes
   // and its result fills the fields when it opens again.
-  browse?: { tasks: Task[]; start: (kind: "flight" | "stay") => void; take: (id: string) => void };
+  browse?: { tasks: Task[]; start: () => void; take: (id: string) => void };
 }
 
 const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
@@ -123,13 +123,10 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const [stayDescription, setStayDescription] = useState<string | undefined>(undefined);
   const [stayTotal, setStayTotal] = useState("");
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
-  // Read in the browser: the best flights to pick from, and what an Airbnb
-  // search costs with a few to pick (or its typical price, to choose later).
+  // Read in the browser: the best flights to pick from.
   const [flightOptions, setFlightOptions] = useState<FlightChoice[] | null>(null);
   const [flightPick, setFlightPick] = useState(0);
-  const [market, setMarket] = useState<{ market: StayMarket; pageUrl: string | null } | null>(null);
-  const [stayPick, setStayPick] = useState<number | "typical" | null>(null);
-  // "Mirar en…": which part, what it's doing, and the pages read.
+  // Where the prices were read in the browser, for the sources.
 
   const [seen, setSeen] = useState<{ flight?: string; stay?: string }>({});
   // Where a pasted screenshot goes: the section last worked in, or asked.
@@ -153,8 +150,6 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     setPasted(null);
     setSeen({});
     setFlightOptions(null);
-    setMarket(null);
-    setStayPick(null);
     // Refill each time a different proposal opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id]);
@@ -182,7 +177,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   // The browser's readings for this proposal: running ones show their step;
   // finished ones fill the fields (or say what failed) once, then go.
   const running = browse?.tasks.find((t) => t.status === "running");
-  const browsing = (running?.site ?? null) as "flight" | "stay" | null;
+  const browsing = running ? ("flight" as const) : null;
   const step = running?.steps.at(-1) ? stepLine(running.steps.at(-1)!) : null;
   const finished = browse?.tasks.filter((t) => t.status !== "running") ?? [];
   useEffect(() => {
@@ -192,34 +187,22 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
       else if (t.result && "kind" in t.result) {
         const got = t.result as Browsed;
         // What got in the way, in Claude's words, when it couldn't read it.
-        const why = got.problem ? [`${t.site === "flight" ? "Google Flights" : "Airbnb"}: ${got.problem}`] : [];
-        if (got.kind === "flight" && got.options !== undefined) {
-          if (got.options.length) {
-            setFlightOptions(got.options);
-            pickFlight(got.options, 0);
-            setNotes(why);
-          } else setNotes([...why, "No vi vuelos con precio en Google Flights: búscalo tú y escribe el precio."]);
-        } else if (got.kind === "stay" && got.market !== undefined) {
-          if (got.market) {
-            setMarket({ market: got.market, pageUrl: got.pageUrl });
-            setStayPick(null);
-            setNotes(why);
-          } else setNotes([...why, "No vi precios en la búsqueda de Airbnb: elige uno tú y escribe su precio."]);
-        } else {
-          fill(got, "la página");
-          if (why.length) setNotes((n) => [...why, ...n]);
-        }
-        if (got.kind === "stay" && got.url) setStayUrl(got.url);
-        setSeen((s) => ({ ...s, [t.site!]: (got.kind === "flight" && got.options?.[0]?.bookingUrl) || got.pageUrl || "" }));
+        const why = got.problem ? [`Google Flights: ${got.problem}`] : [];
+        if (got.options.length) {
+          setFlightOptions(got.options);
+          pickFlight(got.options, 0);
+          setNotes(why);
+        } else setNotes([...why, "No vi vuelos con precio en Google Flights: búscalo tú y escribe el precio."]);
+        setSeen((s) => ({ ...s, flight: got.options[0]?.bookingUrl || got.pageUrl || "" }));
       }
       browse!.take(t.id);
     }
     // Once per finished reading, while this proposal's dialog is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.id, finished.map((t) => t.id).join()]);
-  const look = (kind: "flight" | "stay") => {
+  const look = () => {
     setError(null);
-    browse!.start(kind);
+    browse!.start();
   };
 
   // A flight from the list, into the fields.
@@ -231,23 +214,6 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     // The source is where it's booked, when it got that far.
     if (o.bookingUrl) setSeen((s) => ({ ...s, flight: o.bookingUrl! }));
   };
-  // A stay from the search, or its typical price until one is chosen.
-  const pickStay = (m: { market: StayMarket; pageUrl: string | null }, pick: number | "typical") => {
-    setStayPick(pick);
-    if (pick === "typical") {
-      setStayName("Por elegir en Airbnb");
-      setStayDescription(`Precio típico: la mediana de ${m.market.count} alojamientos enteros en Airbnb (de ${eurosGrouped(m.market.minCents)} a ${eurosGrouped(m.market.maxCents)})`.slice(0, 200));
-      setStayUrl(m.pageUrl && /^https:\/\//.test(m.pageUrl) ? m.pageUrl : "");
-      setStayTotal(toEuros(m.market.medianCents));
-      return;
-    }
-    const l = m.market.picks[pick]!;
-    setStayName(l.name.slice(0, 120));
-    setStayDescription(l.description?.slice(0, 200) ?? undefined);
-    setStayUrl(l.url ?? "");
-    setStayTotal(toEuros(l.stayCents));
-  };
-
   // What was read, into the fields; says what's missing.
   const fill = (got: Extracted, from: string) => {
     const missing: string[] = [];
@@ -341,12 +307,12 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
             ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y ${aiName} lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
             : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita una IA: mira en Ajustes cómo añadir una.`}{" "}
           Se mostrarán como «Comprobado a mano» durante 72 horas.
-          {browse && ` Con «Mirar en…», ${aiName} abre la página en una ventana de este ordenador y trae las mejores opciones para que elijas: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. Se mostrará como «Visto en Google Flights» o «Airbnb».`}
+          {browse && ` Con «Mirar en Google Flights», ${aiName} abre Google Flights en una ventana de este ordenador y trae los mejores vuelos, con el precio de la página de reserva, para que elijas uno: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. El alojamiento míralo tú en Airbnb con el enlace de abajo.`}
         </span>
 
         {browsing && (
           <div role="status" className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
-            {step ?? `Abriendo ${SITE[browsing].name} en el navegador…`}
+            {step ?? "Abriendo Google Flights en el navegador…"}
           </div>
         )}
 
@@ -367,8 +333,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
             <strong className="text-[15px]">Vuelos</strong>
             <div className="flex flex-wrap items-center gap-2">
               {browse && (
-                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => look("flight")}>
-                  {browsing === "flight" ? `Mirando en ${SITE.flight.name}…` : `Mirar en ${SITE.flight.name}`}
+                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={look}>
+                  {browsing ? "Mirando en Google Flights…" : "Mirar en Google Flights"}
                 </Button>
               )}
               {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
@@ -428,52 +394,18 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong className="text-[15px]">Alojamiento</strong>
             <div className="flex flex-wrap items-center gap-2">
-              {browse && (
-                <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={() => look("stay")}>
-                  {browsing === "stay" ? `Mirando en ${SITE.stay.name}…` : `Mirar en ${SITE.stay.name}`}
-                </Button>
-              )}
               {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
             </div>
           </div>
-          {market && (
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-col gap-0.5 rounded-xl bg-surface-2 px-3.5 py-3">
-                <span className="text-sm">
-                  En Airbnb, un alojamiento entero para los {people} cuesta <strong>{eurosGrouped(market.market.medianCents)}</strong> las {plan.nights} noches
-                </span>
-                <span className="text-[13px] text-muted">
-                  Mediana de {market.market.count} anuncios · de {eurosGrouped(market.market.minCents)} a {eurosGrouped(market.market.maxCents)} · {euros(Math.round(market.market.medianCents / people))} por persona
-                  {market.pageUrl && /^https:\/\//.test(market.pageUrl) && (
-                    <>
-                      {" · "}
-                      <a href={market.pageUrl} target="_blank" rel="noreferrer" className="font-semibold">
-                        ver la búsqueda
-                      </a>
-                    </>
-                  )}
-                </span>
-              </div>
-              <div role="radiogroup" aria-label="Alojamientos encontrados" className="flex flex-col gap-2">
-                {market.market.picks.map((l, i) => (
-                  <RadioCard
-                    key={i}
-                    name="alojamiento"
-                    title={`${l.name} · ${eurosGrouped(l.stayCents)}`}
-                    description={[l.rating ? `★ ${l.rating.toFixed(2).replace(".", ",")}` : null, l.description].filter(Boolean).join(" · ") || "Propuesto por Claude"}
-                    checked={stayPick === i}
-                    onChange={() => pickStay(market, i)}
-                  />
-                ))}
-                <RadioCard
-                  name="alojamiento"
-                  title={`Precio típico por ahora · ${eurosGrouped(market.market.medianCents)}`}
-                  description="Guarda la mediana y elegís el sitio más adelante, a mano en Airbnb"
-                  checked={stayPick === "typical"}
-                  onChange={() => pickStay(market, "typical")}
-                />
-              </div>
-            </div>
+          {p && (
+            <a
+              href={airbnbUrl({ city: p.place.city, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: people }, stay?.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="self-start text-[13px] font-semibold text-accent hover:text-accent-hover"
+            >
+              {stay?.url && /airbnb\./.test(stay.url) ? "Ver el alojamiento en Airbnb" : "Buscar en Airbnb"} · {shortDate(plan.dateFrom)} – {shortDate(plan.dateTo)} · {people} personas
+            </a>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nombre del alojamiento">

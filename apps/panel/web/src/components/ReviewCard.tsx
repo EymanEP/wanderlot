@@ -14,10 +14,10 @@ export interface ReviewCardProps {
   onVerify: () => void;
   // Whether a flight API is configured to verify against.
   canVerify: boolean;
-  // Its prices can be read off Google Flights and Airbnb (a finalist, and the
+  // Its flights can be read off Google Flights (a finalist, and the
   // browser works here): the prices link says so.
   canBrowse?: boolean;
-  // "Comprobar precios" in the browser, and what it's doing while it runs.
+  // "Comprobar vuelos" in the browser, and what it's doing while it runs.
   onCheckPrices?: () => void;
   checking?: string | null;
   photos: PhotoData[];
@@ -143,7 +143,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
                   </span>
                 ) : (
                   <button type="button" onClick={onCheckPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
-                    comprobar precios
+                    comprobar vuelos
                   </button>
                 )}{" "}
                 ·{" "}

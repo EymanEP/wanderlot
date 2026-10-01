@@ -29,7 +29,7 @@ export interface Status {
   ai?: { name: string; search: boolean; images: boolean; background: boolean };
   flights: "duffel" | "none";
   photos: string[];
-  // "Mirar en Google Flights / Airbnb" works here (ROADMAP 3.4), or what it
+  // "Comprobar vuelos" works here (ROADMAP 3.4), or what it
   // lacks: the claude command, or the Playwright package (npm install).
   browse?: boolean;
   // The browser it opens: "Brave", "Chrome"…
@@ -195,35 +195,12 @@ export interface FlightChoice {
   note: string | null;
 }
 
-// What an Airbnb search costs for the trip (whole places for the group, all
-// nights), and three to pick from.
-export interface StayPick {
-  name: string;
-  description: string | null;
-  rating: number | null;
-  url: string | null;
-  stayCents: number;
-}
-export interface StayMarket {
-  medianCents: number;
-  minCents: number;
-  maxCents: number;
-  count: number;
-  picks: StayPick[];
-}
+// What Claude read off Google Flights in the browser: the best few flights
+// (the first filled in), the page, and what got in the way if nothing could
+// be read.
+export type Browsed = Extract<Extracted, { kind: "flight" }> & { pageUrl: string | null; options: FlightChoice[]; problem?: string | null };
 
-// What Claude read off Google Flights or Airbnb in the browser, and where:
-// for flights, the best few (the first filled in); for a stay not chosen
-// yet, the search's typical price.
-// problem: what got in the way, when something couldn't be read.
-export type Browsed = Extracted & { pageUrl: string | null; url?: string | null; options?: FlightChoice[]; market?: StayMarket | null; problem?: string | null };
-
-// "Comprobar precios": both read, for the price dialog to pick from.
-export interface PriceCheck {
-  readings: { flight: Browsed; stay: Browsed };
-}
-
-// Ajustes: the browsers on this laptop and the one "Comprobar precios" opens.
+// Ajustes: the browsers on this laptop and the one "Comprobar vuelos" opens.
 export interface BrowserView {
   options: { id: string; name: string; path: string }[];
   active: string | null;
@@ -282,10 +259,9 @@ export interface PanelBackend {
   verify(planId: string, id: string): Promise<{ verified: true; proposal: Proposal } | { verified: false; reason: string }>;
   editorial(planId: string, id: string, patch: Partial<Editorial>): Promise<void>;
   setPrices(planId: string, id: string, prices: PriceSave): Promise<Proposal>;
-  // Claude reads the real page in a browser on the laptop; nothing is saved.
-  browse(planId: string, id: string, kind: "flight" | "stay", onStep?: (s: SearchStep) => void): Promise<Browsed>;
-  // Both, one after the other, for the price dialog (onSite: which starts).
-  checkPrices(planId: string, id: string, onStep?: (s: SearchStep) => void, onSite?: (site: "flight" | "stay") => void): Promise<PriceCheck>;
+  // "Comprobar vuelos": Claude reads Google Flights in a browser on the
+  // laptop; nothing is saved.
+  browse(planId: string, id: string, onStep?: (s: SearchStep) => void): Promise<Browsed>;
   browsers(): Promise<BrowserView>;
   leave(planId: string): Promise<LeavePage>;
   // The organiser's say on someone's behalf.
@@ -437,24 +413,14 @@ export const httpBackend: PanelBackend = {
   verify: (planId, id) => call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/verify`, "POST"),
   editorial: async (planId, id, patch) => void (await call(`/api/plans/${enc(planId)}/proposals/${enc(id)}/editorial`, "PATCH", patch)),
   setPrices: (planId, id, prices) => call<Proposal>(`/api/plans/${enc(planId)}/proposals/${enc(id)}/prices`, "POST", prices),
-  async browse(planId, id, kind, onStep) {
+  async browse(planId, id, onStep) {
     let fields: Browsed | undefined;
-    await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/browse`, { kind }, (msg: { progress?: SearchStep; fields?: Browsed }) => {
+    await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/browse`, { kind: "flight" }, (msg: { progress?: SearchStep; fields?: Browsed }) => {
       if (msg.progress) onStep?.(msg.progress);
       if (msg.fields) fields = msg.fields;
     });
     if (!fields) throw new BackendError("El navegador terminó sin resultado");
     return fields;
-  },
-  async checkPrices(planId, id, onStep, onSite) {
-    let out: PriceCheck | undefined;
-    await ndjson(`/api/plans/${enc(planId)}/proposals/${enc(id)}/check-prices`, {}, (msg: { progress?: SearchStep; site?: "flight" | "stay" } & Partial<PriceCheck>) => {
-      if (msg.progress) onStep?.(msg.progress);
-      if (msg.site) onSite?.(msg.site);
-      if (msg.readings) out = { readings: msg.readings };
-    });
-    if (!out) throw new BackendError("El navegador terminó sin resultado");
-    return out;
   },
   browsers: () => call<BrowserView>("/api/browser"),
   leave: (planId) => call<LeavePage>(`/api/plans/${enc(planId)}/leave`),
