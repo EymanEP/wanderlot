@@ -14,7 +14,7 @@ type Filter = "all" | Review;
 type Sort = "price" | "duration" | "total";
 
 export function RevisarPage() {
-  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse, checkPrices, takeTask } = usePanel();
+  const { state, now, setReview, verify, publish, publishStatus, setEditorial, searchPhotos, setPrices, clearUnapproved, extract, addProposal, browse, takeTask } = usePanel();
   const counts = useCounts();
   const approved = useApproved();
   const toast = useToast();
@@ -62,10 +62,10 @@ export function RevisarPage() {
 
   const risky = approved.filter((p) => trustOf(p, now) !== "verified");
 
-  // "Comprobar precios": one at a time in the browser, the rest wait.
+  // "Comprobar vuelos": one at a time in the browser, the rest wait.
   const checkingLine = (id: string) => {
-    const t = state.tasks.find((x) => x.kind === "prices" && x.status === "running" && x.planId === plan.id && x.proposalId === id);
-    return t ? (t.steps.length ? `mirando ${t.site === "stay" ? "Airbnb" : "Google Flights"}…` : "esperando al navegador…") : null;
+    const t = state.tasks.find((x) => x.kind === "browse" && x.status === "running" && x.planId === plan.id && x.proposalId === id);
+    return t ? (t.steps.length ? "mirando Google Flights…" : "esperando al navegador…") : null;
   };
   const unchecked = state.status?.browse ? approved.filter((p) => trustOf(p, now) !== "verified" && !checkingLine(p.id)) : [];
   // A check that came back incomplete opens its prices to finish by hand.
@@ -144,11 +144,11 @@ export function RevisarPage() {
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    for (const p of unchecked) checkPrices(p.id);
-                    toast(`${state.status?.ai?.name ?? "Claude"} comprobará ${unchecked.length === 1 ? "sus precios" : `los precios de ${unchecked.length}, uno detrás de otro,`} en ${state.status?.browser ?? "el navegador"}`);
+                    for (const p of unchecked) browse(p.id);
+                    toast(`${state.status?.ai?.name ?? "Claude"} mirará ${unchecked.length === 1 ? "sus vuelos" : `los vuelos de ${unchecked.length}, uno detrás de otro,`} en ${state.status?.browser ?? "el navegador"}`);
                   }}
                 >
-                  Comprobar precios de las aprobadas · {unchecked.length}
+                  Comprobar vuelos de las aprobadas · {unchecked.length}
                 </Button>
               )}
               <Button icon={<PlusIcon size={16} />} onClick={() => setAdding(true)}>
@@ -207,7 +207,7 @@ export function RevisarPage() {
                 verifying={state.verifying.includes(p.id)}
                 canVerify={state.status?.flights !== "none"}
                 canBrowse={!!state.status?.browse && p.review === "approved"}
-                onCheckPrices={() => checkPrices(p.id)}
+                onCheckPrices={() => browse(p.id)}
                 checking={checkingLine(p.id)}
                 onReview={(r) => setReview(p.id, r)}
                 photos={state.editorial[p.id]?.photos ?? []}
@@ -243,7 +243,7 @@ export function RevisarPage() {
           ? {
               browse: {
                 tasks: state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === pricing),
-                start: (kind: "flight" | "stay") => browse(pricing!, kind),
+                start: () => browse(pricing!),
                 take: takeTask,
               },
             }

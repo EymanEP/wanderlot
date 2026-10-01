@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { avatarTint, initials, slugify, type GroupSettings, type LeaveStatus, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
-import type { AiId, AiView, Browsed, BrowserView, LeavePage, PriceCheck, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import type { AiId, AiView, Browsed, BrowserView, LeavePage, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
 
 export type { Review } from "./backend.ts";
 
@@ -36,8 +36,7 @@ export interface GenerationState {
 export interface Task {
   id: string;
   planId: string;
-  // prices: "Comprobar precios", both sites in a row, for the dialog.
-  kind: "guide" | "browse" | "prices";
+  kind: "guide" | "browse";
   // browse and prices: which proposal, and which site (prices: the one
   // being read now).
   proposalId?: string;
@@ -47,7 +46,7 @@ export interface Task {
   steps: SearchStep[];
   status: "running" | "done" | "failed";
   error?: string;
-  result?: TripPage | Browsed | PriceCheck;
+  result?: TripPage | Browsed;
   // Its result was picked up (by the price dialog, or El viaje).
   taken?: boolean;
 }
@@ -96,11 +95,9 @@ export interface PanelApi {
   setEditorial: (id: string, patch: Partial<Editorial>) => void;
   searchPhotos: (query: string) => Promise<PhotoResults>;
   setPrices: (id: string, prices: PriceSave) => Promise<void>;
-  // Starts reading Google Flights or Airbnb for a finalist; see Task.
-  browse: (id: string, kind: "flight" | "stay") => void;
-  // "Comprobar precios": both sites for a finalist; the readings wait for
-  // the price dialog, to pick a flight and a stay. See Task.
-  checkPrices: (id: string) => void;
+  // "Comprobar vuelos": Google Flights for a finalist, read in the browser;
+  // the flights wait for the price dialog. See Task.
+  browse: (id: string) => void;
   // A task's result was used, or its outcome seen: it can go.
   takeTask: (id: string) => void;
   browsers: () => Promise<BrowserView>;
@@ -213,7 +210,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
   const runTask = useCallback(
     (
       task: Omit<Task, "id" | "startedAt" | "steps" | "status">,
-      work: (onStep: (s: SearchStep) => void, update: (change: Partial<Task>) => void) => Promise<TripPage | Browsed | PriceCheck>,
+      work: (onStep: (s: SearchStep) => void, update: (change: Partial<Task>) => void) => Promise<TripPage | Browsed>,
     ) => {
       const id = `t${++taskSeq.current}`;
       // One of each at a time: a new one replaces what the last left behind.
@@ -413,28 +410,11 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         return removed;
       },
       extract: (id, kind, images) => backend.extract(need(), id, kind, images),
-      browse(id, kind) {
+      browse(id) {
         const pid = need();
         const p = state.proposals.find((x) => x.id === id);
-        if (state.tasks.some((t) => t.status === "running" && t.kind === "browse" && t.planId === pid && t.proposalId === id && t.site === kind)) return;
-        runTask({ planId: pid, kind: "browse", proposalId: id, site: kind, city: p?.place.city ?? "" }, (onStep) => backend.browse(pid, id, kind, onStep));
-      },
-      checkPrices(id) {
-        const pid = need();
-        const p = state.proposals.find((x) => x.id === id);
-        if (state.tasks.some((t) => t.status === "running" && t.kind === "prices" && t.planId === pid && t.proposalId === id)) return;
-        runTask({ planId: pid, kind: "prices", proposalId: id, site: "flight", city: p?.place.city ?? "" }, async (onStep, update) => {
-          const out = await backend.checkPrices(pid, id, onStep, (site) => update({ site }));
-          // Each reading waits for the price dialog, to pick and save.
-          const now = Date.now();
-          patch((s) => ({
-            tasks: [
-              ...s.tasks.filter((t) => !(t.kind === "browse" && t.planId === pid && t.proposalId === id)),
-              ...(["flight", "stay"] as const).map((site): Task => ({ id: `t${++taskSeq.current}`, planId: pid, kind: "browse", proposalId: id, site, city: p?.place.city ?? "", startedAt: now, steps: [], status: "done", result: out.readings[site] })),
-            ],
-          }));
-          return out;
-        });
+        if (state.tasks.some((t) => t.status === "running" && t.kind === "browse" && t.planId === pid && t.proposalId === id)) return;
+        runTask({ planId: pid, kind: "browse", proposalId: id, site: "flight", city: p?.place.city ?? "" }, (onStep) => backend.browse(pid, id, onStep));
       },
       takeTask: (id) => patch((s) => ({ tasks: s.tasks.filter((t) => t.id !== id) })),
       browsers: () => backend.browsers(),

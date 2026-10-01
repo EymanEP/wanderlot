@@ -261,14 +261,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       browserView = { ...browserView, active: id };
       return browserView;
     },
-    // "Comprobar precios": both pages, for the dialog, as the server does.
-    async checkPrices(planId, id, onStep, onSite) {
-      onSite?.("flight");
-      const flight = await this.browse(planId, id, "flight", onStep);
-      onSite?.("stay");
-      const stay = await this.browse(planId, id, "stay", onStep);
-      return { readings: { flight, stay } };
-    },
+
     async chooseAi(id) {
       if (hosted || !aiOptions.find((o) => o.id === id)?.ready) throw new Error("Esa IA no está configurada");
       aiActive = id;
@@ -463,14 +456,14 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       return entry(planId).proposals.find((p) => p.id === id)!;
     },
     // "Mirar en…": the same answers as a screenshot, after a few steps.
-    async browse(planId, id, kind, onStep) {
+    async browse(planId, id, onStep) {
       const p = entry(planId).proposals.find((x) => x.id === id)!;
-      if (p.review !== "approved") throw new Error("Mira en el navegador solo las propuestas que vais a usar: apruébala primero.");
-      const page = kind === "flight" ? "google.com" : "airbnb.es";
+      if (p.review !== "approved") throw new Error("Comprueba en el navegador solo las propuestas que vais a usar: apruébala primero.");
+      const page = "google.com";
       onStep?.({ kind: "read", host: page, url: `https://www.${page}/` });
       await wait(Math.min(tickMs, 400));
-      onStep?.({ kind: "note", text: kind === "flight" ? "Elijo el vuelo directo de la mañana." : "Abro un piso entero con sitio para todos." });
-      const got = await this.extract(planId, id, kind, []);
+      onStep?.({ kind: "note", text: "Sigo cada vuelo hasta la página de reserva." });
+      const got = await this.extract(planId, id, "flight", []);
       if (got.kind === "flight") {
         // The KLM flight, and four more for the organiser to pick from.
         const shift = (iso: string, h: number) => new Date(Date.parse(iso) + h * 3_600_000).toISOString().replace(".000Z", "+00:00");
@@ -493,29 +486,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         ];
         return { ...got, options, pageUrl: "https://www.google.com/travel/flights" };
       }
-      if (p.stays.some((s) => s.url?.includes("airbnb."))) return { ...got, url: "https://www.airbnb.es/rooms/12345", pageUrl: "https://www.airbnb.es/rooms/12345" };
-      // No stay chosen: the search's typical price and three to pick.
-      const nights = entry(planId).plan.nights;
-      return {
-        kind: "stay",
-        name: null,
-        description: null,
-        stayCents: null,
-        nights: null,
-        url: null,
-        pageUrl: "https://www.airbnb.es/s/homes",
-        market: {
-          medianCents: 142800,
-          minCents: 98000,
-          maxCents: 231000,
-          count: 18,
-          picks: [
-            { name: "Apartamento con terraza en De Pijp", description: "3 habitaciones · 6 huéspedes", rating: 4.92, url: "https://www.airbnb.es/rooms/12345", stayCents: 151200 },
-            { name: "Casa junto al canal en Jordaan", description: "3 habitaciones · 7 huéspedes", rating: 4.88, url: "https://www.airbnb.es/rooms/23456", stayCents: 168000 },
-            { name: "Piso amplio en Oost", description: "4 habitaciones · 8 huéspedes", rating: 4.81, url: "https://www.airbnb.es/rooms/34567", stayCents: nights * 17000 },
-          ],
-        },
-      };
+      throw new Error("lectura inesperada");
     },
     // Reads any screenshot as the same KLM flight or Amsterdam flat.
     async extract(planId, id, kind) {

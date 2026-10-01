@@ -100,7 +100,7 @@ function stepText(step: SearchStep): string {
 // step says what's next and does it in place; the AI's work carries on if
 // the organiser goes elsewhere in the panel (store.tsx, Task).
 export function ViajePage() {
-  const { state, trip, prepareTrip, saveTrip, publishTrip, publishStatus, setPrices, extract, browse, checkPrices, takeTask, now, clearJob } = usePanel();
+  const { state, trip, prepareTrip, saveTrip, publishTrip, publishStatus, setPrices, extract, browse, takeTask, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
   const { data: view, error, reload, set: setView } = useLoad(`trip:${plan.id}:${plan.winnerDestinationId ?? ""}`, trip);
@@ -151,9 +151,7 @@ export function ViajePage() {
   // The panel's own copy, so checked prices show at once.
   const destination = view?.destination ? (state.proposals.find((p) => p.id === view.destination!.id) ?? view.destination) : null;
   const readings = destination ? state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === destination.id) : [];
-  const checking = destination ? state.tasks.find((t) => t.kind === "prices" && t.status === "running" && t.planId === plan.id && t.proposalId === destination.id) : undefined;
-  const reading = checking ?? readings.find((t) => t.status === "running");
-  const site = reading?.site === "stay" ? "Airbnb" : "Google Flights";
+  const reading = readings.find((t) => t.status === "running");
   // A reading that finished opens the prices to review and save.
   useEffect(() => {
     if (readings.some((t) => t.status !== "running")) setPricing(true);
@@ -327,19 +325,19 @@ export function ViajePage() {
                 }
                 detail={
                   reading
-                    ? `${ai} está mirando ${site} en una ventana de ${state.status?.browser ?? "tu navegador"}${checking ? ` (${reading.site === "stay" ? "2" : "1"} de 2)` : ""}${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
+                    ? `${ai} está mirando Google Flights en una ventana de ${state.status?.browser ?? "tu navegador"}${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
                     : checked
                       ? "La página del viaje los muestra tal cual."
                       : state.status?.browse
-                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} trae de Google Flights y Airbnb las mejores opciones para que elijas, o pégalos tú.`
+                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} trae de Google Flights los mejores vuelos para que elijas uno; el alojamiento míralo en Airbnb, o pega una captura.`
                         : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
                 }
                 busy={!!reading}
                 action={
                   <span className="flex flex-wrap gap-2">
                     {state.status?.browse && (
-                      <Button size="sm" variant={checked ? "ghost" : "secondary"} disabled={!!reading} onClick={() => checkPrices(destination.id)}>
-                        {reading ? "Comprobando…" : checked ? "Comprobar otra vez" : "Comprobar precios"}
+                      <Button size="sm" variant={checked ? "ghost" : "secondary"} disabled={!!reading} onClick={() => browse(destination.id)}>
+                        {reading ? "Comprobando…" : checked ? "Comprobar vuelos otra vez" : "Comprobar vuelos"}
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setPricing(true)}>
@@ -475,7 +473,7 @@ export function ViajePage() {
             ? {
                 browse: {
                   tasks: readings,
-                  start: (kind: "flight" | "stay") => browse(destination.id, kind),
+                  start: () => browse(destination.id),
                   take: takeTask,
                 },
               }

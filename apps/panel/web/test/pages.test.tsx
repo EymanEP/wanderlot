@@ -796,7 +796,7 @@ describe("Buscar desde el móvil", () => {
   });
 });
 
-describe("Mirar en Google Flights / Airbnb", () => {
+describe("Comprobar vuelos", () => {
   it("reads the real pages for a finalist, and saves where the price was seen", async () => {
     const user = userEvent.setup();
     renderAt("/revisar");
@@ -817,32 +817,28 @@ describe("Mirar en Google Flights / Airbnb", () => {
     expect(within(flights).getByText(/Precio de la lista: puede cambiar al reservar/)).toBeTruthy();
     await user.click(within(flights).getByRole("radio", { name: /El más barato/ }));
     expect(dialog.getByText(/^Ida · .* Vueling VY 811/)).toBeTruthy();
-    await user.click(dialog.getByRole("button", { name: "Mirar en Airbnb" }));
-    // No stay chosen yet: the search's typical price, and three to pick.
-    expect(await dialog.findByText(/^Mediana de 18 anuncios/)).toBeTruthy();
-    await user.click(dialog.getByRole("radio", { name: /De Pijp/ }));
-    await dialog.findByDisplayValue("https://www.airbnb.es/rooms/12345");
+    // The stay is checked by hand: a link to Airbnb for the trip's dates and people.
+    expect(dialog.queryByRole("button", { name: "Mirar en Airbnb" })).toBeNull();
+    expect(dialog.getByRole("link", { name: /^(Buscar en Airbnb|Ver el alojamiento en Airbnb) · .* · 6 personas$/ }).getAttribute("href")).toMatch(/^https:\/\/www\.airbnb\.es\/.*(adults|check_in)/);
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
-    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights")).toBeTruthy();
   });
 
-  it("checks both in one go from the card, and the organiser picks", async () => {
+  it("checks the flights from the card, and the organiser picks one", async () => {
     const user = userEvent.setup();
     renderAt("/revisar");
     await screen.findByRole("button", { name: /^Publicar/ });
     await user.click(screen.getByRole("button", { name: /^Aprobadas/ }));
-    const card = screen.getAllByRole("article").find((a) => within(a).queryByRole("button", { name: "comprobar precios" }))!;
+    const card = screen.getAllByRole("article").find((a) => within(a).queryByRole("button", { name: "comprobar vuelos" }))!;
     const city = card.getAttribute("aria-label")!;
-    await user.click(within(card).getByRole("button", { name: "comprobar precios" }));
-    // Both read: the prices open to pick a flight and a stay.
+    await user.click(within(card).getByRole("button", { name: "comprobar vuelos" }));
+    // Read: the prices open to pick a flight.
     const dialog = within(await waitForDialog(3000));
     await user.click(await dialog.findByRole("radio", { name: /Directo, por la tarde/ }));
-    await user.click(dialog.getByRole("radio", { name: /^Precio típico por ahora/ }));
-    expect(dialog.getByDisplayValue("Por elegir en Airbnb")).toBeTruthy();
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
-    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights y Airbnb")).toBeTruthy();
+    expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights")).toBeTruthy();
   });
 
   it("isn't offered for a proposal not approved", async () => {
@@ -931,7 +927,7 @@ describe("Moving around while the AI works", () => {
     expect(screen.queryByRole("status", { name: /En marcha/ })).toBeNull();
   });
 
-  it("checks the prices from El viaje in one go, to pick and save", async () => {
+  it("checks the flights from El viaje, to pick and save", async () => {
     const user = userEvent.setup();
     const backend = mockBackend({ tickMs: 150, verifyMs: 2 });
     const plan = (await backend.plan("noviembre-2026"))!.plan;
@@ -948,12 +944,12 @@ describe("Moving around while the AI works", () => {
       </MemoryRouter>,
     );
     const checklist = await screen.findByLabelText("Antes de publicar");
-    await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
-    expect(await within(checklist).findByText(/está mirando Google Flights en una ventana de Chrome \(1 de 2\)/)).toBeTruthy();
+    await user.click(within(checklist).getByRole("button", { name: "Comprobar vuelos" }));
+    expect(await within(checklist).findByText(/está mirando Google Flights en una ventana de Chrome/)).toBeTruthy();
     const dialog = within(await waitForDialog(3000));
-    await user.click(await dialog.findByRole("radio", { name: /De Pijp/ }));
+    await user.click(await dialog.findByRole("radio", { name: /El más barato/ }));
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
-    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights y Airbnb")).toBeTruthy();
+    expect(await within(checklist).findByText("Precios comprobados · Visto en Google Flights")).toBeTruthy();
   });
 });
 
@@ -981,9 +977,9 @@ describe("El viaje once published", () => {
     expect(await within(checklist).findByText("Publicada en el sitio")).toBeTruthy();
 
     // Prices checked after publishing: the group still sees the old ones.
-    await user.click(within(checklist).getByRole("button", { name: "Comprobar precios" }));
+    await user.click(within(checklist).getByRole("button", { name: "Comprobar vuelos" }));
     const dialog = within(await waitForDialog(3000));
-    await user.click(await dialog.findByRole("radio", { name: /De Pijp/ }));
+    await user.click(await dialog.findByRole("radio", { name: /El más barato/ }));
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await within(checklist).findByText("Hay cambios sin publicar")).toBeTruthy();
     await user.click(within(checklist).getByRole("button", { name: "Publicar cambios" }));

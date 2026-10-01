@@ -9,15 +9,6 @@ interface Item {
   to: string;
 }
 
-const SITE = { flight: "Google Flights", stay: "Airbnb" } as const;
-
-// How "Comprobar precios" ended, in a line.
-function pricesText(t: Task, status: string): string {
-  const of = t.city ? ` de ${t.city}` : "";
-  if (status !== "done") return `No se pudieron comprobar los precios${of}: ${t.error ?? "error"}`;
-  return `Precios${of} leídos: elige vuelo y alojamiento`;
-}
-
 // What the AI is doing right now, in the top bar, wherever the organiser is
 // in the panel: a search, the trip's guide, a page read in the browser. Each
 // links to its screen, and says so when it ends.
@@ -32,9 +23,7 @@ export function Activity() {
   const doing = (t: Task) =>
     t.kind === "guide"
       ? `${ai} prepara la guía${t.city ? ` de ${t.city}` : ""}`
-      : t.kind === "prices"
-        ? `${ai} comprueba precios${t.city ? ` de ${t.city}` : ""} · ${SITE[t.site ?? "flight"]}`
-        : `${ai} mira ${SITE[t.site!]}${t.city ? ` · ${t.city}` : ""}`;
+      : `${ai} mira vuelos en Google Flights${t.city ? ` · ${t.city}` : ""}`;
   const running: Item[] = [
     ...(state.generation?.running ? [{ key: "generation", label: `${ai} busca destinos · ${state.generation.received}`, to: "/generar" }] : []),
     ...(state.job?.status === "running" ? [{ key: "job", label: `${state.job.aiName} busca en segundo plano`, to: state.job.kind === "guide" ? "/viaje" : "/generar" }] : []),
@@ -66,15 +55,13 @@ export function Activity() {
           ? status === "done"
             ? `Búsqueda terminada: ${state.generation?.received ?? 0} propuestas nuevas`
             : "La búsqueda se cortó"
-          : t?.kind === "prices"
-            ? pricesText(t, status)
-            : t?.kind === "guide"
+          : t?.kind === "guide"
             ? status === "done"
               ? `La guía${t.city ? ` de ${t.city}` : ""} está lista`
               : `No se pudo preparar la guía: ${t.error ?? "error"}`
             : status === "done"
-              ? `${SITE[t!.site!]} leído${t?.city ? ` para ${t.city}` : ""}: revisa los precios y guárdalos`
-              : `No se pudo leer ${SITE[t!.site!]}: ${t?.error ?? "error"}`;
+              ? `Vuelos${t?.city ? ` de ${t.city}` : ""} leídos en Google Flights: elige uno`
+              : `No se pudo leer Google Flights: ${t?.error ?? "error"}`;
       toast(
         <span className="flex items-center gap-3">
           {text}

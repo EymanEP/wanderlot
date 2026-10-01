@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { extractJsonSchema, extractPrompt } from "./extract.ts";
 import { guideJsonSchema, guidePrompt } from "./guide.ts";
-import { BROWSE_TOOLS, browseJsonSchema, browsePrompt, schemaFor } from "./browse.ts";
+import { BROWSE_TOOLS, browseJsonSchema, browsePrompt } from "./browse.ts";
 import { ResearchOutput, buildPrompt, outputSchema, toResults } from "./research.ts";
 import type { ResearchProgress, ResearchProvider } from "./types.ts";
 
@@ -195,7 +195,7 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
               // check of the same kind: to see why a site couldn't be read.
               // Best effort: a log that can't be written never stops a check.
               const out = await mkdir(browser.profileDir, { recursive: true }).then(
-                () => createWriteStream(join(browser.profileDir, `ultima-comprobacion-${schemaFor(req)}.ndjson`)).on("error", () => {}),
+                () => createWriteStream(join(browser.profileDir, "ultima-comprobacion-vuelos.ndjson")).on("error", () => {}),
                 () => undefined,
               );
               log = out;
@@ -217,7 +217,7 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
                   "stream-json",
                   "--verbose",
                   "--json-schema",
-                  JSON.stringify(browseJsonSchema(schemaFor(req))),
+                  JSON.stringify(browseJsonSchema()),
                   // No built-in tools at all (no files, no shell, no web
                   // search), no other MCP servers or settings: only this
                   // browser, and only the tools for reading a page.
