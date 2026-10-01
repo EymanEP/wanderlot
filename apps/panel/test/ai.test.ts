@@ -377,22 +377,25 @@ describe("checking a finalist in the browser", () => {
         return req.kind === "flight"
           ? {
               options: [
-                { outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: "El más barato" },
-                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: 900, passengers: 6, note: "Directo" },
-                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: null, passengers: null, note: "Sin precio" },
+                { outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: "El más barato", listedEuros: null, checkedToEnd: true, bookWith: null, bookingUrl: null },
+                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: 900, passengers: 6, note: "Directo", listedEuros: null, checkedToEnd: true, bookWith: null, bookingUrl: null },
+                { outbound: null, inbound: null, pricePerPersonEuros: null, totalEuros: null, passengers: null, note: "Sin precio", listedEuros: null, checkedToEnd: true, bookWith: null, bookingUrl: null },
               ],
               pageUrl: "https://www.google.com/travel/flights/booking?x=1",
+              problem: null,
             }
           : req.stayName
-            ? { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "javascript:alert(1)" }
+            ? { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nights: 7, url: "https://www.airbnb.es/rooms/987", pageUrl: "javascript:alert(1)", problem: null }
             : {
                 listings: [
                   { name: "Piso en Alfama", description: "3 habitaciones", totalEuros: 1400, nightlyEuros: null, rating: 4.9, url: "https://www.airbnb.es/rooms/987", recommended: true },
                   { name: "Casa en Graça", description: null, totalEuros: null, nightlyEuros: 150, rating: 4.7, url: "https://www.airbnb.es/rooms/654", recommended: false },
-                  { name: "Ático en Baixa", description: null, totalEuros: 1800, nightlyEuros: null, rating: null, url: "javascript:alert(1)", recommended: true },
+                  { name: "Ático en Baixa", description: null, totalEuros: 1800, nightlyEuros: null, rating: null, url: "/rooms/321?check_in=x", recommended: true },
+                  { name: "Otro", description: null, totalEuros: 1500, nightlyEuros: null, rating: null, url: "javascript:alert(1)", recommended: false },
                   { name: "Sin precio", description: null, totalEuros: null, nightlyEuros: null, rating: 5, url: null, recommended: false },
                 ],
                 pageUrl: "javascript:alert(1)",
+                problem: null,
               };
       },
       site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
@@ -420,8 +423,8 @@ describe("checking a finalist in the browser", () => {
     expect(flight.lines[0]).toEqual({ progress: { kind: "read", host: "google.com", url: asked[0].url } });
     expect(flight.lines[1].fields).toMatchObject({ kind: "flight", flightCents: 12100, pageUrl: "https://www.google.com/travel/flights/booking?x=1" });
     expect(flight.lines[1].fields.options).toEqual([
-      { outbound: null, inbound: null, flightCents: 12100, note: "El más barato" },
-      { outbound: null, inbound: null, flightCents: 15000, note: "Directo" },
+      { outbound: null, inbound: null, flightCents: 12100, listedCents: null, checkedToEnd: true, bookWith: null, bookingUrl: null, note: "El más barato" },
+      { outbound: null, inbound: null, flightCents: 15000, listedCents: null, checkedToEnd: true, bookWith: null, bookingUrl: null, note: "Directo" },
     ]);
     expect(asked[0].url).toMatch(/^https:\/\/www\.google\.com\/travel\/flights\?/);
 
@@ -430,12 +433,14 @@ describe("checking a finalist in the browser", () => {
     const market = stay.lines.at(-1).fields;
     // A page address that isn't https is never passed on.
     expect(market).toMatchObject({ kind: "stay", stayCents: null, pageUrl: asked[1].url });
-    // 1400, 150 × 7 = 1050 and 1800: the one without a price doesn't count.
-    expect(market.market).toMatchObject({ medianCents: 140000, minCents: 105000, maxCents: 180000, count: 3 });
+    // 1050 (150 × 7), 1400, 1500 and 1800: the one without a price doesn't count.
+    expect(market.market).toMatchObject({ medianCents: 145000, minCents: 105000, maxCents: 180000, count: 4 });
+    // A link as Airbnb writes it is made whole; one that isn't a web page isn't kept.
     expect(market.market.picks.map((p: any) => [p.name, p.url])).toEqual([
       ["Piso en Alfama", "https://www.airbnb.es/rooms/987"],
-      ["Ático en Baixa", null],
+      ["Ático en Baixa", "https://www.airbnb.es/rooms/321?check_in=x"],
     ]);
+    expect(market.problem).toBeNull();
 
     // Saved from the dialog: checked, and where.
     const saved = await json("/api/plans/noviembre/proposals/lisboa/prices", "POST", {
@@ -461,8 +466,8 @@ describe("checking a finalist in the browser", () => {
       flights: {} as FlightProvider,
       browse: async (req) =>
         req.kind === "flight"
-          ? { options: [{ outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: null }], pageUrl: "https://www.google.com/travel/flights/booking?x=1" }
-          : { listings: [{ name: "Piso en Alfama", description: null, totalEuros: 1400, nightlyEuros: null, rating: 4.9, url: "https://www.airbnb.es/rooms/987", recommended: true }], pageUrl: "https://www.airbnb.es/s/Lisboa/homes" },
+          ? { options: [{ outbound: null, inbound: null, pricePerPersonEuros: 121, totalEuros: null, passengers: null, note: null, listedEuros: null, checkedToEnd: true, bookWith: null, bookingUrl: null }], pageUrl: "https://www.google.com/travel/flights/booking?x=1", problem: null }
+          : { listings: [{ name: "Piso en Alfama", description: null, totalEuros: 1400, nightlyEuros: null, rating: 4.9, url: "https://www.airbnb.es/rooms/987", recommended: true }], pageUrl: "https://www.airbnb.es/s/Lisboa/homes", problem: null },
       site: siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init)),
       siteUrl: ORIGIN,
       now: () => new Date("2026-10-10T12:00:00Z"),

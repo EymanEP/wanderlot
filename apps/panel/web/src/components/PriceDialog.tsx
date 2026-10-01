@@ -191,19 +191,26 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
       if (t.status === "failed") setError(t.error ?? "No se pudo leer la página");
       else if (t.result && "kind" in t.result) {
         const got = t.result as Browsed;
-        if (got.kind === "flight" && got.options?.length) {
-          setFlightOptions(got.options);
-          pickFlight(got.options, 0);
-          setNotes([]);
+        // What got in the way, in Claude's words, when it couldn't read it.
+        const why = got.problem ? [`${t.site === "flight" ? "Google Flights" : "Airbnb"}: ${got.problem}`] : [];
+        if (got.kind === "flight" && got.options !== undefined) {
+          if (got.options.length) {
+            setFlightOptions(got.options);
+            pickFlight(got.options, 0);
+            setNotes(why);
+          } else setNotes([...why, "No vi vuelos con precio en Google Flights: búscalo tú y escribe el precio."]);
         } else if (got.kind === "stay" && got.market !== undefined) {
           if (got.market) {
             setMarket({ market: got.market, pageUrl: got.pageUrl });
             setStayPick(null);
-            setNotes([]);
-          } else setNotes(["No vi precios en la búsqueda de Airbnb: elige uno tú y escribe su precio."]);
-        } else fill(got, "la página");
+            setNotes(why);
+          } else setNotes([...why, "No vi precios en la búsqueda de Airbnb: elige uno tú y escribe su precio."]);
+        } else {
+          fill(got, "la página");
+          if (why.length) setNotes((n) => [...why, ...n]);
+        }
         if (got.kind === "stay" && got.url) setStayUrl(got.url);
-        setSeen((s) => ({ ...s, [t.site!]: got.pageUrl ?? "" }));
+        setSeen((s) => ({ ...s, [t.site!]: (got.kind === "flight" && got.options?.[0]?.bookingUrl) || got.pageUrl || "" }));
       }
       browse!.take(t.id);
     }
@@ -221,6 +228,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     setFlightPick(i);
     setFlights(toEuros(o.flightCents));
     setLegs(o.outbound && o.inbound ? { outbound: o.outbound, inbound: o.inbound } : null);
+    // The source is where it's booked, when it got that far.
+    if (o.bookingUrl) setSeen((s) => ({ ...s, flight: o.bookingUrl! }));
   };
   // A stay from the search, or its typical price until one is chosen.
   const pickStay = (m: { market: StayMarket; pageUrl: string | null }, pick: number | "typical") => {
@@ -383,7 +392,12 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
                   key={i}
                   name="vuelo"
                   title={`${euros(o.flightCents)} por persona${o.note ? ` · ${o.note}` : ""}`}
-                  description={o.outbound ? `Ida ${legLine(o.outbound)}${o.inbound ? ` · Vuelta ${legLine(o.inbound)}` : ""}` : "Sin horarios: solo el precio"}
+                  description={[
+                    o.checkedToEnd
+                      ? `Precio al reservar${o.bookWith ? ` con ${o.bookWith}` : ""}${o.listedCents !== null && o.listedCents !== o.flightCents ? ` (en la lista ponía ${euros(o.listedCents)})` : ""}`
+                      : "Precio de la lista: puede cambiar al reservar",
+                    o.outbound ? `Ida ${legLine(o.outbound)}${o.inbound ? ` · Vuelta ${legLine(o.inbound)}` : ""}` : "Sin horarios",
+                  ].join(" · ")}
                   checked={flightPick === i}
                   onChange={() => pickFlight(flightOptions, i)}
                 />

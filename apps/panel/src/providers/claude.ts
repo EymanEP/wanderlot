@@ -2,7 +2,8 @@
 // so every proposal comes back structured and with its sources. It streams
 // its steps (stream-json), so Generar can show each search as it happens.
 import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -161,6 +162,7 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
             const b = browser.browser();
             if (!b) throw new Error("No encontré Chrome, Brave, Edge ni Chromium en este ordenador. Instala uno y reinicia el panel.");
             const dir = await mkdtemp(join(tmpdir(), "wanderlot-navegador-"));
+            let log: ReturnType<typeof createWriteStream> | undefined;
             try {
               const config = join(dir, "mcp.json");
               await writeFile(
@@ -189,8 +191,25 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
               // read: say why, rather than "I didn't see the price".
               let opened = false;
               let failure: string | null = null;
+              // What happened on the page, step by step, kept until the next
+              // check of the same kind: to see why a site couldn't be read.
+              // Best effort: a log that can't be written never stops a check.
+              const out = await mkdir(browser.profileDir, { recursive: true }).then(
+                () => createWriteStream(join(browser.profileDir, `ultima-comprobacion-${schemaFor(req)}.ndjson`)).on("error", () => {}),
+                () => undefined,
+              );
+              log = out;
+              const logged: Runner = (a, onLine, sig) =>
+                run(
+                  a,
+                  (line) => {
+                    out?.write(`${line}\n`);
+                    onLine(line);
+                  },
+                  sig,
+                );
               const raw = await answer(
-                run,
+                logged,
                 [
                   "-p",
                   browsePrompt(req),
@@ -225,6 +244,8 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
               if (!opened && failure) throw new Error(browserError(b.name, b.path, failure));
               return raw;
             } finally {
+              // Written out before anyone looks at it.
+              await new Promise<void>((done) => (log ? log.end(done) : done()));
               await rm(dir, { recursive: true, force: true });
             }
           },

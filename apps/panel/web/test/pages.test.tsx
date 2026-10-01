@@ -812,6 +812,9 @@ describe("Mirar en Google Flights / Airbnb", () => {
     // Five flights to pick from; the first is filled in.
     const flights = dialog.getByRole("radiogroup", { name: "Vuelos encontrados" });
     expect(within(flights).getAllByRole("radio")).toHaveLength(5);
+    // The price at the end of booking, and the list's when it differed.
+    expect(within(flights).getByRole("radio", { name: /Directo, a buena hora/ }).closest("label")!.textContent).toMatch(/Precio al reservar con KLM \(en la lista ponía .+\)/);
+    expect(within(flights).getByText(/Precio de la lista: puede cambiar al reservar/)).toBeTruthy();
     await user.click(within(flights).getByRole("radio", { name: /El más barato/ }));
     expect(dialog.getByText(/^Ida · .* Vueling VY 811/)).toBeTruthy();
     await user.click(dialog.getByRole("button", { name: "Mirar en Airbnb" }));

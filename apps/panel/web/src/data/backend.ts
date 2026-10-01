@@ -184,7 +184,14 @@ export type Extracted =
 export interface FlightChoice {
   outbound: ExtractedLeg | null;
   inbound: ExtractedLeg | null;
+  // The price on Google's booking page, what's paid; or the list's, when it
+  // couldn't be followed that far (checkedToEnd false).
   flightCents: number;
+  listedCents: number | null;
+  checkedToEnd: boolean;
+  // Who sells it, and Google's booking page for it.
+  bookWith: string | null;
+  bookingUrl: string | null;
   note: string | null;
 }
 
@@ -208,7 +215,8 @@ export interface StayMarket {
 // What Claude read off Google Flights or Airbnb in the browser, and where:
 // for flights, the best few (the first filled in); for a stay not chosen
 // yet, the search's typical price.
-export type Browsed = Extracted & { pageUrl: string | null; url?: string | null; options?: FlightChoice[]; market?: StayMarket | null };
+// problem: what got in the way, when something couldn't be read.
+export type Browsed = Extracted & { pageUrl: string | null; url?: string | null; options?: FlightChoice[]; market?: StayMarket | null; problem?: string | null };
 
 // "Comprobar precios": both read, for the price dialog to pick from.
 export interface PriceCheck {
