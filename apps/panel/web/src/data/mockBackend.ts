@@ -478,14 +478,18 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
           outbound: got.outbound && { ...got.outbound, departAt: shift(got.outbound.departAt, h), arriveAt: shift(got.outbound.arriveAt, h + stops), carrier, flightNumber: `${n}1`, stops },
           inbound: got.inbound && { ...got.inbound, departAt: shift(got.inbound.departAt, -h), arriveAt: shift(got.inbound.arriveAt, -h + stops), carrier, flightNumber: `${n}2`, stops },
           flightCents: cents,
+          listedCents: cents + 700,
+          checkedToEnd: true,
+          bookWith: carrier,
+          bookingUrl: "https://www.google.com/travel/flights/booking",
           note,
         });
         const options = [
-          { outbound: got.outbound, inbound: got.inbound, flightCents: got.flightCents!, note: "Directo, a buena hora" },
+          { outbound: got.outbound, inbound: got.inbound, flightCents: got.flightCents!, listedCents: got.flightCents! + 1300, checkedToEnd: true, bookWith: "KLM", bookingUrl: "https://www.google.com/travel/flights/booking", note: "Directo, a buena hora" },
           alt(-3, got.flightCents! - 2400, "Vueling", "VY 81", "El más barato, sale temprano"),
           alt(4, got.flightCents! + 1100, "Iberia", "IB 34", "Directo, por la tarde"),
           alt(2, got.flightCents! - 900, "Transavia", "HV 50", "Con una escala corta", 1),
-          alt(6, got.flightCents! + 3800, "Air Europa", "UX 11", "Directo, el más tarde"),
+          { ...alt(6, got.flightCents! + 3800, "Air Europa", "UX 11", "Directo, el más tarde"), checkedToEnd: false, listedCents: got.flightCents! + 3800, bookWith: null, bookingUrl: null },
         ];
         return { ...got, options, pageUrl: "https://www.google.com/travel/flights" };
       }

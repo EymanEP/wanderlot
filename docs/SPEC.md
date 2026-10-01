@@ -561,9 +561,15 @@ what was read. The dialog keeps "Mirar en Google Flights" and "Mirar en
 Airbnb" to read one page again.
 - **Flights.** Up to 5 of the best round trips (Google's best, the cheapest
   if it isn't among them), best first, each with a few words on why ("El más
-  barato", "Directo, por la mañana"). The first is filled in; picking another
-  fills its price and times. The way back is read when the list shows it
-  without opening each option.
+  barato", "Directo, por la mañana"). The price in Google's results list can
+  change by the end, so Claude follows each one, picking the way out and then
+  the way back, to Google's booking page ("Reservar con…"). There it reads
+  the cheapest price per person, who sells it, and the return flight, then
+  goes back for the next option, without ever booking. The dialog shows that
+  price ("Precio al reservar con Ryanair (en la lista ponía 129 €)"); one it
+  couldn't follow that far says its price is the list's and may change. The
+  first is filled in; picking another fills its price and times, and its
+  booking page becomes the source.
 - **The stay.** With a listing already chosen, its price for the dates, as
   before. Without one, Claude reads up to 20 cards of an Airbnb search for a
   whole place for the group, without opening each. The dialog shows the
@@ -599,7 +605,16 @@ Airbnb" to read one page again.
   Claude waits for them. One window at a time: further checks queue.
 - **When the browser can't open.** If no page ever opened (not installed,
   closed on start), the panel says why ("No encontré Brave en …") instead of
-  "no vi el precio".
+  "no vi el precio". When the page opened but nothing could be read (a
+  CAPTCHA, a notice, an empty list), Claude says what got in the way, and
+  the dialog shows it. Each run's steps are kept until the next one of its
+  kind in `data/browser/ultima-comprobacion-<flight|stay|search>.ndjson`, to
+  see what happened on a site.
+- **Reading.** On a long page Claude searches for the prices
+  (`browser_find`) rather than reading it all. On Airbnb it turns on "show
+  the total price" when there is such a switch. It reads "X € por N noches"
+  as the total and "X € noche" as a price per night. Links written as
+  `/rooms/…` are made whole.
 - **Terms.** Google's and Airbnb's terms don't allow automated access. This
   checks a handful of pages, one at a time, on the organiser's own machine
   and at their request, as they would by hand. It is not a crawler, and it
