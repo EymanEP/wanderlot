@@ -244,7 +244,8 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
               if (!opened && failure) throw new Error(browserError(b.name, b.path, failure));
               return raw;
             } finally {
-              log?.end();
+              // Written out before anyone looks at it.
+              await new Promise<void>((done) => (log ? log.end(done) : done()));
               await rm(dir, { recursive: true, force: true });
             }
           },
