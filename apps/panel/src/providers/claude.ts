@@ -193,14 +193,17 @@ export function claudeProvider(run: Runner = runClaude, browser?: BrowserConfig)
               let failure: string | null = null;
               // What happened on the page, step by step, kept until the next
               // check of the same kind: to see why a site couldn't be read.
-              await mkdir(browser.profileDir, { recursive: true });
-              const out = createWriteStream(join(browser.profileDir, `ultima-comprobacion-${schemaFor(req)}.ndjson`));
+              // Best effort: a log that can't be written never stops a check.
+              const out = await mkdir(browser.profileDir, { recursive: true }).then(
+                () => createWriteStream(join(browser.profileDir, `ultima-comprobacion-${schemaFor(req)}.ndjson`)).on("error", () => {}),
+                () => undefined,
+              );
               log = out;
               const logged: Runner = (a, onLine, sig) =>
                 run(
                   a,
                   (line) => {
-                    out.write(`${line}\n`);
+                    out?.write(`${line}\n`);
                     onLine(line);
                   },
                   sig,

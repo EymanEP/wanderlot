@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ResearchProgress } from "../src/providers/types.ts";
@@ -166,7 +167,8 @@ describe("the schema handed to `claude --json-schema`", () => {
 describe("claude checking a finalist in the browser", () => {
   const context = { origin: "MAD", city: "Lisboa", iata: "LIS", dateFrom: "2026-11-07", dateTo: "2026-11-14", nights: 7, partySize: 6 };
   const brave = { id: "brave", name: "Brave", path: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" };
-  const browser = { mcpCli: "/opt/pw/cli.js", browser: () => brave, profileDir: "/home/ana/wanderlot/data/browser" };
+  const profileDir = join(tmpdir(), `wanderlot-test-browser-${process.pid}`);
+  const browser = { mcpCli: "/opt/pw/cli.js", browser: () => brave, profileDir };
 
   it("gives claude only the browser, only the tools to read a page, and cleans up", async () => {
     let args: string[] = [];
@@ -195,7 +197,7 @@ describe("claude checking a finalist in the browser", () => {
     }
     // A visible browser with a profile of its own, kept between runs.
     // The browser chosen in Ajustes, by its path: Brave as well as Chrome.
-    expect(config.mcpServers.playwright.args).toEqual(expect.arrayContaining(["/opt/pw/cli.js", "--executable-path", brave.path, "--user-data-dir", "/home/ana/wanderlot/data/browser/brave"]));
+    expect(config.mcpServers.playwright.args).toEqual(expect.arrayContaining(["/opt/pw/cli.js", "--executable-path", brave.path, "--user-data-dir", join(profileDir, "brave")]));
     expect(config.mcpServers.playwright.args).not.toContain("--no-sandbox");
     expect(config.mcpServers.playwright.args).not.toContain("--headless");
     const prompt = args[args.indexOf("-p") + 1]!;
@@ -226,6 +228,16 @@ describe("claude checking a finalist in the browser", () => {
       onLine(resultLine({ name: "Casa", description: null, totalEuros: 520, nights: 4, url: null, pageUrl: null }));
     }, browser);
     await expect(provider.browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ totalEuros: 520 });
+  });
+
+  it("keeps each run's steps, and checks anyway when they can't be kept", async () => {
+    const lines = [JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "### Page\n- Page URL: https://www.airbnb.es/s/x" }] } }), resultLine({ listings: [], pageUrl: null, problem: "Un CAPTCHA no se fue" })];
+    const runner = async (_a: string[], onLine: (l: string) => void) => lines.forEach(onLine);
+    await claudeProvider(runner, browser).browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined);
+    expect(readFileSync(join(profileDir, "ultima-comprobacion-search.ndjson"), "utf8").trim().split("\n")).toEqual(lines);
+    // A profile folder that can't be made: the check still runs.
+    const blocked = join(profileDir, "ultima-comprobacion-search.ndjson", "x");
+    await expect(claudeProvider(runner, { ...browser, profileDir: blocked }).browse!({ kind: "stay", url: "https://www.airbnb.es/s/x", context }, undefined)).resolves.toMatchObject({ problem: "Un CAPTCHA no se fue" });
   });
 
   it("isn't offered without a browser", () => {
