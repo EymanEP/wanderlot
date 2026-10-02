@@ -779,7 +779,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   // Sets the password (signing out every device on the panel), or turns the
   // panel at /admin off with null.
   admin.put("/organiser", async (c) => {
-    const body = z.object({ password: z.string().min(10, "Usa al menos 10 caracteres").max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
+    const body = z.object({ password: z.string().min(10, say(c).passwordShort).max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {password}" }, 400);
     const { password } = body.data;
     if (password) {
@@ -1148,11 +1148,8 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     return true;
   }
 
-  const OFF = "El panel en el sitio no está activado. Actívalo desde el panel de tu ordenador, en Personas.";
-  const WRONG_PASSWORD = "Contraseña incorrecta";
-
   app.get("/admin/api/session", async (c) =>
-    (await store.organiserLogin()) ? ((await organiserSignedIn(c)) ? c.json({ ok: true }) : c.json({ error: "unauthorized" }, 401)) : c.json({ error: OFF }, 404),
+    (await store.organiserLogin()) ? ((await organiserSignedIn(c)) ? c.json({ ok: true }) : c.json({ error: "unauthorized" }, 401)) : c.json({ error: say(c).organiserOff }, 404),
   );
 
   // Signing in with the password, with lockouts that grow like a PIN's.
@@ -1161,19 +1158,19 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const body = z.object({ password: z.string().max(200) }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {password}" }, 400);
     const login = await store.organiserLogin();
-    if (!login) return c.json({ error: OFF }, 404);
+    if (!login) return c.json({ error: say(c).organiserOff }, 404);
     if (login.lockedUntil && Date.parse(login.lockedUntil) > now().getTime()) {
-      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(Date.parse(login.lockedUntil) - now().getTime(), SERVER_COPY.es)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+      return c.json({ error: say(c).passwordLocked(waitLabel(Date.parse(login.lockedUntil) - now().getTime(), say(c))) }, 429);
     }
     if (!safeEqual(await (await hashPassword)(login.salt, body.data.password), login.hash)) {
       const failed = login.failed + 1;
       if (failed >= PASSWORD_MAX_TRIES) {
         const lock = pinLockMs(login.lockouts);
         await store.recordOrganiserFailure(0, iso(lock), login.lockouts + 1);
-        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock, SERVER_COPY.es)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+        return c.json({ error: say(c).passwordLocked(waitLabel(lock, say(c))) }, 429);
       }
       await store.recordOrganiserFailure(failed, null, login.lockouts);
-      return c.json({ error: WRONG_PASSWORD }, 401);
+      return c.json({ error: say(c).wrongPassword }, 401);
     }
     if (login.failed > 0 || login.lockedUntil || login.lockouts > 0) await store.recordOrganiserFailure(0, null, 0);
     const token = randomToken();

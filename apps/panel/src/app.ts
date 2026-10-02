@@ -13,6 +13,7 @@ import type { GuideRequest } from "./providers/guide.ts";
 import { EstimateOutput, ResearchOutput, toResults, type Researcher } from "./providers/research.ts";
 import { searchAll, type PhotoSource } from "./providers/photos.ts";
 import { localOnly } from "./guard.ts";
+import { LOCALE_HEADER, PANEL_COPY, requestLocale, type PanelCopy } from "./copy.ts";
 import type { BrowserChoice } from "./browsers.ts";
 
 import { SiteError, buildSnapshot, publishWarnings, shellSnapshot, snapshotFingerprint, type MemberStatus, type SiteClient } from "./publish.ts";
@@ -180,8 +181,9 @@ function guideRequest(entry: PlanEntry, destination: Proposal, home: string, loc
 
 // What went wrong, in words: a schema check that failed says so plainly
 // instead of dumping its issues on the organiser.
-export function humanError(err: unknown): string {
-  if (err instanceof z.ZodError) return "La respuesta de la IA no venía como se esperaba. Vuelve a probar; si se repite, hazlo a mano.";
+export function humanError(err: unknown, t: PanelCopy = PANEL_COPY.es): string {
+  if (err instanceof z.ZodError) return t.aiShape;
+  if (err instanceof SiteError) return t.siteSaid(err.status, err.reason);
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -205,11 +207,14 @@ export function createPanel({
 }: PanelOptions) {
   const app = new Hono();
   if (hosts) app.use("*", localOnly(hosts));
+  // The organiser's language, which the panel sends with every call.
+  const localeOf = (c: Context) => requestLocale(c.req.header(LOCALE_HEADER));
+  const say = (c: Context) => PANEL_COPY[localeOf(c)];
   // The panel is local, so the organiser may see what went wrong. A refusal
   // from the site keeps its status and its (Spanish) reason.
   app.onError((err, c) => {
     if (err instanceof SiteError && err.status >= 400 && err.status < 500) return c.json({ error: err.reason }, err.status as 409);
-    return c.json({ error: humanError(err) }, 500);
+    return c.json({ error: humanError(err, say(c)) }, 500);
   });
 
   const entryOr404 = (planId: string) => store.get(planId);
@@ -226,21 +231,18 @@ export function createPanel({
 
   // The AI in use now: the one chosen in Ajustes, or the one given.
   const currentAi = (): ResearchProvider | null => (aiChoice ? aiChoice.provider() : (research ?? null));
-  const browsing = (): Partial<PanelStatus> => (browse ? { browse: true, ...(browsers?.chosen ? { browser: browsers.chosen.name } : {}) } : {});
-  const statusNow = (): PanelStatus => {
-    if (!aiChoice) return { ...status, ...browsing() };
+  const browsing = (locale: Locale): Partial<PanelStatus> => (browse ? { browse: true, ...(browsers?.chosen ? { browser: browsers.chosenName(locale)! } : {}) } : {});
+  const statusNow = (locale: Locale = DEFAULT_LOCALE): PanelStatus => {
+    if (!aiChoice) return { ...status, ...browsing(locale) };
     const a = aiChoice.active?.option;
     const { ai: _was, ...rest } = status;
     // As the screens say it: "Preparar con Claude", "OpenAI está buscando".
     const name = a?.id === "claude-cli" || a?.id === "anthropic-api" ? "Claude" : a?.name;
-    return { ...rest, ...browsing(), research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
+    return { ...rest, ...browsing(locale), research: a?.id ?? "none", ...(a && name ? { ai: { name, search: a.search, images: a.images, background: a.background } } : {}) };
   };
   // The panel at /admin searches in the background, which needs an AI that
   // can (ROADMAP 3.3).
-  const hostedSearch = () =>
-    statusNow().research === "none"
-      ? "Para buscar desde el panel del sitio hace falta una clave de Claude (API de Anthropic) u OpenAI en el sitio: mira en Ajustes, o busca desde el panel de tu ordenador."
-      : `${statusNow().ai?.name ?? "Esta IA"} no puede buscar en segundo plano, que es como busca el panel del sitio: usa Claude (API de Anthropic) u OpenAI, o busca desde el panel de tu ordenador.`;
+  const hostedSearch = (t: PanelCopy) => (statusNow().research === "none" ? t.hostedNoAi : t.hostedNoBackground(statusNow().ai?.name));
 
   // The trip page from the guide research wrote; keeps the organiser's stay
   // details and Tricount. Remembers where the group lives, best effort.
@@ -261,8 +263,8 @@ export function createPanel({
   const startJob = async (c: Context, planId: string, task: BackgroundTask, extra: Pick<PanelJob, "idea" | "destinationId"> = {}) => {
     const ai = currentAi();
     const active = aiChoice?.active?.option;
-    if (!ai?.background || !active) return c.json({ error: hostedSearch() }, 409);
-    if (store.get(planId)!.job?.status === "running") return c.json({ error: "Ya hay una búsqueda en marcha en este viaje: espera a que termine o cancélala." }, 409);
+    if (!ai?.background || !active) return c.json({ error: hostedSearch(say(c)) }, 409);
+    if (store.get(planId)!.job?.status === "running") return c.json({ error: say(c).jobRunning }, 409);
     const externalId = await ai.background.start(task);
     const job: PanelJob = { kind: task.kind, ai: active.id, aiName: statusNow().ai?.name ?? active.name, externalId, task, startedAt: now().toISOString(), status: "running", ...extra };
     store.update(planId, (e) => ({ entry: { ...e!, job }, result: null }));
@@ -270,8 +272,9 @@ export function createPanel({
   };
 
   // Asks the AI how a running job is doing and, once it's done, saves what
-  // it found. A failed check leaves the job running, to try again.
-  const advanceJob = async (planId: string) => {
+  // it found. A failed check leaves the job running, to try again. Its
+  // errors are kept in the language of whoever asked when it ended.
+  const advanceJob = async (planId: string, t: PanelCopy) => {
     const job = store.get(planId)?.job;
     const ai = currentAi();
     if (!job || job.status !== "running" || !ai?.background) return;
@@ -287,7 +290,7 @@ export function createPanel({
     const who = ai.who ?? {};
     if (job.task.kind === "research") {
       const out = (who.estimate ? EstimateOutput : ResearchOutput).safeParse(check.raw);
-      if (!out.success) return void finish({ status: "failed", error: `${job.aiName} respondió con datos que no encajan; vuelve a probar` });
+      if (!out.success) return void finish({ status: "failed", error: t.jobBadData(job.aiName) });
       const results = toResults(job.task.req, out.data, who);
       const added = store.update(planId, (e) => {
         const r = withResearched(e!, results, job.idea?.by);
@@ -296,12 +299,12 @@ export function createPanel({
       if (job.idea && added[0]) await site.setSuggestion(planId, job.idea.id, "researched", added[0].id).catch(() => {});
       return;
     }
-    if (!job.destinationId || decided(planId)?.id !== job.destinationId) return void finish({ status: "failed", error: "El destino del viaje cambió mientras se preparaba la guía" });
+    if (!job.destinationId || decided(planId)?.id !== job.destinationId) return void finish({ status: "failed", error: t.jobDestinationChanged });
     try {
       await saveGuide(planId, job.destinationId, job.task.req.home, check.raw, who);
       finish({ status: "done" });
     } catch {
-      finish({ status: "failed", error: `${job.aiName} respondió con datos que no encajan; vuelve a probar` });
+      finish({ status: "failed", error: t.jobBadData(job.aiName) });
     }
   };
 
@@ -312,7 +315,7 @@ export function createPanel({
       await store.refresh();
     } catch (e) {
       // Status still answers: it's how the UI learns the site is down.
-      if (c.req.path !== "/api/status" && !c.req.path.endsWith("/api/status")) throw new Error(`No se pudieron leer los viajes del sitio: ${(e as Error).message}`);
+      if (c.req.path !== "/api/status" && !c.req.path.endsWith("/api/status")) throw new Error(say(c).cantReadTrips((e as Error).message));
     }
     await next();
     try {
@@ -336,41 +339,41 @@ export function createPanel({
       reachable = false;
       error = (e as Error).message;
     }
-    return c.json({ ...statusNow(), site: { url: siteUrl, reachable, outdated, ...(error ? { error } : {}) } });
+    return c.json({ ...statusNow(localeOf(c)), site: { url: siteUrl, reachable, outdated, ...(error ? { error } : {}) } });
   });
 
   // Ajustes: the AIs set up here, and which one is in use (ROADMAP 3.3).
   app.get("/api/ai", (c) => {
-    const s = statusNow();
-    const view: AiView = aiChoice?.view() ?? { options: [], active: s.research === "none" ? null : s.research, canChoose: false };
+    const s = statusNow(localeOf(c));
+    const view: AiView = aiChoice?.view(localeOf(c)) ?? { options: [], active: s.research === "none" ? null : s.research, canChoose: false };
     return c.json(view);
   });
 
   app.put("/api/ai", async (c) => {
     const body = z.object({ id: z.enum(AI_IDS) }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {id}" }, 400);
-    if (!aiChoice) return c.json({ error: "Aquí no se puede cambiar la IA" }, 409);
+    if (!aiChoice) return c.json({ error: say(c).cantChangeAi }, 409);
     try {
-      aiChoice.choose(body.data.id);
+      aiChoice.choose(body.data.id, localeOf(c));
     } catch (e) {
       return c.json({ error: (e as Error).message }, 409);
     }
-    return c.json(aiChoice.view());
+    return c.json(aiChoice.view(localeOf(c)));
   });
 
   // Ajustes: the browsers "Comprobar vuelos" can open here, and which one.
-  app.get("/api/browser", (c) => c.json(browsers?.view() ?? { options: [], active: null }));
+  app.get("/api/browser", (c) => c.json(browsers?.view(localeOf(c)) ?? { options: [], active: null }));
 
   app.put("/api/browser", async (c) => {
     const body = z.object({ id: z.string().min(1).max(20) }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {id}" }, 400);
-    if (!browsers) return c.json({ error: "Aquí no se puede elegir navegador" }, 409);
+    if (!browsers) return c.json({ error: say(c).cantChooseBrowser }, 409);
     try {
-      browsers.choose(body.data.id);
+      browsers.choose(body.data.id, localeOf(c));
     } catch (e) {
       return c.json({ error: (e as Error).message }, 409);
     }
-    return c.json(browsers.view());
+    return c.json(browsers.view(localeOf(c)));
   });
 
   app.get("/api/settings", async (c) => c.json(await site.settings()));
@@ -379,10 +382,10 @@ export function createPanel({
   app.get("/api/organiser", async (c) => c.json({ ...(await site.organiser()), url: new URL("/admin/", siteUrl).toString() }));
 
   app.put("/api/organiser", async (c) => {
-    const body = z.object({ password: z.string().min(10, "Usa al menos 10 caracteres").max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
+    const body = z.object({ password: z.string().min(10, say(c).passwordShort).max(200).nullable() }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {password}" }, 400);
     if ((await site.version()) < 10) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe servir el panel. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldServePanel) }, 409);
     }
     return c.json({ ...(await site.setOrganiserPassword(body.data.password)), url: new URL("/admin/", siteUrl).toString() });
   });
@@ -423,7 +426,7 @@ export function createPanel({
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
     if ((await site.version()) < 6) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe borrar viajes. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldDeleteTrips) }, 409);
     }
     await site.deletePlan(planId);
     store.remove(planId);
@@ -434,7 +437,7 @@ export function createPanel({
   // Research and drafts stay in the panel's own store.
   app.get("/api/export", async (c) => {
     if ((await site.version()) < 7) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe exportar. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldExport) }, 409);
     }
     const planId = c.req.query("plan");
     return c.json(await site.exportData(planId || undefined));
@@ -498,7 +501,7 @@ export function createPanel({
     // A friend's idea: research exactly that place, crediting them.
     const { suggestionId, ...options } = body.data;
     const idea = suggestionId ? (await site.suggestions(plan.id)).find((x) => x.id === suggestionId) : undefined;
-    if (suggestionId && !idea) return c.json({ error: "esa idea ya no está" }, 404);
+    if (suggestionId && !idea) return c.json({ error: say(c).ideaGone }, 404);
     const req: SearchRequest = {
       ...options,
       ...(idea
@@ -517,13 +520,13 @@ export function createPanel({
       locale: await groupLocale(),
     };
     if (body.data.source === "api" && status.flights === "none") {
-      return c.json({ error: "No hay ninguna API de vuelos conectada. Busca con Claude, o añade la clave con npm run setup." }, 409);
+      return c.json({ error: say(c).noFlightsApi }, 409);
     }
     const ai = currentAi();
     if (body.data.source === "claude") {
       // On the site, handed to the AI to run in the background.
       if (status.hosted) return startJob(c, plan.id, { kind: "research", req }, idea ? { idea: { id: idea.id, by: idea.member.name } } : {});
-      if (!ai) return c.json({ error: "No hay ninguna IA configurada: mira en Ajustes cómo añadir una." }, 409);
+      if (!ai) return c.json({ error: say(c).noAi }, 409);
     }
     // Research's steps, relayed as they happen for Generar's live view.
     const progress: ResearchProgress[] = [];
@@ -560,7 +563,7 @@ export function createPanel({
         if (idea && researched) await site.setSuggestion(plan.id, idea.id, "researched", researched).catch(() => {});
         await write({ done: true });
       } catch (err) {
-        await write({ error: humanError(err) });
+        await write({ error: humanError(err, say(c)) });
       }
     });
   });
@@ -573,7 +576,7 @@ export function createPanel({
     const entry = store.get(planId);
     if (!entry) return c.json({ error: "not found" }, 404);
     if (entry.job?.status === "running") {
-      if (currentAi()?.background && aiChoice?.active?.option.id === entry.job.ai) await advanceJob(planId);
+      if (currentAi()?.background && aiChoice?.active?.option.id === entry.job.ai) await advanceJob(planId, say(c));
       else if (!status.hosted && (await site.version().catch(() => 0)) >= 12) {
         // Best effort: shown as still running until the site answers.
         await site.checkJob(planId).catch(() => {});
@@ -658,7 +661,7 @@ export function createPanel({
     } catch (e) {
       return c.json({ verified: false, reason: (e as Error).message });
     }
-    if (!found) return c.json({ verified: false, reason: `${flights.name} no encuentra ese itinerario` });
+    if (!found) return c.json({ verified: false, reason: say(c).notFoundOn(flights.name) });
     const verified: Proposal = {
       ...proposal,
       ...found,
@@ -726,7 +729,7 @@ export function createPanel({
     const entry = store.get(planId);
     if (!entry) return c.json({ error: "not found" }, 404);
     const body = ManualBody.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "propuesta no válida", issues: body.error.issues }, 400);
+    if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? say(c).badProposal, issues: body.error.issues }, 400);
     if (!body.data.outbound !== !body.data.inbound) return c.json({ error: "outbound and inbound go together" }, 400);
     const { place, category, ...prices } = body.data;
     const { plan } = entry;
@@ -763,12 +766,12 @@ export function createPanel({
   app.post("/api/plans/:planId/proposals/:id/extract", async (c) => {
     const { planId, id } = c.req.param();
     const body = ExtractBody.safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "Sube entre 1 y 4 capturas en PNG, JPG, WebP o GIF, de menos de 5 MB cada una" }, 400);
+    if (!body.success) return c.json({ error: say(c).screenshots }, 400);
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return c.json({ error: "not found" }, 404);
     const ai = currentAi();
-    if (!ai || statusNow().research === "none") return c.json({ error: "Para leer capturas hace falta una IA: mira en Ajustes cómo añadir una." }, 409);
+    if (!ai || statusNow().research === "none") return c.json({ error: say(c).screenshotsNeedAi }, 409);
     const { plan } = entry;
     const raw = await ai.extract(
       {
@@ -782,22 +785,22 @@ export function createPanel({
     try {
       return c.json(extractedFields(body.data.kind, raw));
     } catch {
-      return c.json({ error: "No he sabido leer esa captura. Prueba con otra más clara." }, 422);
+      return c.json({ error: say(c).cantReadScreenshot }, 422);
     }
   });
 
   // "Comprobar vuelos" (ROADMAP 3.4): Claude reads the real page in a
   // browser window on this laptop, for a finalist only.
   let browserTurn: Promise<void> = Promise.resolve();
-  const browseCheck = (planId: string, id: string): { entry: PlanEntry; proposal: Proposal } | { error: string; status: 404 | 409 } => {
+  const browseCheck = (planId: string, id: string, t: PanelCopy): { entry: PlanEntry; proposal: Proposal } | { error: string; status: 404 | 409 } => {
     const entry = store.get(planId);
     const proposal = entry?.proposals.find((p) => p.id === id);
     if (!entry || !proposal) return { error: "not found", status: 404 };
-    if (!browse) return { error: "Comprobar vuelos en el navegador necesita el comando claude en este ordenador.", status: 409 };
-    if (proposal.review !== "approved") return { error: "Comprueba en el navegador solo las propuestas que vais a usar: apruébala primero.", status: 409 };
+    if (!browse) return { error: t.browseNeedsClaude, status: 409 };
+    if (proposal.review !== "approved") return { error: t.browseApproveFirst, status: 409 };
     return { entry, proposal };
   };
-  const readFlights = async (entry: PlanEntry, proposal: Proposal, signal: AbortSignal, onProgress: (p: ResearchProgress) => void): Promise<Browsed> => {
+  const readFlights = async (entry: PlanEntry, proposal: Proposal, signal: AbortSignal, onProgress: (p: ResearchProgress) => void, t: PanelCopy): Promise<Browsed> => {
     const { plan } = entry;
     const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize };
     const req: BrowseRequest = { url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context };
@@ -811,7 +814,7 @@ export function createPanel({
     try {
       return browsedFields(raw, req.url);
     } catch {
-      throw new Error("No he sabido leer Google Flights. Prueba otra vez, o pon el precio a mano.");
+      throw new Error(t.cantReadFlights);
     }
   };
   const ndjson = (c: Context, work: (write: (line: unknown) => Promise<void>) => Promise<void>) => {
@@ -822,7 +825,7 @@ export function createPanel({
       try {
         await work(write);
       } catch (err) {
-        await write({ error: humanError(err) });
+        await write({ error: humanError(err, say(c)) });
       }
     });
   };
@@ -834,11 +837,11 @@ export function createPanel({
   app.post("/api/plans/:planId/proposals/:id/browse", async (c) => {
     const { planId, id } = c.req.param();
     const body = z.object({ kind: z.literal("flight").default("flight") }).safeParse((await c.req.json().catch(() => null)) ?? {});
-    if (!body.success) return c.json({ error: "El alojamiento se mira a mano en Airbnb: aquí solo se comprueban los vuelos." }, 400);
-    const found = browseCheck(planId, id);
+    if (!body.success) return c.json({ error: say(c).staysByHand }, 400);
+    const found = browseCheck(planId, id, say(c));
     if ("error" in found) return c.json({ error: found.error }, found.status);
     return ndjson(c, async (write) => {
-      const fields = await readFlights(found.entry, found.proposal, c.req.raw.signal, (p) => void write({ progress: p }));
+      const fields = await readFlights(found.entry, found.proposal, c.req.raw.signal, (p) => void write({ progress: p }), say(c));
       await write({ fields });
     });
   });
@@ -872,11 +875,11 @@ export function createPanel({
     const snapshot = buildSnapshot(entry, now());
     // Estimates cite no sources, which a site before version 11 refuses.
     if (snapshot.destinations.some((d) => d.provenance.kind === "claude" && d.provenance.estimate) && (await site.version()) < 11) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe mostrar precios estimados. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldEstimates) }, 409);
     }
     // Nothing approved empties a trip that's on the site; one never published
     // has nothing to send.
-    if (snapshot.destinations.length === 0 && !entry.published) return c.json({ error: "no hay propuestas aprobadas" }, 409);
+    if (snapshot.destinations.length === 0 && !entry.published) return c.json({ error: say(c).noneApproved }, 409);
     await site.publish(snapshot);
     await site.setPlanMembers(entry.plan.id, entry.participants ?? []);
     const published = { at: snapshot.publishedAt, fingerprint: snapshotFingerprint(entry) };
@@ -973,7 +976,7 @@ export function createPanel({
   app.get("/api/plans/:planId/vote", async (c) => {
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
-    if (store.get(planId)!.plan.status === "draft") return c.json({ error: "la votación no está abierta" }, 409);
+    if (store.get(planId)!.plan.status === "draft") return c.json({ error: say(c).voteNotOpen }, 409);
     return c.json(await voteView(planId, await site.vote(planId)));
   });
 
@@ -993,7 +996,7 @@ export function createPanel({
     const { destinationId, ...opts } = body.data;
     // Going somewhere other than the vote's winner needs a site that knows how.
     if (opts.override && (await site.version()) < 7) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe cambiar de destino. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldChangeDestination) }, 409);
     }
     return c.json(await voteView(planId, await site.pickWinner(planId, destinationId, opts)));
   });
@@ -1007,11 +1010,11 @@ export function createPanel({
     if (!body.success) return c.json({ error: "expected {deadline}" }, 400);
     const going = new Set(entry.participants ?? []);
     const members = (await site.members()).filter((m) => going.has(m.id));
-    if (members.length === 0) return c.json({ error: "elige quién va al viaje (en Personas) antes de abrir la votación" }, 409);
+    if (members.length === 0) return c.json({ error: say(c).pickPeopleVote }, 409);
     const stale = publishWarnings(entry, now()).filter(
       (w) => w.reason === "stale" && entry.editorial[w.destinationId]?.inVote !== false,
     );
-    if (stale.length) return c.json({ error: "hay precios verificados caducados: vuelve a verificarlos", stale }, 409);
+    if (stale.length) return c.json({ error: say(c).stalePrices, stale }, 409);
 
     await site.publish(buildSnapshot(entry, now()));
     await site.setPlanMembers(entry.plan.id, [...going]);
@@ -1074,7 +1077,7 @@ export function createPanel({
     const entry = store.get(planId);
     if (!entry) return c.json({ error: "not found" }, 404);
     const destination = decided(planId);
-    if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
+    if (!destination) return c.json({ error: say(c).decideFirst }, 409);
     const body = z.object({ home: z.string().trim().max(60).default("") }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "expected {home?}" }, 400);
     const { home } = body.data;
@@ -1082,7 +1085,7 @@ export function createPanel({
     // On the site, handed to the AI to run in the background.
     if (status.hosted) return startJob(c, planId, { kind: "guide", req }, { destinationId: destination.id });
     const ai = currentAi();
-    if (!ai?.guide) return c.json({ error: "Preparar el viaje necesita una IA: mira en Ajustes cómo añadir una." }, 409);
+    if (!ai?.guide) return c.json({ error: say(c).guideNeedsAi }, 409);
     const guide = ai.guide.bind(ai);
     const who = ai.who ?? {};
 
@@ -1094,7 +1097,7 @@ export function createPanel({
         const raw = await guide(req, c.req.raw.signal, (p) => void write({ progress: p }));
         await write({ trip: await saveGuide(planId, destination.id, home, raw, who) });
       } catch (err) {
-        await write({ error: humanError(err) });
+        await write({ error: humanError(err, say(c)) });
       }
     });
   });
@@ -1104,9 +1107,9 @@ export function createPanel({
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
     const destination = decided(planId);
-    if (!destination) return c.json({ error: "primero decide el destino en Votación" }, 409);
+    if (!destination) return c.json({ error: say(c).decideFirst }, 409);
     const parsed = TripPage.safeParse({ ...(await c.req.json().catch(() => ({}))), destinationId: destination.id });
-    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "página del viaje no válida", issues: parsed.error.issues }, 400);
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? say(c).badTripPage, issues: parsed.error.issues }, 400);
     store.update(planId, (e) => ({ entry: { ...e!, trip: parsed.data }, result: null }));
     return c.json(tripView(planId));
   });
@@ -1118,10 +1121,10 @@ export function createPanel({
     if (!entry) return c.json({ error: "not found" }, 404);
     const { published } = z.object({ published: z.boolean().default(true) }).parse(await c.req.json().catch(() => ({})));
     const view = tripView(planId);
-    if (published && !view.trip) return c.json({ error: "prepara la página del viaje antes de publicarla" }, 409);
-    if (published && view.destination?.review !== "approved") return c.json({ error: "el destino elegido no está aprobado en Revisar" }, 409);
+    if (published && !view.trip) return c.json({ error: say(c).prepareFirst }, 409);
+    if (published && view.destination?.review !== "approved") return c.json({ error: say(c).destinationNotApproved }, 409);
     if ((await site.version()) < 9) {
-      return c.json({ error: "Tu sitio tiene una versión anterior al panel y no sabe mostrar la página del viaje. Actualízalo con npm run deploy:site y vuelve a probar." }, 409);
+      return c.json({ error: say(c).oldSite(say(c).oldTripPage) }, 409);
     }
     store.update(planId, (e) => ({ entry: { ...e!, tripPublished: published }, result: null }));
     const next = store.get(planId)!;
@@ -1145,8 +1148,7 @@ export function createPanel({
     }
   };
 
-  const OLD_SITE_DATES =
-    "Tu sitio tiene una versión anterior al panel y no sabe votar fechas. Actualízalo con npm run deploy:site y vuelve a probar.";
+  const oldSiteDates = (c: Context) => say(c).oldSite(say(c).oldDatesVote);
 
   // The date vote as Fechas shows it: the site's view, the trip's people, and
   // the messages for the group chat.
@@ -1168,7 +1170,7 @@ export function createPanel({
   app.get("/api/plans/:planId/dates", async (c) => {
     const planId = c.req.param("planId");
     if (!store.get(planId)) return c.json({ error: "not found" }, 404);
-    if ((await site.version()) < 8) return c.json({ error: OLD_SITE_DATES }, 409);
+    if ((await site.version()) < 8) return c.json({ error: oldSiteDates(c) }, 409);
     let dates: DatesView | null = null;
     try {
       dates = await site.dates(planId);
@@ -1192,8 +1194,8 @@ export function createPanel({
     if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {options, deadline?}" }, 400);
     const going = new Set(entry.participants ?? []);
     const members = (await site.members()).filter((m) => going.has(m.id));
-    if (members.length === 0) return c.json({ error: "elige quién va al viaje (en Personas) antes de proponer fechas" }, 409);
-    if ((await site.version()) < 8) return c.json({ error: OLD_SITE_DATES }, 409);
+    if (members.length === 0) return c.json({ error: say(c).pickPeopleDates }, 409);
+    if ((await site.version()) < 8) return c.json({ error: oldSiteDates(c) }, 409);
     const windows = body.data.options.map(({ dateFrom, dateTo }) => ({ dateFrom, dateTo }));
     const deadline = body.data.deadline ?? null;
     let dates: DatesView;
@@ -1234,11 +1236,11 @@ export function createPanel({
     const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
     const body = z
       .object({ dateFrom: day, dateTo: day })
-      .refine((d) => d.dateTo > d.dateFrom, "la vuelta tiene que ser después de la ida")
+      .refine((d) => d.dateTo > d.dateFrom, say(c).returnAfterOutbound)
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? "expected {dateFrom, dateTo}" }, 400);
     const open = await site.dates(planId).catch(() => null);
-    if (open?.status === "open") return c.json({ error: "Hay una votación de fechas abierta: elige una de sus opciones o quítala primero." }, 409);
+    if (open?.status === "open") return c.json({ error: say(c).datesVoteOpen }, 409);
     const { dateFrom, dateTo } = body.data;
     store.update(planId, (e) => {
       const moved = e!.plan.dateFrom !== dateFrom || e!.plan.dateTo !== dateTo;

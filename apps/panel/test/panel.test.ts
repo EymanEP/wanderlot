@@ -28,16 +28,16 @@ let lastExtract: ExtractRequest | undefined;
 let lastGuide: GuideRequest | undefined;
 let site: ReturnType<typeof createApp>;
 
-const call = async (path: string, method = "GET", body?: unknown) => {
+const call = async (path: string, method = "GET", body?: unknown, headers: Record<string, string> = {}) => {
   const res = await panel.request(path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, body: (await res.text()) as string };
 };
-const json = async (path: string, method = "GET", body?: unknown) => {
-  const r = await call(path, method, body);
+const json = async (path: string, method = "GET", body?: unknown, headers?: Record<string, string>) => {
+  const r = await call(path, method, body, headers);
   return { status: r.status, data: JSON.parse(r.body) as any };
 };
 
@@ -655,6 +655,13 @@ describe("plans and settings", () => {
     // Dismissing one hides it from the to-do list.
     expect((await json(`/api/plans/${PLAN}/suggestions/${ideas[0].id}`, "PUT", { status: "dismissed" })).data[0].status).toBe("dismissed");
     expect((await json(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "anywhere" }, stops: "any", estimateStays: true, suggestThings: true, suggestionId: "nope" })).status).toBe(404);
+  });
+
+  it("answers in the panel's language, Spanish unless it asks for English", async () => {
+    const es = await json(`/api/plans/${PLAN}/publish`, "POST", {});
+    expect(es).toEqual({ status: 409, data: { error: "no hay propuestas aprobadas" } });
+    const en = await json(`/api/plans/${PLAN}/publish`, "POST", {}, { "x-wanderlot-locale": "en" });
+    expect(en).toEqual({ status: 409, data: { error: "there are no approved proposals" } });
   });
 
   it("searches photos and counts a download only when a new one is kept", async () => {

@@ -82,6 +82,7 @@ const ai = new AiChoice(
         images: true,
         background: false,
       },
+      en: { name: "Claude (claude command)", setup: "Install Claude Code (the claude command) and restart the panel." },
       make: () => claudeProvider(),
     },
     ...apiEntries(process.env, (key) => anthropicProvider(new Anthropic({ apiKey: key }).beta.messages), "local"),

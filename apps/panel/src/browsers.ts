@@ -4,6 +4,12 @@
 // installing anything else.
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
+import { copy, type Locale } from "@wanderlot/core";
+
+const COPY = copy({
+  es: { custom: "Tu navegador", missing: "Ese navegador no está instalado en este ordenador" },
+  en: { custom: "Your browser", missing: "That browser isn't installed on this computer" },
+});
 
 export const BROWSER_IDS = ["chrome", "brave", "edge", "chromium"] as const;
 export type BrowserId = (typeof BROWSER_IDS)[number];
@@ -73,7 +79,7 @@ export class BrowserChoice {
     const want = setting?.trim().toLowerCase() === "msedge" ? "edge" : setting?.trim();
     const byName = found.find((o) => o.id === want?.toLowerCase());
     const known = found.find((o) => o.path === want);
-    const byPath = known ?? (want && /[/\\]/.test(want) && exists(want) ? { id: "custom" as const, name: "Tu navegador", path: want } : null);
+    const byPath = known ?? (want && /[/\\]/.test(want) && exists(want) ? { id: "custom" as const, name: COPY.es.custom, path: want } : null);
     this.options = byPath && !known ? [...found, byPath] : found;
     this.#chosen = byName ?? byPath ?? found[0] ?? null;
   }
@@ -82,15 +88,24 @@ export class BrowserChoice {
     return this.#chosen;
   }
 
-  choose(id: string): FoundBrowser {
+  // The chosen one's name as the panel shows it, in this language.
+  chosenName(locale: Locale = "es"): string | null {
+    return this.#chosen ? this.#nameOf(this.#chosen, locale) : null;
+  }
+
+  #nameOf(b: FoundBrowser, locale: Locale): string {
+    return b.id === "custom" ? COPY[locale].custom : b.name;
+  }
+
+  choose(id: string, locale: Locale = "es"): FoundBrowser {
     const found = this.options.find((o) => o.id === id);
-    if (!found) throw new Error("Ese navegador no está instalado en este ordenador");
+    if (!found) throw new Error(COPY[locale].missing);
     this.#chosen = found;
     this.remember(found.id === "custom" ? found.path : found.id);
     return found;
   }
 
-  view() {
-    return { options: this.options.map(({ id, name, path }) => ({ id, name, path })), active: this.#chosen?.id ?? null };
+  view(locale: Locale = "es") {
+    return { options: this.options.map((o) => ({ id: o.id, name: this.#nameOf(o, locale), path: o.path })), active: this.#chosen?.id ?? null };
   }
 }
