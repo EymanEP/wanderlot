@@ -7,8 +7,13 @@ import { ToastProvider } from "@wanderlot/ui";
 import { App } from "../src/App.tsx";
 import { mockBackend } from "../src/data/mockBackend.ts";
 import { PanelProvider } from "../src/data/store.tsx";
+import { PanelLocale } from "../src/data/locale.tsx";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // The panel's own language is kept in the browser: each test starts in Spanish.
+  localStorage.clear();
+});
 
 // jsdom has <dialog> but not its modal methods.
 HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -22,11 +27,13 @@ HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
 function renderAt(path: string, tickMs = 2) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <ToastProvider>
-        <PanelProvider backend={mockBackend({ tickMs, verifyMs: 2 })}>
-          <App />
-        </PanelProvider>
-      </ToastProvider>
+      <PanelLocale>
+        <ToastProvider>
+          <PanelProvider backend={mockBackend({ tickMs, verifyMs: 2 })}>
+            <App />
+          </PanelProvider>
+        </ToastProvider>
+      </PanelLocale>
     </MemoryRouter>,
   );
 }
@@ -752,6 +759,17 @@ describe("Ajustes", () => {
     await user.click(within(group).getByLabelText(/English/));
     expect(await screen.findByText("El sitio ya sale en English")).toBeTruthy();
     expect((within(group).getByLabelText(/English/) as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("switches the panel's own language on this device", async () => {
+    const user = userEvent.setup();
+    renderAt("/ajustes");
+    expect(await screen.findByRole("heading", { level: 1, name: "Ajustes" })).toBeTruthy();
+    const panel = await screen.findByRole("radiogroup", { name: "Idioma del panel" });
+    await user.click(within(panel).getByLabelText(/English/));
+    expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Panel language" })).toBeTruthy();
+    localStorage.removeItem("wanderlot:panel-locale");
   });
 });
 

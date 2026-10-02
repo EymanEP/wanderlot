@@ -25,14 +25,14 @@ const panel = (
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {import.meta.env.VITE_PREVIEW === "1" ? (
-      <Preview />
-    ) : (
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || "/"}>
-        <PanelLocale>
+    <PanelLocale>
+      {import.meta.env.VITE_PREVIEW === "1" ? (
+        <Preview />
+      ) : (
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || "/"}>
           <ToastProvider>{hosted ? <HostedGate>{panel}</HostedGate> : panel}</ToastProvider>
-        </PanelLocale>
-      </BrowserRouter>
-    )}
+        </BrowserRouter>
+      )}
+    </PanelLocale>
   </StrictMode>,
 );

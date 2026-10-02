@@ -3,7 +3,13 @@
 // go through usePanel().
 import type { CheckedPrices, DatesView, LeaveStatus, LeaveView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, TripPage, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
+import { copy, pick } from "@wanderlot/core";
 import { localeHeaders } from "./locale.tsx";
+
+const COPY = copy({
+  es: { browseEmpty: "El navegador terminó sin resultado", prepareEmpty: "La preparación terminó sin resultado" },
+  en: { browseEmpty: "The browser finished without a result", prepareEmpty: "Preparing finished without a result" },
+});
 
 export type Review = Proposal["review"];
 
@@ -420,7 +426,7 @@ export const httpBackend: PanelBackend = {
       if (msg.progress) onStep?.(msg.progress);
       if (msg.fields) fields = msg.fields;
     });
-    if (!fields) throw new BackendError("El navegador terminó sin resultado");
+    if (!fields) throw new BackendError(pick(COPY).browseEmpty);
     return fields;
   },
   browsers: () => call<BrowserView>("/api/browser"),
@@ -479,7 +485,7 @@ export const httpBackend: PanelBackend = {
         if (msg.trip) return msg.trip;
       }
     }
-    throw new BackendError("La preparación terminó sin resultado");
+    throw new BackendError(pick(COPY).prepareEmpty);
   },
   saveTrip: (planId, trip) => call<TripView>(`/api/plans/${enc(planId)}/trip`, "PUT", trip),
   publishTrip: (planId, published) => call<TripView>(`/api/plans/${enc(planId)}/trip/publish`, "POST", { published }),
