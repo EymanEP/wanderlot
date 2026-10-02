@@ -18,8 +18,8 @@ organiser approves it.** The panel generates twelve options; the group sees the
 four the organiser stands behind.
 
 Design reference: the "Wanderlot · Planes de viaje" canvas (six screens, v1 and
-current). UI copy is Spanish by default, with English for the site (§12);
-code and docs are English.
+current). UI copy is Spanish by default, with English throughout (§12); code
+and docs are English.
 
 ---
 
@@ -855,7 +855,10 @@ never chooses sees nothing change.
   language it was written in, and a person who switches the site to another
   language still reads it in the group's.
 - **The messages for the group chat** (§7) are in the group's language.
-- **Not yet in English:** the panel itself (ROADMAP 4).
+- **The panel** follows the group's language too, and the organiser can
+  switch it for this device in Ajustes ("Idioma del panel"; `localStorage`
+  `wanderlot:panel-locale`). It sends the same header, so the panel's
+  server answers in the language on screen.
 
 ---
 
