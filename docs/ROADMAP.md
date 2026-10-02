@@ -551,8 +551,9 @@ Not planned in detail yet. They wait until the flows above are in use.
 - **Other languages, English first.**
   - ~~The setup and the friends' site in English, with a language for the
     group (Ajustes) and a switch for each person (SPEC §12).~~ Done.
-  - Next: the panel, the WhatsApp messages, and the research prompts and
-    trip guide written in the group's language.
+  - ~~What the AI writes (research, the guide, screenshots) and the
+    messages for the group chat, in the group's language.~~ Done.
+  - Next: the panel itself in English.
 - **Currency and locale.**
   - Prices are euros everywhere (cents, `euros()` formatting).
   - A group setting for its currency, with number and date formats to match.
@@ -582,5 +583,5 @@ Not planned in detail yet. They wait until the flows above are in use.
      endpoints, adding by hand, and searching from `/admin` in the
      background. Left: `codex` and `opencode` as local commands.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
-6. **Later:** languages (the site is in English; the panel is next) and
-   currency.
+6. **Later:** languages (the site, the AI and the messages are in English;
+   the panel is next) and currency.

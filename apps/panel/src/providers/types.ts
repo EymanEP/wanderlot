@@ -1,4 +1,4 @@
-import type { FlightLeg, FlightProviderName, Proposal, Source } from "@wanderlot/core";
+import type { FlightLeg, FlightProviderName, Locale, Proposal, Source } from "@wanderlot/core";
 import type { ExtractRequest } from "./extract.ts";
 import type { GuideRequest } from "./guide.ts";
 import type { BrowseRequest } from "./browse.ts";
@@ -24,6 +24,8 @@ export interface SearchRequest {
   count: number;
   // Destinations already proposed for this trip: look for others.
   exclude?: string[];
+  // The group's language, for what the AI writes. Absent: Spanish.
+  locale?: Locale;
 }
 
 export interface Itinerary {

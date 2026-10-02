@@ -234,8 +234,9 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
 - Friends can install the site on their phone's home screen.
 - Languages: the site is in Spanish or English. The organiser sets the
   group's language in Ajustes, and each friend can switch it for themselves
-  from their account menu (SPEC §12). The panel, the WhatsApp messages and
-  the AI's writing are still Spanish only.
+  from their account menu (SPEC §12). The AI writes destinations and the
+  guide in the group's language, and the messages for the group chat follow
+  it too. The panel itself is still Spanish only.
 - Prices: research's are labelled as written by Claude. The organiser checks
   the finalists by hand, typing the prices or having Claude read screenshots
   of the flights and the stay. The site then shows only what was checked. The

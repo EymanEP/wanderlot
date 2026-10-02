@@ -2,7 +2,8 @@
 // Claude drafts the trip page's guide and how to get there. A push to start
 // from, not an itinerary; the organiser edits it before publishing.
 import { z } from "zod";
-import { Source, TransportMode, type TripPage } from "@wanderlot/core";
+import { Source, TransportMode, type Locale, type TripPage } from "@wanderlot/core";
+import { languageLine } from "./language.ts";
 
 export interface GuideRequest {
   city: string;
@@ -18,6 +19,8 @@ export interface GuideRequest {
   partySize: number;
   // The stay, when known, to plan airport → stay.
   stay?: { name: string; description?: string; url?: string };
+  // The group's language. Absent: Spanish.
+  locale?: Locale;
 }
 
 const euros = z.number().nonnegative().nullable();
@@ -65,8 +68,9 @@ export function guidePrompt(req: GuideRequest, estimate = false): string {
     `- fromAirport (del aeropuerto al alojamiento): metro, autobús, tren, taxi o lanzadera desde ${req.iata}, con tiempo y precio por persona, y cuál conviene a un grupo con maletas (menciónalo en el detalle).`,
     "Sé breve: cada título en menos de 80 caracteres y cada detalle en menos de 400.",
     estimate
-      ? "No puedes buscar en la web: escribe con lo que sabes, con cifras aproximadas y realistas, y deja sources vacío. Todo en español de España."
-      : "Los horarios y precios cambian: da cifras aproximadas y realistas. Cita en sources las páginas de donde salen. Todo en español de España.",
+      ? "No puedes buscar en la web: escribe con lo que sabes, con cifras aproximadas y realistas, y deja sources vacío."
+      : "Los horarios y precios cambian: da cifras aproximadas y realistas. Cita en sources las páginas de donde salen.",
+    languageLine(req.locale),
   ].join("\n");
 }
 

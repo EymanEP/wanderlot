@@ -169,6 +169,15 @@ describe("panel → site", () => {
     expect(data.editorial.lis).toEqual({ pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoQueries: ["Alfama Lisboa"] });
   });
 
+  it("asks research in the group's language, as soon as the organiser changes it", async () => {
+    const generate = () => call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    await generate();
+    expect(lastRequest?.locale).toBe("es");
+    await json("/api/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD", locale: "en" });
+    await generate();
+    expect(lastRequest?.locale).toBe("en");
+  });
+
   it("reads screenshots of the flights and the stay, and keeps only what was checked", async () => {
     await call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
     const png = { mediaType: "image/png", data: Buffer.from("fake png").toString("base64") };

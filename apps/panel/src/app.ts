@@ -3,7 +3,7 @@
 import { Hono, type Context } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { LeaveStatus, googleFlightsUrl, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
+import { DEFAULT_LOCALE, LeaveStatus, googleFlightsUrl, type Locale, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import { browsedFields, type Browsed, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
@@ -160,7 +160,7 @@ function withResearched(entry: PlanEntry, results: ResearchResult[], suggestedBy
 }
 
 // What the guide is asked about the decided destination.
-function guideRequest(entry: PlanEntry, destination: Proposal, home: string): GuideRequest {
+function guideRequest(entry: PlanEntry, destination: Proposal, home: string, locale: Locale): GuideRequest {
   const stay = baseStay(destination.stays);
   const { plan } = entry;
   return {
@@ -173,6 +173,7 @@ function guideRequest(entry: PlanEntry, destination: Proposal, home: string): Gu
     dateTo: plan.dateTo,
     nights: plan.nights,
     partySize: plan.partySize,
+    locale,
     ...(stay ? { stay: { name: stay.name, ...(stay.description ? { description: stay.description } : {}), ...(stay.url ? { url: stay.url } : {}) } } : {}),
   };
 }
@@ -212,6 +213,16 @@ export function createPanel({
   });
 
   const entryOr404 = (planId: string) => store.get(planId);
+  // The group's language (Ajustes), for what the AI writes and the messages.
+  // Asked of the site at most once a minute: the vote pages poll.
+  let localeCache: { locale: Locale; at: number } | null = null;
+  const groupLocale = async (): Promise<Locale> => {
+    if (localeCache && Date.now() - localeCache.at < 60_000) return localeCache.locale;
+    const settings = await site.settings().catch(() => null);
+    const locale = settings?.locale ?? DEFAULT_LOCALE;
+    if (settings) localeCache = { locale, at: Date.now() };
+    return locale;
+  };
 
   // The AI in use now: the one chosen in Ajustes, or the one given.
   const currentAi = (): ResearchProvider | null => (aiChoice ? aiChoice.provider() : (research ?? null));
@@ -379,7 +390,9 @@ export function createPanel({
   app.put("/api/settings", async (c) => {
     const body = GroupSettings.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "invalid settings", issues: body.error.issues }, 400);
-    return c.json(await site.putSettings(body.data));
+    const saved = await site.putSettings(body.data);
+    localeCache = null;
+    return c.json(saved);
   });
 
   // Newest first.
@@ -501,6 +514,7 @@ export function createPanel({
       flexDays: plan.flexDays,
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
+      locale: await groupLocale(),
     };
     if (body.data.source === "api" && status.flights === "none") {
       return c.json({ error: "No hay ninguna API de vuelos conectada. Busca con Claude, o añade la clave con npm run setup." }, 409);
@@ -761,6 +775,7 @@ export function createPanel({
         kind: body.data.kind,
         images: body.data.images,
         context: { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize },
+        locale: await groupLocale(),
       },
       c.req.raw.signal,
     );
@@ -939,7 +954,8 @@ export function createPanel({
     const people = members.map((m) => ({ id: m.id, name: m.name, voted: state.voted.includes(m.id) }));
     const cities = Object.fromEntries(entry.proposals.map((p) => [p.id, p.place.city]));
     const missing = people.filter((p) => !p.voted).map((p) => p.name);
-    const reminder = state.status === "voting" && state.voteDeadline && missing.length ? voteReminderMessage(entry.plan, state.voteDeadline, siteUrl, missing) : null;
+    const locale = await groupLocale();
+    const reminder = state.status === "voting" && state.voteDeadline && missing.length ? voteReminderMessage(entry.plan, state.voteDeadline, siteUrl, missing, locale) : null;
     // A tie waits for the organiser's pick before anything is announced.
     const announcement =
       state.result && (state.result.winnerId || state.result.tiedForFirst.length === 0)
@@ -948,6 +964,7 @@ export function createPanel({
             state.result.winnerId ? (cities[state.result.winnerId] ?? state.result.winnerId) : null,
             siteUrl,
             state.result.voteWinnerId ? (cities[state.result.voteWinnerId] ?? state.result.voteWinnerId) : null,
+            locale,
           )
         : null;
     return { ...state, people, cities, reminder, announcement };
@@ -1004,7 +1021,7 @@ export function createPanel({
       result: null,
     }));
 
-    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, await pendingInvites(members)) });
+    return c.json({ message: voteOpenedMessage(entry.plan, body.data.deadline, siteUrl, await pendingInvites(members), await groupLocale()) });
   });
 
   // Whoever on the trip hasn't joined gets a working invite: their unused
@@ -1061,7 +1078,7 @@ export function createPanel({
     const body = z.object({ home: z.string().trim().max(60).default("") }).safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: "expected {home?}" }, 400);
     const { home } = body.data;
-    const req = guideRequest(entry, destination, home);
+    const req = guideRequest(entry, destination, home, await groupLocale());
     // On the site, handed to the AI to run in the background.
     if (status.hosted) return startJob(c, planId, { kind: "guide", req }, { destinationId: destination.id });
     const ai = currentAi();
@@ -1139,11 +1156,12 @@ export function createPanel({
     const people = (await site.members()).filter((m) => going.has(m.id)).map((m) => ({ id: m.id, name: m.name }));
     const missing = dates ? people.filter((p) => !answeredAll(dates, p.id)).map((p) => p.name) : [];
     const chosen = dates?.options.find((o) => o.id === dates.chosenOptionId);
+    const locale = await groupLocale();
     return {
       dates,
       people,
-      reminder: dates?.status === "open" && missing.length ? datesReminderMessage(entry.plan, siteUrl, missing) : null,
-      announcement: chosen ? datesChosenMessage(entry.plan, chosen, siteUrl) : null,
+      reminder: dates?.status === "open" && missing.length ? datesReminderMessage(entry.plan, siteUrl, missing, locale) : null,
+      announcement: chosen ? datesChosenMessage(entry.plan, chosen, siteUrl, locale) : null,
     };
   }
 
@@ -1187,7 +1205,7 @@ export function createPanel({
       dates = await site.putDates(entry.plan.id, windows, deadline);
     }
     await site.setPlanMembers(entry.plan.id, [...going]);
-    const message = datesOpenedMessage(entry.plan, dates.options, deadline, siteUrl, await pendingInvites(members));
+    const message = datesOpenedMessage(entry.plan, dates.options, deadline, siteUrl, await pendingInvites(members), await groupLocale());
     return c.json({ ...(await datesPage(entry.plan.id, dates)), message });
   });
 
@@ -1248,7 +1266,7 @@ export function createPanel({
   const leavePage = async (planId: string, leave: LeaveView | null) => {
     const entry = store.get(planId)!;
     const missing = leave?.people.filter((p) => p.status !== "approved" && p.status !== "denied").map((p) => p.name) ?? [];
-    return { leave, reminder: leave && missing.length ? leaveReminderMessage(entry.plan, leave, siteUrl, missing) : null };
+    return { leave, reminder: leave && missing.length ? leaveReminderMessage(entry.plan, leave, siteUrl, missing, await groupLocale()) : null };
   };
 
   app.get("/api/plans/:planId/leave", async (c) => {
