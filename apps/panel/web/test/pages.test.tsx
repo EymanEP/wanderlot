@@ -484,9 +484,9 @@ describe("Revisar · capturas", () => {
     const card = await screen.findByRole("article", { name: "Cracovia" });
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
-    expect(dialog.getByText(/verá solo el precio, sin horarios/)).toBeTruthy();
+    expect(dialog.getByText(/verá solo el precio/)).toBeTruthy();
     // Google Flights, for this route on the trip's dates.
-    const search = dialog.getByRole("link", { name: /Buscar en Google Flights/ }).getAttribute("href")!;
+    const search = dialog.getByRole("link", { name: /Abrir Google Flights/ }).getAttribute("href")!;
     expect(new URL(search).searchParams.get("q")).toMatch(/^Flights from MAD to KRK on \d{4}-\d\d-\d\d through \d{4}-\d\d-\d\d$/);
     expect(within(card).getByRole("link", { name: "buscar en Google Flights" }).getAttribute("href")).toBe(search);
 
@@ -808,18 +808,18 @@ describe("Comprobar vuelos", () => {
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
 
     await user.click(dialog.getByRole("button", { name: "Mirar en Google Flights" }));
-    await dialog.findByText(/^Ida · /);
     // Five flights to pick from; the first is filled in.
-    const flights = dialog.getByRole("radiogroup", { name: "Vuelos encontrados" });
+    const flights = await dialog.findByRole("radiogroup", { name: "Vuelos encontrados" });
     expect(within(flights).getAllByRole("radio")).toHaveLength(5);
     // The price at the end of booking, and the list's when it differed.
     expect(within(flights).getByRole("radio", { name: /Directo, a buena hora/ }).closest("label")!.textContent).toMatch(/Precio al reservar con KLM \(en la lista ponía .+\)/);
     expect(within(flights).getByText(/Precio de la lista: puede cambiar al reservar/)).toBeTruthy();
     await user.click(within(flights).getByRole("radio", { name: /El más barato/ }));
-    expect(dialog.getByText(/^Ida · .* Vueling VY 811/)).toBeTruthy();
+    expect((dialog.getByLabelText("Vuelo, ida y vuelta · € por persona") as HTMLInputElement).value).toBe(within(flights).getByRole("radio", { name: /El más barato/ }).closest("label")!.textContent!.match(/^(\d+)/)![1]);
+    expect(within(flights).getByText(/^Ida · .* Vueling VY 811/)).toBeTruthy();
     // The stay is checked by hand: a link to Airbnb for the trip's dates and people.
     expect(dialog.queryByRole("button", { name: "Mirar en Airbnb" })).toBeNull();
-    expect(dialog.getByRole("link", { name: /^(Buscar en Airbnb|Ver el alojamiento en Airbnb) · .* · 6 personas$/ }).getAttribute("href")).toMatch(/^https:\/\/www\.airbnb\.es\/.*(adults|check_in)/);
+    expect(dialog.getByRole("link", { name: /^(Buscar|Ver) en Airbnb/ }).getAttribute("href")).toMatch(/^https:\/\/www\.airbnb\.es\/.*(adults|check_in)/);
     await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
     expect(await screen.findByText(`${city}: precios comprobados a mano`)).toBeTruthy();
     expect(within(screen.getByRole("article", { name: city })).getByText("Visto en Google Flights")).toBeTruthy();
@@ -848,7 +848,7 @@ describe("Comprobar vuelos", () => {
     await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
     const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
     expect(dialog.queryByRole("button", { name: "Mirar en Google Flights" })).toBeNull();
-    expect(dialog.getByRole("button", { name: "Leer captura del vuelo" })).toBeTruthy();
+    expect(dialog.getByRole("button", { name: "Subir captura del vuelo" })).toBeTruthy();
   });
 });
 

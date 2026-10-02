@@ -36,6 +36,10 @@ export const ChevronRightIcon = make(<path d="m9 5 7 7-7 7" />, { strokeWidth: 1
 export const ArrowUpIcon = make(<><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>);
 export const ArrowDownIcon = make(<><path d="M12 5v14" /><path d="m5 12 7 7 7-7" /></>);
 export const SearchIcon = make(<><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>, { strokeWidth: 1.9 });
+export const CalendarIcon = make(<><rect x="4" y="5" width="16" height="15" rx="2.5" /><path d="M4 10h16" /><path d="M8.5 3v4" /><path d="M15.5 3v4" /></>, { strokeWidth: 1.8 });
+export const ChatIcon = make(<path d="M5 18.5V6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7a2.5 2.5 0 0 1-2.5 2.5H9z" />, { strokeWidth: 1.8 });
+export const KeyIcon = make(<><circle cx="8" cy="15" r="4" /><path d="m10.8 12.2 8.7-8.7" /><path d="m16.5 6.5 2.5 2.5" /><path d="m14 9 2 2" /></>, { strokeWidth: 1.8 });
+export const LogOutIcon = make(<><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /><path d="M10 16l-4-4 4-4" /><path d="M6 12h10" /></>, { strokeWidth: 1.8 });
 export const LockIcon = make(<><rect x="4" y="10" width="16" height="10" rx="2.5" /><path d="M8 10V7.5a4 4 0 0 1 8 0V10" /></>, { strokeWidth: 1.8 });
 export const AlertIcon = make(<><circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16.5v.01" /></>, { strokeWidth: 2.2 });
 export const ClockIcon = make(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, { strokeWidth: 2 });

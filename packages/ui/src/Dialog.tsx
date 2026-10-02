@@ -6,6 +6,8 @@ import { animateOpen } from "./motion.tsx";
 export interface DialogProps {
   open: boolean;
   title: ReactNode;
+  // A line under the title: what it's about.
+  subtitle?: ReactNode;
   children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
@@ -21,7 +23,7 @@ export interface DialogProps {
 
 // A modal confirmation on the native <dialog>: focus trapping, Escape and the
 // backdrop come from the browser.
-export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions, wide }: DialogProps) {
+export function Dialog({ open, title, subtitle, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions, wide }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -39,8 +41,11 @@ export function Dialog({ open, title, children, confirmLabel, cancelLabel = "Can
       onClick={(e) => e.target === ref.current && onClose()}
       className={`m-auto ${wide ? "w-[min(880px,calc(100vw-32px))]" : "w-[min(480px,calc(100vw-32px))]"} rounded-card border-0 bg-surface p-0 text-ink shadow-pop backdrop:bg-ink/40`}
     >
-      <div className="flex flex-col gap-4 p-6">
-        <Heading size="subheading">{title}</Heading>
+      <div className="flex flex-col gap-4 p-4 sm:p-6">
+        <div className="flex flex-col gap-0.5">
+          <Heading size="subheading">{title}</Heading>
+          {subtitle && <span className="text-sm text-muted">{subtitle}</span>}
+        </div>
         {children && <Text as="div">{children}</Text>}
         <div className="flex flex-wrap justify-end gap-2 pt-2">
           {actions ?? (

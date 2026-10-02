@@ -165,7 +165,7 @@ try {
   await bea.getByRole("link", { name: /Puente/ }).click();
   await bea.waitForURL(/\/p\/puente/);
   await bea.getByRole("button", { name: "Tu cuenta" }).click();
-  await bea.getByRole("button", { name: "Cerrar sesión en este dispositivo" }).click();
+  await bea.getByRole("menuitem", { name: "Cerrar sesión" }).click();
   await bea.getByRole("heading", { name: "Entra en Grupo E2E" }).waitFor();
   await bea.getByRole("button", { name: "Entrar con passkey (Face ID o huella)" }).click();
   // Back to the trip she was on when she signed out.
