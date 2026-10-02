@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { PIN_LOCKS_MS, createApp, nameKey, pinProblem } from "../src/app.ts";
+import { SERVER_COPY } from "../src/copy.ts";
 import { SqliteStore } from "../src/sqlite.ts";
 import { destination, snapshot } from "../../../packages/core/test/fixtures.ts";
 
@@ -74,6 +75,15 @@ describe("PINs", () => {
     const b = await signIn("ana", "4802");
     expect([a.status, b.status]).toEqual([401, 401]);
     expect(await a.json()).toEqual(await b.json());
+  });
+
+  it("answers in the language the site is showing", async () => {
+    await joinWithPin("ana", "4801");
+    const es = await req("/api/session/pin", "POST", { name: "ana", pin: "4802" });
+    const en = await req("/api/session/pin", "POST", { name: "ana", pin: "4802" }, { "x-wanderlot-locale": "en" });
+    expect(await es.json()).toEqual({ error: "Nombre o PIN incorrectos" });
+    expect(await en.json()).toEqual({ error: "Wrong name or PIN" });
+    expect(pinProblem("1234", SERVER_COPY.en)).toBe("That PIN is too easy: avoid 1234 and the like");
   });
 
   it("locks someone out after five wrong PINs, longer each time, until they get it right", async () => {

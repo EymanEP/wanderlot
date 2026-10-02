@@ -1,15 +1,32 @@
 import type { PlanStatus } from "./model.ts";
 import { ballotLength, type TallyResult } from "./tally.ts";
+import { copy, currentLocale, pick, type Locale } from "./i18n.ts";
+
+const RANKING = copy({
+  es: {
+    tooFew: "la votación necesita al menos 2 destinos",
+    length: (n: number) => `hay que ordenar exactamente ${n} destinos`,
+    twice: "un destino aparece dos veces",
+    unknown: (id: string) => `"${id}" no está en la votación`,
+  },
+  en: {
+    tooFew: "voting needs at least 2 destinations",
+    length: (n: number) => `you have to rank exactly ${n} destinations`,
+    twice: "a destination appears twice",
+    unknown: (id: string) => `"${id}" isn't in the vote`,
+  },
+});
 
 // A ballot ranks exactly min(3, n) distinct in-vote destinations (SPEC §4).
-export function validateRanking(ranking: readonly string[], inVoteIds: readonly string[]): string | null {
+export function validateRanking(ranking: readonly string[], inVoteIds: readonly string[], l: Locale = currentLocale()): string | null {
+  const t = pick(RANKING, l);
   const need = ballotLength(inVoteIds.length);
-  if (inVoteIds.length < 2) return "la votación necesita al menos 2 destinos";
-  if (ranking.length !== need) return `hay que ordenar exactamente ${need} destinos`;
-  if (new Set(ranking).size !== ranking.length) return "un destino aparece dos veces";
+  if (inVoteIds.length < 2) return t.tooFew;
+  if (ranking.length !== need) return t.length(need);
+  if (new Set(ranking).size !== ranking.length) return t.twice;
   const allowed = new Set(inVoteIds);
   const unknown = ranking.find((id) => !allowed.has(id));
-  if (unknown) return `"${unknown}" no está en la votación`;
+  if (unknown) return t.unknown(unknown);
   return null;
 }
 

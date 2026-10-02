@@ -1,8 +1,25 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { relativeTime } from "@wanderlot/core";
+import { copy, relativeTime } from "@wanderlot/core";
 import type { CommentView } from "@wanderlot/core";
 import type { Person } from "../data/store.tsx";
-import { Avatar, Button, cn, controlClasses } from "@wanderlot/ui";
+import { Avatar, Button, cn, controlClasses, useCopy } from "@wanderlot/ui";
+
+const COPY = copy({
+  es: {
+    write: "Escribe un comentario…",
+    comment: "Comentar",
+    reply: "Responder",
+    replyTo: (name: string) => `Responder a ${name}…`,
+    like: (n: number) => `Me gusta · ${n}`,
+  },
+  en: {
+    write: "Write a comment…",
+    comment: "Comment",
+    reply: "Reply",
+    replyTo: (name: string) => `Reply to ${name}…`,
+    like: (n: number) => `Like · ${n}`,
+  },
+});
 
 export interface CommentComposerProps {
   me: Person;
@@ -13,7 +30,9 @@ export interface CommentComposerProps {
   onCancel?: () => void;
 }
 
-export function CommentComposer({ me, onSubmit, placeholder = "Escribe un comentario…", size = "md", autoFocus, onCancel }: CommentComposerProps) {
+export function CommentComposer({ me, onSubmit, placeholder: hint, size = "md", autoFocus, onCancel }: CommentComposerProps) {
+  const t = useCopy(COPY);
+  const placeholder = hint ?? t.write;
   const [body, setBody] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -38,7 +57,7 @@ export function CommentComposer({ me, onSubmit, placeholder = "Escribe un coment
         className={cn(controlClasses, "min-w-0 flex-1 rounded-full px-[18px]", md ? "h-[50px]" : "h-11 text-sm")}
       />
       <Button type="submit" variant="dark" pill disabled={!body.trim()} className={md ? "h-[50px] px-6 text-[15px]" : "h-11"}>
-        {md ? "Comentar" : "Responder"}
+        {md ? t.comment : t.reply}
       </Button>
     </form>
   );
@@ -56,6 +75,7 @@ export interface CommentThreadProps {
 
 // Top-level comments oldest first, each with its replies (one level, SPEC §1).
 export function CommentThread({ comments, members, me, now, liked, onLike, onReply }: CommentThreadProps) {
+  const t = useCopy(COPY);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const roots = comments.filter((c) => !c.parentId).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const replies = (id: string) => comments.filter((c) => c.parentId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -76,7 +96,7 @@ export function CommentThread({ comments, members, me, now, liked, onLike, onRep
                     onClick={() => onLike(c.id)}
                     className={cn("cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold", liked.includes(c.id) ? "text-accent" : "text-ink-2 hover:text-ink")}
                   >
-                    Me gusta · {c.likes}
+                    {t.like(c.likes)}
                   </button>
                   <button
                     type="button"
@@ -84,7 +104,7 @@ export function CommentThread({ comments, members, me, now, liked, onLike, onRep
                     onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
                     className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-ink-2 hover:text-ink"
                   >
-                    Responder
+                    {t.reply}
                   </button>
                 </div>
               </Bubble>
@@ -103,7 +123,7 @@ export function CommentThread({ comments, members, me, now, liked, onLike, onRep
                     me={me}
                     size="sm"
                     autoFocus
-                    placeholder={`Responder a ${author.name}…`}
+                    placeholder={t.replyTo(author.name)}
                     onCancel={() => setReplyingTo(null)}
                     onSubmit={(body) => {
                       onReply(c.id, body);

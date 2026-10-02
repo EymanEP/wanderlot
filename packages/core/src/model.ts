@@ -2,6 +2,7 @@
 // site: the panel builds one on publish, the site validates it verbatim.
 // See docs/SPEC.md §1.
 import { z } from "zod";
+import { Locale } from "./i18n.ts";
 
 // Links end up in hrefs and <img src>: web addresses only, never javascript:
 // or data: (some come from Claude's web research).
@@ -283,6 +284,9 @@ export const GroupSettings = z.object({
   defaultOrigin: iata.optional(),
   // "Salimos desde": the group's home town, for Cómo llegar (ROADMAP 2.3).
   homeTown: z.string().trim().max(60).optional(),
+  // The group's language (ROADMAP 4): the site's, until someone picks their
+  // own, and the messages' and the guide's. Spanish when unset.
+  locale: Locale.optional(),
 });
 export type GroupSettings = z.infer<typeof GroupSettings>;
 
@@ -333,5 +337,6 @@ export interface SuggestionView {
 // 8: the date vote. 9: the trip page. 10: the panel's data on the site, and
 // the panel at /admin. 11: research by other AIs, including estimates
 // without sources. 12: searching from /admin in the background. 13: days off,
-// and settling the dates on the site without publishing.
-export const SITE_API_VERSION = 13;
+// and settling the dates on the site without publishing. 14: the group's
+// language, and the site in English.
+export const SITE_API_VERSION = 14;

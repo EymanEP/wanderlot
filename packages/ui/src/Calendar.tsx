@@ -1,10 +1,14 @@
 import { cn } from "./cn.ts";
 import { IconButton } from "./Button.tsx";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons.tsx";
+import { copy } from "@wanderlot/core";
 import { dayRole, monthGrid, monthLabel, shiftMonth } from "./calendar.ts";
+import { useCopy, useLocale } from "./locale.tsx";
 
-const WEEKDAYS = ["L", "M", "X", "J", "V", "S", "D"];
-const WEEKDAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+const COPY = copy({
+  es: { weekdays: ["L", "M", "X", "J", "V", "S", "D"], weekdayNames: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"], prev: "Mes anterior", next: "Mes siguiente" },
+  en: { weekdays: ["M", "T", "W", "T", "F", "S", "S"], weekdayNames: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"], prev: "Previous month", next: "Next month" },
+});
 
 export interface CalendarProps {
   year: number;
@@ -22,24 +26,25 @@ export interface CalendarProps {
 export function Calendar({ year, month0, onMonthChange, start, end, onPick, min, className }: CalendarProps) {
   const cells = monthGrid(year, month0);
   const atMin = min !== undefined && year * 12 + month0 <= Number(min.slice(0, 4)) * 12 + Number(min.slice(5, 7)) - 1;
-  const label = monthLabel(year, month0);
+  const t = useCopy(COPY);
+  const label = monthLabel(year, month0, useLocale().locale);
   return (
     <div className={cn("flex flex-col gap-2.5", className)}>
       <div className="flex items-center justify-between">
-        <IconButton label="Mes anterior" tone="filled" size="md" disabled={atMin} className="disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onMonthChange(shiftMonth(year, month0, -1))}>
+        <IconButton label={t.prev} tone="filled" size="md" disabled={atMin} className="disabled:cursor-not-allowed disabled:opacity-40" onClick={() => onMonthChange(shiftMonth(year, month0, -1))}>
           <ChevronLeftIcon size={16} />
         </IconButton>
         <span className="text-[15px] font-bold" aria-live="polite">
           {label}
         </span>
-        <IconButton label="Mes siguiente" tone="filled" size="md" onClick={() => onMonthChange(shiftMonth(year, month0, 1))}>
+        <IconButton label={t.next} tone="filled" size="md" onClick={() => onMonthChange(shiftMonth(year, month0, 1))}>
           <ChevronRightIcon size={16} />
         </IconButton>
       </div>
       <div role="grid" aria-label={label} className="flex flex-col gap-1">
         <div role="row" className="grid grid-cols-7 gap-1">
-          {WEEKDAYS.map((d, i) => (
-            <span key={d} role="columnheader" aria-label={WEEKDAY_NAMES[i]} className="text-center text-[11px] font-bold text-muted">
+          {t.weekdays.map((d, i) => (
+            <span key={i} role="columnheader" aria-label={t.weekdayNames[i]} className="text-center text-[11px] font-bold text-muted">
               {d}
             </span>
           ))}

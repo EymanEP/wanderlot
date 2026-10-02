@@ -14,6 +14,7 @@ import {
   type RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import {
+  DEFAULT_LOCALE,
   DEFAULT_SETTINGS,
   DateAnswer,
   DateWindows,
@@ -47,6 +48,7 @@ import { wikimedia } from "../../panel/src/providers/photos.ts";
 import { PanelStore, StoreConflict, type PanelBackend, type PlanEntry } from "../../panel/src/store.ts";
 import type { Invite, SiteStore } from "./store.ts";
 import { SECURITY_HEADERS } from "./headers.ts";
+import { LOCALE_HEADER, SERVER_COPY, requestLocale, type ServerCopy } from "./copy.ts";
 
 const SESSION_COOKIE = "wl_session";
 // The panel at /admin: its own cookie, only sent to /admin, and shorter-lived.
@@ -120,13 +122,13 @@ export const PIN_LENGTH = 4;
 // The most common 4-digit PINs not caught by the rules below.
 const COMMON_PINS = new Set(["1004", "2000", "2001", "6969", "1010", "1313", "1122", "2580", "0852", "1990", "2020", "1984", "0007"]);
 
-export function pinProblem(pin: string): string | null {
-  if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) return `El PIN son ${PIN_LENGTH} números`;
+export function pinProblem(pin: string, t: ServerCopy = SERVER_COPY.es): string | null {
+  if (!new RegExp(`^\\d{${PIN_LENGTH}}$`).test(pin)) return t.pinLength(PIN_LENGTH);
   const d = [...pin].map(Number);
   const steps = d.slice(1).map((x, i) => x - d[i]!);
-  if (steps.every((x) => x === 0)) return "Ese PIN es demasiado fácil: evita repetir el mismo número";
-  if (steps.every((x) => x === 1) || steps.every((x) => x === -1)) return "Ese PIN es demasiado fácil: evita 1234 y parecidos";
-  if (/^(\d\d)\1$/.test(pin) || COMMON_PINS.has(pin)) return "Ese PIN es demasiado fácil: elige otro";
+  if (steps.every((x) => x === 0)) return t.pinRepeated;
+  if (steps.every((x) => x === 1) || steps.every((x) => x === -1)) return t.pinSequence;
+  if (/^(\d\d)\1$/.test(pin) || COMMON_PINS.has(pin)) return t.pinCommon;
   return null;
 }
 
@@ -137,11 +139,11 @@ export const PIN_LOCKS_MS = [15 * 60_000, 60 * 60_000, 4 * 60 * 60_000, 24 * 60 
 export const pinLockMs = (lockouts: number) => PIN_LOCKS_MS[Math.min(lockouts, PIN_LOCKS_MS.length - 1)]!;
 
 // "15 min", "4 h", "1 día"
-function waitLabel(ms: number): string {
+function waitLabel(ms: number, t: ServerCopy): string {
   const minutes = Math.ceil(ms / 60_000);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.ceil(minutes / 60);
-  return hours < 24 ? `${hours} h` : "1 día";
+  return hours < 24 ? `${hours} h` : t.day;
 }
 // Unresearched ideas one person can have waiting on a trip.
 export const MAX_OPEN_SUGGESTIONS = 5;
@@ -178,7 +180,9 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const key = c.req.header("cf-connecting-ip") ?? "all";
     return !(await limit(key));
   };
-  const tooMany = (c: Context<Env>) => c.json({ error: "Demasiados intentos; espera un minuto" }, 429);
+  // The copy in the language the friend is reading the site in.
+  const say = (c: Context<Env>) => SERVER_COPY[requestLocale(c.req.header(LOCALE_HEADER))];
+  const tooMany = (c: Context<Env>) => c.json({ error: say(c).tooMany }, 429);
   const rpID = new URL(rp.origin).hostname;
   const secure = new URL(rp.origin).protocol === "https:";
   const iso = (ms = 0) => new Date(now().getTime() + ms).toISOString();
@@ -297,7 +301,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
 
   app.get("/api/site", async (c) => {
     const s = { ...DEFAULT_SETTINGS, ...(await store.settings()) };
-    return c.json({ groupName: s.groupName, organiserName: s.organiserName });
+    return c.json({ groupName: s.groupName, organiserName: s.organiserName, locale: s.locale ?? DEFAULT_LOCALE });
   });
 
   // --- invites (public) --------------------------------------------------------
@@ -311,7 +315,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
 
   app.get("/api/invites/:token", async (c) => {
     const found = await findInvite(c.req.param("token"));
-    if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
+    if (!found) return c.json({ error: say(c).noInvite }, 404);
     return c.json({ member: { name: found.member.name }, status: inviteStatus(found.invite, now()) });
   });
 
@@ -321,13 +325,13 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     if (await throttled(c)) return tooMany(c);
     const body = z.object({ pin: z.string() }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {pin}" }, 400);
-    const problem = pinProblem(body.data.pin);
+    const problem = pinProblem(body.data.pin, say(c));
     if (problem) return c.json({ error: problem }, 400);
     const found = await findInvite(c.req.param("token"));
-    if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
+    if (!found) return c.json({ error: say(c).noInvite }, 404);
     const status = inviteStatus(found.invite, now());
     if (status !== "valid") return c.json({ error: `invite ${status}`, status }, 410);
-    if (!(await store.useInvite(found.invite.id, iso()))) return c.json({ error: "Esta invitación ya se usó", status: "used" }, 410);
+    if (!(await store.useInvite(found.invite.id, iso()))) return c.json({ error: say(c).inviteUsed, status: "used" }, 410);
     const salt = randomToken(16);
     await store.setPin(found.member.id, await (await hashPin)(found.member.id, salt, body.data.pin), salt, iso());
     await startSession(c, found.member.id, null);
@@ -337,7 +341,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   app.post("/api/invites/:token/passkey/options", async (c) => {
     if (await throttled(c)) return tooMany(c);
     const found = await findInvite(c.req.param("token"));
-    if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
+    if (!found) return c.json({ error: say(c).noInvite }, 404);
     const status = inviteStatus(found.invite, now());
     if (status !== "valid") return c.json({ error: `invite ${status}`, status }, 410);
     const existing = await store.passkeysFor(found.member.id);
@@ -361,10 +365,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const body = FlowBody.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {flowId, response}" }, 400);
     const found = await findInvite(c.req.param("token"));
-    if (!found) return c.json({ error: "Esta invitación no existe" }, 404);
+    if (!found) return c.json({ error: say(c).noInvite }, 404);
     const flow = await store.takeFlow(body.data.flowId);
     if (!flow || flow.purpose !== "register" || flow.inviteId !== found.invite.id || Date.parse(flow.expiresAt) <= now().getTime()) {
-      return c.json({ error: "El intento caducó; vuelve a empezar" }, 400);
+      return c.json({ error: say(c).flowExpired }, 400);
     }
     let verification;
     try {
@@ -377,13 +381,13 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       });
     } catch (e) {
       console.warn("passkey registration failed:", (e as Error).message);
-      return c.json({ error: "No se pudo verificar la passkey" }, 400);
+      return c.json({ error: say(c).passkeyNotVerified }, 400);
     }
-    if (!verification.verified) return c.json({ error: "No se pudo verificar la passkey" }, 400);
+    if (!verification.verified) return c.json({ error: say(c).passkeyNotVerified }, 400);
 
     // Only now is the invite spent, and only once even if two tabs race.
     if (!(await store.useInvite(found.invite.id, iso()))) {
-      return c.json({ error: "Esta invitación ya se usó", status: "used" }, 410);
+      return c.json({ error: say(c).inviteUsed, status: "used" }, 410);
     }
     const cred = verification.registrationInfo.credential;
     await store.addPasskey({
@@ -404,7 +408,6 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
 
   // Sign in with your name and PIN, from any device. Wrong answers count
   // against the person: PIN_MAX_TRIES in a row lock them out for a while.
-  const WRONG = "Nombre o PIN incorrectos";
   app.post("/api/session/pin", async (c) => {
     if (await throttled(c)) return tooMany(c);
     const body = z.object({ name: z.string().max(80), pin: z.string().max(12) }).safeParse(await c.req.json().catch(() => null));
@@ -413,20 +416,20 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const member = (await store.members()).find((m) => nameKey(m.name) === key || m.id === key);
     const stored = member && (await store.pin(member.id));
     const hash = await (await hashPin)(member?.id ?? "-", stored?.salt ?? "-", body.data.pin);
-    if (!member || !stored) return c.json({ error: WRONG }, 401);
+    if (!member || !stored) return c.json({ error: say(c).wrongPin }, 401);
     if (stored.lockedUntil && Date.parse(stored.lockedUntil) > now().getTime()) {
       const left = Date.parse(stored.lockedUntil) - now().getTime();
-      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(left)} o pide una invitación nueva.` }, 429);
+      return c.json({ error: say(c).locked(waitLabel(left, say(c))) }, 429);
     }
     if (!safeEqual(hash, stored.hash)) {
       const failed = stored.failed + 1;
       if (failed >= PIN_MAX_TRIES) {
         const lock = pinLockMs(stored.lockouts);
         await store.recordPinFailure(member.id, 0, iso(lock), stored.lockouts + 1);
-        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock)} o pide una invitación nueva.` }, 429);
+        return c.json({ error: say(c).locked(waitLabel(lock, say(c))) }, 429);
       }
       await store.recordPinFailure(member.id, failed, null, stored.lockouts);
-      return c.json({ error: WRONG }, 401);
+      return c.json({ error: say(c).wrongPin }, 401);
     }
     if (stored.failed > 0 || stored.lockedUntil || stored.lockouts > 0) await store.recordPinFailure(member.id, 0, null, 0);
     await startSession(c, member.id, null);
@@ -440,7 +443,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     if (!member) return c.json({ error: "unauthorized" }, 401);
     const body = z.object({ pin: z.string() }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {pin}" }, 400);
-    const problem = pinProblem(body.data.pin);
+    const problem = pinProblem(body.data.pin, say(c));
     if (problem) return c.json({ error: problem }, 400);
     const salt = randomToken(16);
     await store.setPin(member.id, await (await hashPin)(member.id, salt, body.data.pin), salt, iso());
@@ -460,10 +463,10 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     if (!body.success) return c.json({ error: "expected {flowId, response}" }, 400);
     const flow = await store.takeFlow(body.data.flowId);
     if (!flow || flow.purpose !== "login" || Date.parse(flow.expiresAt) <= now().getTime()) {
-      return c.json({ error: "El intento caducó; vuelve a empezar" }, 400);
+      return c.json({ error: say(c).flowExpired }, 400);
     }
     const passkey = await store.passkey(body.data.response.id);
-    if (!passkey) return c.json({ error: "Esta passkey ya no vale aquí. Pide una invitación nueva." }, 401);
+    if (!passkey) return c.json({ error: say(c).passkeyGone }, 401);
     let verification;
     try {
       verification = await verifyAuthenticationResponse({
@@ -476,9 +479,9 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
       });
     } catch (e) {
       console.warn("passkey sign-in failed:", (e as Error).message);
-      return c.json({ error: "No se pudo comprobar la passkey" }, 401);
+      return c.json({ error: say(c).passkeyNotChecked }, 401);
     }
-    if (!verification.verified) return c.json({ error: "No se pudo comprobar la passkey" }, 401);
+    if (!verification.verified) return c.json({ error: say(c).passkeyNotChecked }, 401);
     await store.recordPasskeyUse(passkey.id, verification.authenticationInfo.newCounter, iso());
     await startSession(c, passkey.memberId, passkey.id);
     return c.json({ member: await store.member(passkey.memberId) });
@@ -992,7 +995,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const body = z.object({ status: LeaveStatus }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {status}" }, 400);
     const view = await leaveView(planId);
-    if (!view) return c.json({ error: "las fechas del viaje aún no están decididas" }, 409);
+    if (!view) return c.json({ error: say(c).datesNotDecided }, 409);
     await store.putLeaveAnswer(planId, { memberId: c.get("member").id, status: body.data.status, dateFrom: view.dateFrom, dateTo: view.dateTo, setBy: "member", updatedAt: iso() });
     return c.json(await leaveView(planId));
   });
@@ -1001,15 +1004,15 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   api.put("/:planId/dates", async (c) => {
     const planId = c.req.param("planId");
     const poll = await store.datePoll(planId);
-    if (!poll) return c.json({ error: "este viaje no tiene votación de fechas" }, 404);
-    if (poll.status !== "open") return c.json({ error: "las fechas ya están decididas" }, 409);
+    if (!poll) return c.json({ error: say(c).noDatesVote }, 404);
+    if (poll.status !== "open") return c.json({ error: say(c).datesDecided }, 409);
     const body = z
       .object({ answers: z.record(z.string(), DateAnswer), note: z.string().trim().max(300).optional() })
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {answers, note?}" }, 400);
     const ids = poll.options.map((o) => o.id);
     const given = Object.keys(body.data.answers);
-    if (given.length !== ids.length || !ids.every((id) => body.data.answers[id])) return c.json({ error: "Responde a todas las fechas" }, 400);
+    if (given.length !== ids.length || !ids.every((id) => body.data.answers[id])) return c.json({ error: say(c).answerAll }, 400);
     await store.putDateResponse(planId, c.get("member").id, body.data.answers, body.data.note || null, iso());
     return c.json(await datesView(planId));
   });
@@ -1018,11 +1021,11 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const planId = c.req.param("planId");
     const plan = await settle(planId);
     if (!plan) return c.json({ error: "not found" }, 404);
-    if (plan.status !== "voting") return c.json({ error: `la votación está ${plan.status === "closed" ? "cerrada" : "sin abrir"}` }, 409);
+    if (plan.status !== "voting") return c.json({ error: say(c).voteState(plan.status === "closed") }, 409);
     const body = z.object({ ranking: z.array(z.string()) }).safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "expected {ranking}" }, 400);
     const inVote = plan.snapshot.destinations.filter((d) => d.inVote).map((d) => d.id);
-    const problem = validateRanking(body.data.ranking, inVote);
+    const problem = validateRanking(body.data.ranking, inVote, requestLocale(c.req.header(LOCALE_HEADER)));
     if (problem) return c.json({ error: problem }, 400);
     await store.putBallot(planId, c.get("member").id, body.data.ranking, iso());
     const after = (await settle(planId))!;
@@ -1032,7 +1035,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
   api.get("/:planId/results", async (c) => {
     const plan = await settle(c.req.param("planId"));
     if (!plan) return c.json({ error: "not found" }, 404);
-    if (plan.status !== "closed") return c.json({ error: "el recuento se ve al cerrar la votación" }, 403);
+    if (plan.status !== "closed") return c.json({ error: say(c).countHidden }, 403);
     const result = tallyPlan(plan.snapshot.destinations, plan.ballots.map((b) => b.ranking));
     const names = new Map((await store.members()).map((m) => [m.id, m.name]));
     return c.json({
@@ -1052,14 +1055,14 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const planId = c.req.param("planId");
     const plan = await settle(planId);
     if (!plan) return c.json({ error: "not found" }, 404);
-    if (plan.status === "closed") return c.json({ error: "la votación ya se cerró" }, 409);
+    if (plan.status === "closed") return c.json({ error: say(c).voteClosed }, 409);
     const body = z
       .object({ place: z.string().trim().min(1).max(80), note: z.string().trim().max(500).optional() })
       .safeParse(await c.req.json().catch(() => null));
-    if (!body.success) return c.json({ error: "Escribe el destino (hasta 80 letras) y, si quieres, por qué" }, 400);
+    if (!body.success) return c.json({ error: say(c).suggestion }, 400);
     const me = c.get("member").id;
     const mine = (await store.suggestions(planId)).filter((s) => s.memberId === me && s.status === "new");
-    if (mine.length >= MAX_OPEN_SUGGESTIONS) return c.json({ error: `Ya tienes ${MAX_OPEN_SUGGESTIONS} ideas pendientes en este viaje` }, 409);
+    if (mine.length >= MAX_OPEN_SUGGESTIONS) return c.json({ error: say(c).tooManyIdeas(MAX_OPEN_SUGGESTIONS) }, 409);
     await store.addSuggestion({
       id: randomToken(12),
       planId,
@@ -1160,14 +1163,14 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
     const login = await store.organiserLogin();
     if (!login) return c.json({ error: OFF }, 404);
     if (login.lockedUntil && Date.parse(login.lockedUntil) > now().getTime()) {
-      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(Date.parse(login.lockedUntil) - now().getTime())}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+      return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(Date.parse(login.lockedUntil) - now().getTime(), SERVER_COPY.es)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
     }
     if (!safeEqual(await (await hashPassword)(login.salt, body.data.password), login.hash)) {
       const failed = login.failed + 1;
       if (failed >= PASSWORD_MAX_TRIES) {
         const lock = pinLockMs(login.lockouts);
         await store.recordOrganiserFailure(0, iso(lock), login.lockouts + 1);
-        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
+        return c.json({ error: `Demasiados intentos. Prueba otra vez en ${waitLabel(lock, SERVER_COPY.es)}, o pon una contraseña nueva desde tu ordenador.` }, 429);
       }
       await store.recordOrganiserFailure(failed, null, login.lockouts);
       return c.json({ error: WRONG_PASSWORD }, 401);

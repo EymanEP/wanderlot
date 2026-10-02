@@ -230,9 +230,12 @@ describe("with everyone signed in", () => {
 
   describe("the group", () => {
     it("shows its name publicly and lets the panel change it", async () => {
-      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Wanderlot", organiserName: "quien organiza" });
+      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Wanderlot", organiserName: "quien organiza", locale: "es" });
       expect((await admin("/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" })).status).toBe(200);
-      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
+      expect(await (await call("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman", locale: "es" });
+      // The group's language, for everyone's site.
+      expect((await admin("/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD", locale: "en" })).status).toBe(200);
+      expect(await (await call("/api/site")).json()).toMatchObject({ locale: "en" });
       expect(await (await admin("/settings", "GET")).json()).toMatchObject({ defaultOrigin: "MAD" });
       expect((await admin("/settings", "PUT", { groupName: "" })).status).toBe(400);
     });

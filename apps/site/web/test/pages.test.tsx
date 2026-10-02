@@ -3,13 +3,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
+import type { Locale } from "@wanderlot/core";
 import { ToastProvider } from "@wanderlot/ui";
 import { App } from "../src/App.tsx";
 import { AuthProvider, mockAuthClient } from "../src/data/auth.tsx";
 import { mockSource } from "../src/data/source.ts";
 import { SourceProvider } from "../src/data/store.tsx";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 // jsdom has <dialog> but not its modal methods.
 HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
@@ -20,11 +24,11 @@ HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
   this.dispatchEvent(new Event("close"));
 };
 
-function renderAt(path: string, closed = false, signedIn = true) {
+function renderAt(path: string, closed = false, signedIn = true, groupLocale?: Locale) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
-        <AuthProvider client={mockAuthClient(signedIn)}>
+        <AuthProvider client={mockAuthClient(signedIn, groupLocale)}>
           <SourceProvider source={mockSource({ closed })}>
             <App />
           </SourceProvider>
@@ -50,6 +54,35 @@ describe("Plan", () => {
     await user.click(await screen.findByRole("button", { name: "Escapada" }));
     const cards = within(screen.getByRole("region", { name: "Destinos" })).getAllByRole("article");
     expect(cards.map((c) => c.querySelector("h2")!.textContent)).toEqual(["Marrakech"]);
+  });
+});
+
+describe("Languages", () => {
+  it("shows the site in the group's language", async () => {
+    renderAt("/p/noviembre-2026", false, true, "en");
+    expect(await screen.findByText("Your 1st choice")).toBeTruthy();
+    expect(screen.getByText("None of your points")).toBeTruthy();
+    expect(screen.getByText("4 of 6 of you have voted")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Getaway" })).toBeTruthy();
+    expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("lets each person switch it for themselves, and remembers it", async () => {
+    const user = userEvent.setup();
+    renderAt("/p/noviembre-2026");
+    expect(await screen.findByText("Tu 1.ª opción")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Tu cuenta" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "English" }));
+    expect(await screen.findByText("Your 1st choice")).toBeTruthy();
+    expect(localStorage.getItem("wanderlot:locale")).toBe("en");
+    cleanup();
+
+    renderAt("/p/noviembre-2026/votacion");
+    expect(await screen.findByRole("heading", { level: 1, name: "Vote" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Your account" }));
+    expect(screen.getByRole("menuitemradio", { name: "English" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("menuitemradio", { name: "Español" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Votación" })).toBeTruthy();
   });
 });
 

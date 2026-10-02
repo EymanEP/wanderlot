@@ -2,6 +2,7 @@
 // windows; each person answers yes, "if need be" or no for each, like a
 // Doodle. Nothing is ranked: the organiser reads the table and chooses.
 import { z } from "zod";
+import { copy, currentLocale, type Locale } from "./i18n.ts";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 
@@ -101,7 +102,8 @@ export function answeredAll(view: Pick<DatesView, "options" | "responses">, memb
   return !!r && view.options.every((o) => r.answers[o.id]);
 }
 
-export const DATE_ANSWER_LABEL: Record<DateAnswer, string> = { yes: "Sí", maybe: "Si hace falta", no: "No" };
+const DATE_ANSWERS = copy<Record<DateAnswer, string>>({ es: { yes: "Sí", maybe: "Si hace falta", no: "No" }, en: { yes: "Yes", maybe: "If need be", no: "No" } });
+export const dateAnswerLabel = (a: DateAnswer, l: Locale = currentLocale()) => DATE_ANSWERS[l][a];
 
 // --- Days off (vacaciones) ---------------------------------------------------
 // Everyone works somewhere different: before anything is booked, each person
@@ -112,20 +114,19 @@ export const LEAVE_STATUSES = ["not-asked", "asked", "approved", "denied"] as co
 export const LeaveStatus = z.enum(LEAVE_STATUSES);
 export type LeaveStatus = z.infer<typeof LeaveStatus>;
 
-export const LEAVE_LABEL: Record<LeaveStatus, string> = {
-  "not-asked": "Aún no los ha pedido",
-  asked: "Pedidos, esperando respuesta",
-  approved: "Días aprobados",
-  denied: "No se los dan",
-};
+// How each person stands, as the group sees it.
+const LEAVE_LABELS = copy<Record<LeaveStatus, string>>({
+  es: { "not-asked": "Aún no los ha pedido", asked: "Pedidos, esperando respuesta", approved: "Días aprobados", denied: "No se los dan" },
+  en: { "not-asked": "Hasn't asked yet", asked: "Asked, waiting to hear", approved: "Days off approved", denied: "Not given" },
+});
+export const leaveLabel = (s: LeaveStatus, l: Locale = currentLocale()) => LEAVE_LABELS[l][s];
 
 // What each person answers, in their own words.
-export const LEAVE_CHOICE: Record<LeaveStatus, string> = {
-  "not-asked": "Aún no los he pedido",
-  asked: "Los he pedido",
-  approved: "Me los han aprobado",
-  denied: "No me los dan",
-};
+const LEAVE_CHOICES = copy<Record<LeaveStatus, string>>({
+  es: { "not-asked": "Aún no los he pedido", asked: "Los he pedido", approved: "Me los han aprobado", denied: "No me los dan" },
+  en: { "not-asked": "I haven't asked yet", asked: "I've asked", approved: "They're approved", denied: "I can't get them" },
+});
+export const leaveChoice = (s: LeaveStatus, l: Locale = currentLocale()) => LEAVE_CHOICES[l][s];
 
 export interface LeavePerson {
   id: string;

@@ -1,6 +1,12 @@
 import { Component, type ReactNode } from "react";
 import { useLocation } from "react-router";
+import { copy, pick } from "@wanderlot/core";
 import { Button, EmptyState, Main } from "@wanderlot/ui";
+
+const COPY = copy({
+  es: { title: "Algo ha fallado al mostrar esta página", reload: "Recargar" },
+  en: { title: "Something went wrong showing this page", reload: "Reload" },
+});
 
 interface State {
   error: Error | null;
@@ -19,13 +25,14 @@ class Boundary extends Component<{ children: ReactNode }, State> {
 
   render() {
     if (!this.state.error) return this.props.children;
+    const t = pick(COPY);
     return (
       <Main>
         <EmptyState
-          title="Algo ha fallado al mostrar esta página"
+          title={t.title}
           action={
             <Button variant="primary" onClick={() => window.location.reload()}>
-              Recargar
+              {t.reload}
             </Button>
           }
         >

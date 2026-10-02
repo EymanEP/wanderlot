@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LEAVE_LABEL, LEAVE_STATUSES, allLeaveApproved, avatarTint, initials, leaveCounts, rangeLabel, type LeaveStatus } from "@wanderlot/core";
+import { LEAVE_STATUSES, leaveLabel, allLeaveApproved, avatarTint, initials, leaveCounts, rangeLabel, type LeaveStatus } from "@wanderlot/core";
 import { Avatar, Badge, Button, Card, CheckIcon, Heading, Notice, Select, Text, useToast } from "@wanderlot/ui";
 import type { LeavePage } from "../data/backend.ts";
 import { useLoad, usePanel, usePlan } from "../data/store.tsx";
@@ -13,7 +13,7 @@ export function useLeave() {
   return useLoad<LeavePage>(`leave:${plan.id}:${plan.dateFrom}:${plan.dateTo}:${state.datesDecided}`, leave);
 }
 
-const OPTIONS = LEAVE_STATUSES.map((s) => ({ value: s, label: LEAVE_LABEL[s] }));
+const OPTIONS = LEAVE_STATUSES.map((s) => ({ value: s, label: leaveLabel(s) }));
 
 // Days off (vacaciones): each person says on the site whether they've got
 // the trip's days off work; here the organiser follows it, marks it for

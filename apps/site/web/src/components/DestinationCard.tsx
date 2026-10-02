@@ -1,7 +1,32 @@
 import { Link } from "react-router";
-import { checkedLabel, euros, researchLabel, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
-import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, type Trust } from "@wanderlot/ui";
+import { checkedLabel, copy, euros, researchLabel, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
+import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, useCopy, type Trust } from "@wanderlot/ui";
 import { placeLine, rankLabel, stayLine } from "../lib/view.ts";
+
+const COPY = copy({
+  es: {
+    photoOf: (city: string) => `Foto de ${city}`,
+    chosen: "Destino elegido",
+    checked: "Comprobado",
+    unsave: (city: string) => `Quitar ${city} de guardados`,
+    save: (city: string) => `Guardar ${city}`,
+    points: (n: number) => `${n} puntos`,
+    noPoints: "Sin tus puntos",
+    ideaOf: (name: string) => `Idea de ${name}`,
+    perPerson: "por persona",
+  },
+  en: {
+    photoOf: (city: string) => `Photo of ${city}`,
+    chosen: "Chosen destination",
+    checked: "Checked",
+    unsave: (city: string) => `Remove ${city} from saved`,
+    save: (city: string) => `Save ${city}`,
+    points: (n: number) => `${n} ${n === 1 ? "point" : "points"}`,
+    noPoints: "None of your points",
+    ideaOf: (name: string) => `${name}'s idea`,
+    perPerson: "per person",
+  },
+});
 
 export interface DestinationCardProps {
   destination: Destination;
@@ -18,18 +43,19 @@ export interface DestinationCardProps {
 }
 
 export function DestinationCard({ destination: d, plan, href, trust, myPosition, points, winner, saved, onToggleSave }: DestinationCardProps) {
+  const t = useCopy(COPY);
   return (
     <article className="group relative flex flex-col gap-3.5">
       <Photo
-        label={d.photos[0] ? undefined : `Foto de ${d.place.city}`}
+        label={d.photos[0] ? undefined : t.photoOf(d.place.city)}
         src={d.photos[0] ? standardImageUrl(d.photos[0].url) : undefined}
         alt={d.photos[0]?.alt}
         className="h-[240px] rounded-2xl sm:h-[310px]"
         top={
           <>
-            {winner ? <Badge tone="dark" size="md">Destino elegido</Badge> : <ProvenanceBadge trust={trust} size="md" label={trust === "verified" && d.provenance.kind === "organiser" ? (d.provenance.seenOn?.length ? checkedLabel(d.provenance)! : "Comprobado") : (researchLabel(d.provenance) ?? "short")} />}
+            {winner ? <Badge tone="dark" size="md">{t.chosen}</Badge> : <ProvenanceBadge trust={trust} size="md" label={trust === "verified" && d.provenance.kind === "organiser" ? (d.provenance.seenOn?.length ? checkedLabel(d.provenance)! : t.checked) : (researchLabel(d.provenance) ?? "short")} />}
             <IconButton
-              label={saved ? `Quitar ${d.place.city} de guardados` : `Guardar ${d.place.city}`}
+              label={saved ? t.unsave(d.place.city) : t.save(d.place.city)}
               aria-pressed={saved}
               tone="floating"
               size="md"
@@ -51,7 +77,7 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
           </h2>
           {points !== undefined ? (
             <Badge tone={winner ? "accent-solid" : "neutral"} size="md">
-              {points} puntos
+              {t.points(points)}
             </Badge>
           ) : myPosition >= 0 ? (
             <Badge tone="accent" size="md">
@@ -59,15 +85,15 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
             </Badge>
           ) : (
             <Badge tone="muted" size="md">
-              Sin tus puntos
+              {t.noPoints}
             </Badge>
           )}
         </div>
         <span className="text-sm text-muted">{placeLine(d)}</span>
         <span className="text-sm text-muted">{stayLine(d, plan)}</span>
-        {d.suggestedBy && <span className="text-[13px] font-semibold text-accent-strong">Idea de {d.suggestedBy}</span>}
+        {d.suggestedBy && <span className="text-[13px] font-semibold text-accent-strong">{t.ideaOf(d.suggestedBy)}</span>}
         <span className="pt-[3px] text-[15px]">
-          <strong className="font-bold tabular-nums">{euros(d.totalPerPersonCents)}</strong> por persona
+          <strong className="font-bold tabular-nums">{euros(d.totalPerPersonCents)}</strong> {t.perPerson}
         </span>
       </div>
     </article>

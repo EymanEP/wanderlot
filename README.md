@@ -37,7 +37,8 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 
 ```
 packages/core   shared model (zod), Borda tally, trust/staleness, voting rules,
-                Spanish display helpers (euros, durations, dates)
+                languages (copy in Spanish and English) and display helpers
+                (euros, durations, dates)
 packages/ui     the design system: tokens (theme.css), components, and a gallery
 packages/mocks  mock data for "Noviembre 2026", taken from the design canvas
 apps/panel      local-only app: Generar, Revisar, Comparativa
@@ -231,6 +232,10 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   to do, eat and see, what to know before going (drafted by Claude, edited by
   the organiser), each person's share and the group's Tricount.
 - Friends can install the site on their phone's home screen.
+- Languages: the site is in Spanish or English. The organiser sets the
+  group's language in Ajustes, and each friend can switch it for themselves
+  from their account menu (SPEC §12). The panel, the WhatsApp messages and
+  the AI's writing are still Spanish only.
 - Prices: research's are labelled as written by Claude. The organiser checks
   the finalists by hand, typing the prices or having Claude read screenshots
   of the flights and the stay. The site then shows only what was checked. The

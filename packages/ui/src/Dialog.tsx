@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "./Button.tsx";
 import { Heading, Text } from "./Typography.tsx";
 import { animateOpen } from "./motion.tsx";
+import { useLocale } from "./locale.tsx";
 
 export interface DialogProps {
   open: boolean;
@@ -23,8 +24,9 @@ export interface DialogProps {
 
 // A modal confirmation on the native <dialog>: focus trapping, Escape and the
 // backdrop come from the browser.
-export function Dialog({ open, title, subtitle, children, confirmLabel, cancelLabel = "Cancelar", tone = "primary", onConfirm, onClose, busy, actions, wide }: DialogProps) {
+export function Dialog({ open, title, subtitle, children, confirmLabel, cancelLabel, tone = "primary", onConfirm, onClose, busy, actions, wide }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const cancel = cancelLabel ?? (useLocale().locale === "en" ? "Cancel" : "Cancelar");
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -50,7 +52,7 @@ export function Dialog({ open, title, subtitle, children, confirmLabel, cancelLa
         <div className="flex flex-wrap justify-end gap-2 pt-2">
           {actions ?? (
             <>
-              <Button onClick={onClose}>{cancelLabel}</Button>
+              <Button onClick={onClose}>{cancel}</Button>
               <Button variant={tone} onClick={onConfirm} disabled={busy} autoFocus>
                 {confirmLabel}
               </Button>

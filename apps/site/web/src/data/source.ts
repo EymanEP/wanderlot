@@ -3,6 +3,8 @@
 // is open you see who has voted and your own ballot, never anyone else's.
 import {
   answeredAll,
+  copy,
+  pick,
   tally,
   type Ballot,
   type DateAnswer,
@@ -33,6 +35,7 @@ import {
   plans as mockPlans,
   tripPage as mockTripPage,
 } from "@wanderlot/mocks";
+import { localeHeaders } from "./auth.tsx";
 
 export interface PlanView {
   plan: Plan;
@@ -78,11 +81,17 @@ export interface SiteSource {
 // Something the person should see, in their words.
 export class SourceError extends Error {}
 
+// The mocks' refusals, as the site API words them.
+const MOCK = copy({
+  es: { noDates: "este viaje no tiene votación de fechas", decided: "las fechas ya están decididas", answerAll: "Responde a todas las fechas", notDecided: "las fechas del viaje aún no están decididas", place: "Escribe el destino" },
+  en: { noDates: "this trip has no date vote", decided: "the dates are already decided", answerAll: "Answer every date", notDecided: "the trip's dates aren't decided yet", place: "Write the destination" },
+});
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
     credentials: "same-origin",
     ...init,
-    headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+    headers: { "content-type": "application/json", ...localeHeaders(), ...(init.headers ?? {}) },
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) throw new SourceError(data.error ?? `Error ${res.status}`);
@@ -101,7 +110,7 @@ export const httpSource: SiteSource = {
     }
   },
   async results(planId) {
-    const res = await fetch(`/api/plans/${encodeURIComponent(planId)}/results`, { credentials: "same-origin" });
+    const res = await fetch(`/api/plans/${encodeURIComponent(planId)}/results`, { credentials: "same-origin", headers: localeHeaders() });
     return res.ok ? ((await res.json()) as Results) : null;
   },
   comments: (planId) => request<CommentView[]>(`/api/plans/${encodeURIComponent(planId)}/comments`),
@@ -224,20 +233,20 @@ export function mockSource({ closed = false }: { closed?: boolean } = {}): SiteS
     },
     suggestions: async () => suggestions,
     async saveDates(planId, answers, note) {
-      if (planId !== DATES_PLAN_ID) throw new SourceError("este viaje no tiene votación de fechas");
-      if (dates.status !== "open") throw new SourceError("las fechas ya están decididas");
-      if (!dates.options.every((o) => answers[o.id])) throw new SourceError("Responde a todas las fechas");
+      if (planId !== DATES_PLAN_ID) throw new SourceError(pick(MOCK).noDates);
+      if (dates.status !== "open") throw new SourceError(pick(MOCK).decided);
+      if (!dates.options.every((o) => answers[o.id])) throw new SourceError(pick(MOCK).answerAll);
       const mine = { memberId: ME.id, answers, note: note.trim() || null, updatedAt: MOCK_NOW.toISOString() };
       dates = { ...dates, responses: [...dates.responses.filter((r) => r.memberId !== ME.id), mine] };
       return dates;
     },
     async saveLeave(planId, status) {
-      if (planId !== plan.id) throw new SourceError("las fechas del viaje aún no están decididas");
+      if (planId !== plan.id) throw new SourceError(pick(MOCK).notDecided);
       leave = { ...leave, people: leave.people.map((p) => (p.id === ME.id ? { ...p, status, at: MOCK_NOW.toISOString(), byOrganiser: false } : p)) };
       return leave;
     },
     async suggest(_planId, place, note) {
-      if (!place.trim()) throw new SourceError("Escribe el destino");
+      if (!place.trim()) throw new SourceError(pick(MOCK).place);
       suggestions = [
         ...suggestions,
         { id: `s${suggestions.length + 1}`, place: place.trim(), note: note.trim() || null, createdAt: MOCK_NOW.toISOString(), status: "new", member: { id: ME.id, name: ME.name }, proposalId: null },

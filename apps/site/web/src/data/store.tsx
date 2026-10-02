@@ -2,9 +2,24 @@
 // from (the real API or the mocks); <PlanProvider> loads one plan through it
 // and hands screens a ready view with useSite().
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { avatarTint, initials, type CommentView, type DateAnswer, type DatesView, type Destination, type LeaveStatus, type LeaveView, type Plan, type PlanSummary, type TripPage } from "@wanderlot/core";
-import { EmptyState, Main, Skeleton, buttonClasses } from "@wanderlot/ui";
+import { avatarTint, copy, initials, type CommentView, type DateAnswer, type DatesView, type Destination, type LeaveStatus, type LeaveView, type Plan, type PlanSummary, type TripPage } from "@wanderlot/core";
+import { EmptyState, Main, Skeleton, buttonClasses, useCopy } from "@wanderlot/ui";
 import type { Results, SiteSource } from "./source.ts";
+
+const COPY = copy({
+  es: {
+    missing: "Este plan no existe",
+    current: "Ir al plan actual",
+    missingText: "Puede que el enlace esté mal o que el plan aún no se haya publicado.",
+    failed: "No se pudo cargar el plan",
+  },
+  en: {
+    missing: "This plan doesn't exist",
+    current: "Go to the current plan",
+    missingText: "The link may be wrong, or the plan may not be published yet.",
+    failed: "Couldn't load the plan",
+  },
+});
 
 // A person as the screens draw them.
 export interface Person {
@@ -113,6 +128,7 @@ const visited = new WeakMap<SiteSource, Map<string, Loaded>>();
 
 export function PlanProvider({ planId, children }: { planId: string; children: ReactNode }) {
   const source = useSource();
+  const t = useCopy(COPY);
   const seen = visited.get(source) ?? visited.set(source, new Map()).get(source)!;
   const [data, setData] = useState<Loaded | null | "missing" | Error>(() => seen.get(planId) ?? null);
   const [saved, setSaved] = useState<string[]>(readSaved);
@@ -219,8 +235,8 @@ export function PlanProvider({ planId, children }: { planId: string; children: R
   if (data === "missing") {
     return (
       <Main>
-        <EmptyState title="Este plan no existe" action={<a href="/" className={buttonClasses({ variant: "primary" })}>Ir al plan actual</a>}>
-          Puede que el enlace esté mal o que el plan aún no se haya publicado.
+        <EmptyState title={t.missing} action={<a href="/" className={buttonClasses({ variant: "primary" })}>{t.current}</a>}>
+          {t.missingText}
         </EmptyState>
       </Main>
     );
@@ -228,7 +244,7 @@ export function PlanProvider({ planId, children }: { planId: string; children: R
   if (data instanceof Error) {
     return (
       <Main>
-        <EmptyState title="No se pudo cargar el plan">{data.message}</EmptyState>
+        <EmptyState title={t.failed}>{data.message}</EmptyState>
       </Main>
     );
   }

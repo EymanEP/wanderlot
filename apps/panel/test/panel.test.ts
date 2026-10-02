@@ -599,7 +599,7 @@ describe("plans and settings", () => {
   it("passes group settings through to the site and reports status", async () => {
     const saved = await json("/api/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" });
     expect(saved.data).toEqual({ groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD" });
-    expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman" });
+    expect(await (await site.request("/api/site")).json()).toEqual({ groupName: "Grupo 51", organiserName: "Eyman", locale: "es" });
     const status = (await json("/api/status")).data;
     expect(status.site).toEqual({ url: SITE, reachable: true, outdated: false });
   });

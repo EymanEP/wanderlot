@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router";
 import {
   baseStay,
+  copy,
   duration,
   euros,
   flightDetailsKnown,
@@ -31,6 +32,7 @@ import {
   Text,
   buttonClasses,
   cn,
+  useCopy,
 } from "@wanderlot/ui";
 import { LeaveCard } from "../components/LeaveCard.tsx";
 import { FlightLegRow, FlightTotalRow, StayOption } from "../components/DestinationParts.tsx";
@@ -38,28 +40,94 @@ import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { overridden, trustOf } from "../lib/view.ts";
 
-export const MODE_LABEL: Record<TransportMode, string> = {
-  car: "Coche",
-  bus: "Autobús",
-  train: "Tren",
-  metro: "Metro",
-  taxi: "Taxi",
-  shuttle: "Lanzadera",
-  walk: "Andando",
-  other: "Otro",
-};
+const COPY = copy({
+  es: {
+    modes: { car: "Coche", bus: "Autobús", train: "Tren", metro: "Metro", taxi: "Taxi", shuttle: "Lanzadera", walk: "Andando", other: "Otro" } as Record<TransportMode, string>,
+    notReady: "La página del viaje aún no está lista",
+    notReadyText: (organiser: string) => `${organiser} la publicará cuando el destino esté decidido y los precios comprobados.`,
+    eyebrow: (plan: string) => `El viaje · ${plan}`,
+    when: (from: string, to: string, n: number) => `Del ${from} al ${to} · ${n} ${n === 1 ? "noche" : "noches"}`,
+    overridden: (organiser: string) => `La votación la ganó otro destino; ${organiser} lo explica en`,
+    vote: "Votación",
+    photoOf: (city: string) => `Foto de ${city}`,
+    flights: "Vuelos",
+    out: "Ida",
+    back: "Vuelta",
+    flightTotal: (price: string) => `${price} por persona, ida y vuelta.`,
+    stay: "Alojamiento",
+    address: "Dirección",
+    checkIn: "Entrada",
+    checkOut: "Salida",
+    getting: "Cómo llegar",
+    approx: "Precios aproximados por persona: confírmalos antes de ir",
+    toAirport: (home: string | null, iata: string) => `De ${home || "casa"} al aeropuerto (${iata})`,
+    fromAirport: (iata: string) => `Del aeropuerto (${iata}) al alojamiento`,
+    todo: "Qué hacer",
+    food: "Qué comer",
+    sights: "Sitios que ver",
+    before: "Antes de ir",
+    who: "Quién va",
+    wroteIt: (by: string) => `Lo escribió ${by}`,
+    credits: (by: string, web: boolean, date: string | null, organiser: string) =>
+      `La guía y cómo llegar los preparó ${by}${web ? " buscando en la web" : " con lo que sabe, sin buscar en la web"}${date ? ` el ${date}` : ""} y los revisó ${organiser}. Los precios de vuelos y alojamiento son los comprobados; el resto, aproximados.`,
+    seeVote: "Ver cómo quedó la votación",
+    share: "Lo que pone cada uno",
+    flight: (price: string) => `Vuelo ${price}`,
+    stayShare: (price: string) => ` · alojamiento ${price}`,
+    tricount: "Abrir el Tricount",
+    where: (place: string) => `Dónde: ${place}`,
+  },
+  en: {
+    modes: { car: "Car", bus: "Bus", train: "Train", metro: "Metro", taxi: "Taxi", shuttle: "Shuttle", walk: "Walk", other: "Other" },
+    notReady: "The trip page isn't ready yet",
+    notReadyText: (organiser: string) => `${organiser} will publish it once the destination is decided and the prices checked.`,
+    eyebrow: (plan: string) => `The trip · ${plan}`,
+    when: (from: string, to: string, n: number) => `${from} to ${to} · ${n} ${n === 1 ? "night" : "nights"}`,
+    overridden: (organiser: string) => `Another destination won the vote; ${organiser} explains why in`,
+    vote: "Vote",
+    photoOf: (city: string) => `Photo of ${city}`,
+    flights: "Flights",
+    out: "Out",
+    back: "Back",
+    flightTotal: (price: string) => `${price} per person, return.`,
+    stay: "Where we're staying",
+    address: "Address",
+    checkIn: "Check-in",
+    checkOut: "Check-out",
+    getting: "Getting there",
+    approx: "Rough prices per person: check them before you go",
+    toAirport: (home: string | null, iata: string) => `From ${home || "home"} to the airport (${iata})`,
+    fromAirport: (iata: string) => `From the airport (${iata}) to where we're staying`,
+    todo: "Things to do",
+    food: "What to eat",
+    sights: "Places to see",
+    before: "Before you go",
+    who: "Who's going",
+    wroteIt: (by: string) => `Written by ${by}`,
+    credits: (by: string, web: boolean, date: string | null, organiser: string) =>
+      `${by} put together the guide and how to get there${web ? " by searching the web" : " from what it knows, without searching the web"}${date ? ` on ${date}` : ""}, and ${organiser} checked them. Flight and stay prices are the checked ones; the rest are rough.`,
+    seeVote: "See how the vote ended",
+    share: "What each of us pays",
+    flight: (price: string) => `Flight ${price}`,
+    stayShare: (price: string) => ` · stay ${price}`,
+    tricount: "Open the Tricount",
+    where: (place: string) => `Where: ${place}`,
+  },
+});
+
 
 // El viaje (ROADMAP 2.2–2.4): once the destination is decided, the plan in
 // one place: when, the flights and the stay with their checked prices, how
 // to get there, a guide without spoilers, and each person's share.
 export function ViajePage() {
   const { trip, destinations } = useSite();
+  const t = useCopy(COPY);
   const { group } = useAuth();
   const destination = trip ? destinations.find((d) => d.id === trip.destinationId) : undefined;
   if (!trip || !destination) {
     return (
       <Main>
-        <EmptyState title="La página del viaje aún no está lista">{group.organiserName} la publicará cuando el destino esté decidido y los precios comprobados.</EmptyState>
+        <EmptyState title={t.notReady}>{t.notReadyText(group.organiserName)}</EmptyState>
       </Main>
     );
   }
@@ -68,6 +136,7 @@ export function ViajePage() {
 
 function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
   const { plan, members, now, result } = useSite();
+  const t = useCopy(COPY);
   const { group } = useAuth();
   const { planId } = useParams();
   const stay = baseStay(d.stays);
@@ -80,19 +149,19 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
     <Main className="gap-8">
       <section className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between lg:gap-12">
         <div className="flex max-w-[820px] flex-col gap-2.5">
-          <Eyebrow>El viaje · {plan.name}</Eyebrow>
+          <Eyebrow>{t.eyebrow(plan.name)}</Eyebrow>
           <Heading as="h1" size="display">
             {d.place.city}
           </Heading>
           <Text size="lg" tone="ink-2">
-            Del {from} al {to} · {plan.nights} {plan.nights === 1 ? "noche" : "noches"} · {d.place.country}
+            {t.when(from, to, plan.nights)} · {d.place.country}
           </Text>
           {trip.intro && <Text size="lg">{trip.intro}</Text>}
           {overridden(result) && (
             <span className="text-sm text-muted">
-              La votación la ganó otro destino; {group.organiserName} lo explica en{" "}
+              {t.overridden(group.organiserName)}{" "}
               <Link to={`/p/${planId}/votacion`} className="font-semibold">
-                Votación
+                {t.vote}
               </Link>
               .
             </span>
@@ -104,18 +173,18 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
       <LeaveCard />
 
       {hero && (
-        <Photo src={standardImageUrl(hero.url)} alt={hero.alt} className="h-[220px] rounded-card sm:h-[300px]" aria-label={`Foto de ${d.place.city}`} />
+        <Photo src={standardImageUrl(hero.url)} alt={hero.alt} className="h-[220px] rounded-card sm:h-[300px]" aria-label={t.photoOf(d.place.city)} />
       )}
 
       <div className="flex flex-col gap-8 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-8">
           <section aria-labelledby="vuelos" className="flex flex-col gap-3">
-            <SectionHeader id="vuelos" title="Vuelos" aside={<ProvenanceBadge trust={trustOf(d, now)} size="md" label={researchLabel(d.provenance) ?? "short"} />} />
+            <SectionHeader id="vuelos" title={t.flights} aside={<ProvenanceBadge trust={trustOf(d, now)} size="md" label={researchLabel(d.provenance) ?? "short"} />} />
             {flightDetailsKnown(d) ? (
               <>
-                <FlightLegRow label="Ida" leg={d.outbound} price={false} />
-                <FlightLegRow label="Vuelta" leg={d.inbound} price={false} />
-                <span className="text-[13px] text-muted">{euros(flight)} por persona, ida y vuelta.</span>
+                <FlightLegRow label={t.out} leg={d.outbound} price={false} />
+                <FlightLegRow label={t.back} leg={d.inbound} price={false} />
+                <span className="text-[13px] text-muted">{t.flightTotal(euros(flight))}</span>
               </>
             ) : (
               <FlightTotalRow from={d.outbound.from} to={d.inbound.from} cents={flight} />
@@ -124,13 +193,13 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
 
           {stay && (
             <section aria-labelledby="alojamiento" className="flex flex-col gap-3">
-              <SectionHeader id="alojamiento" title="Alojamiento" />
+              <SectionHeader id="alojamiento" title={t.stay} />
               <StayOption stay={{ ...stay, recommended: false }} nights={plan.nights} partySize={plan.partySize} />
               {(trip.stay.address || trip.stay.checkIn || trip.stay.checkOut) && (
                 <dl className="m-0 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
                   {trip.stay.address && (
                     <>
-                      <dt className="font-bold text-muted">Dirección</dt>
+                      <dt className="font-bold text-muted">{t.address}</dt>
                       <dd className="m-0">
                         <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trip.stay.address)}`} target="_blank" rel="noreferrer">
                           {trip.stay.address}
@@ -140,13 +209,13 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
                   )}
                   {trip.stay.checkIn && (
                     <>
-                      <dt className="font-bold text-muted">Entrada</dt>
+                      <dt className="font-bold text-muted">{t.checkIn}</dt>
                       <dd className="m-0">{trip.stay.checkIn}</dd>
                     </>
                   )}
                   {trip.stay.checkOut && (
                     <>
-                      <dt className="font-bold text-muted">Salida</dt>
+                      <dt className="font-bold text-muted">{t.checkOut}</dt>
                       <dd className="m-0">{trip.stay.checkOut}</dd>
                     </>
                   )}
@@ -157,22 +226,22 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
 
           {(trip.toAirport.length > 0 || trip.fromAirport.length > 0) && (
             <section aria-labelledby="como-llegar" className="flex flex-col gap-4">
-              <SectionHeader id="como-llegar" title="Cómo llegar" aside="Precios aproximados por persona: confírmalos antes de ir" />
-              {trip.toAirport.length > 0 && <Transport title={`De ${trip.home || "casa"} al aeropuerto (${d.outbound.from})`} options={trip.toAirport} />}
-              {trip.fromAirport.length > 0 && <Transport title={`Del aeropuerto (${d.place.iata}) al alojamiento`} options={trip.fromAirport} />}
+              <SectionHeader id="como-llegar" title={t.getting} aside={t.approx} />
+              {trip.toAirport.length > 0 && <Transport title={t.toAirport(trip.home, d.outbound.from)} options={trip.toAirport} />}
+              {trip.fromAirport.length > 0 && <Transport title={t.fromAirport(d.place.iata)} options={trip.fromAirport} />}
             </section>
           )}
 
-          <Guide title="Qué hacer" id="que-hacer" items={trip.todo} price />
-          <Guide title="Qué comer" id="que-comer" items={trip.food} />
-          <Guide title="Sitios que ver" id="que-ver" items={trip.sights} />
+          <Guide title={t.todo} id="que-hacer" items={trip.todo} price />
+          <Guide title={t.food} id="que-comer" items={trip.food} />
+          <Guide title={t.sights} id="que-ver" items={trip.sights} />
         </div>
 
         <aside className="flex shrink-0 flex-col gap-[18px] lg:w-[396px]">
           {trip.beforeYouGo.length > 0 && (
             <Card variant="muted" className="flex flex-col gap-3" aria-labelledby="antes">
               <Heading id="antes" as="h2" size="card">
-                Antes de ir
+                {t.before}
               </Heading>
               <dl className="m-0 flex flex-col gap-2.5">
                 {trip.beforeYouGo.map((b) => (
@@ -186,7 +255,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
           )}
           <Card variant="muted" className="flex flex-col gap-3">
             <Heading as="h2" size="card">
-              Quién va
+              {t.who}
             </Heading>
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {members.map((m) => (
@@ -199,13 +268,10 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
           </Card>
           <Card variant="muted" className="flex flex-col gap-2">
             <span className="flex items-center gap-2">
-              <Badge tone="claude">Lo escribió {trip.by ?? "Claude"}</Badge>
+              <Badge tone="claude">{t.wroteIt(trip.by ?? "Claude")}</Badge>
             </span>
             <span className="text-[13px] text-ink-2">
-              La guía y cómo llegar los preparó {trip.by ?? "Claude"}
-              {trip.sources.length > 0 ? " buscando en la web" : " con lo que sabe, sin buscar en la web"}
-              {trip.preparedAt ? ` el ${longDate(trip.preparedAt)}` : ""} y los revisó {group.organiserName}. Los precios
-              de vuelos y alojamiento son los comprobados; el resto, aproximados.
+              {t.credits(trip.by ?? "Claude", trip.sources.length > 0, trip.preparedAt ? longDate(trip.preparedAt) : null, group.organiserName)}
             </span>
             {trip.sources.length > 0 && (
               <ul className="m-0 flex list-none flex-col gap-1 p-0 text-[13px]">
@@ -220,7 +286,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
             )}
           </Card>
           <Link to={`/p/${planId}/votacion`} className={buttonClasses({ variant: "secondary", block: true })}>
-            Ver cómo quedó la votación
+            {t.seeVote}
           </Link>
         </aside>
       </div>
@@ -230,17 +296,18 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
 
 // Each person's share, and the group's Tricount for everything else.
 function Money({ flight, stayShare, tricountUrl }: { flight: number; stayShare: number | null; tricountUrl: string | null }) {
+  const t = useCopy(COPY);
   return (
-    <Card variant="accent" className="flex shrink-0 flex-col gap-1.5 lg:w-[300px]" aria-label="Lo que pone cada uno">
-      <span className="text-[13px] font-bold">Lo que pone cada uno</span>
+    <Card variant="accent" className="flex shrink-0 flex-col gap-1.5 lg:w-[300px]" aria-label={t.share}>
+      <span className="text-[13px] font-bold">{t.share}</span>
       <span className="text-[28px] font-extrabold tracking-[-0.03em] tabular-nums">{euros(flight + (stayShare ?? 0))}</span>
       <span className="text-[13px]">
-        Vuelo {euros(flight)}
-        {stayShare !== null ? ` · alojamiento ${euros(stayShare)}` : ""}
+        {t.flight(euros(flight))}
+        {stayShare !== null ? t.stayShare(euros(stayShare)) : ""}
       </span>
       {tricountUrl && (
         <a href={tricountUrl} target="_blank" rel="noreferrer" className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "mt-2 self-start")}>
-          Abrir el Tricount
+          {t.tricount}
           <ExternalIcon size={14} />
         </a>
       )}
@@ -249,6 +316,7 @@ function Money({ flight, stayShare, tricountUrl }: { flight: number; stayShare: 
 }
 
 function Transport({ title, options }: { title: string; options: TransportOption[] }) {
+  const t = useCopy(COPY);
   return (
     <div className="flex flex-col gap-2">
       <Heading as="h3" size="card">
@@ -257,7 +325,7 @@ function Transport({ title, options }: { title: string; options: TransportOption
       <ul aria-label={title} className="m-0 flex list-none flex-col gap-2 p-0">
         {options.map((o) => (
           <li key={o.title} className="flex flex-wrap items-center gap-x-[18px] gap-y-1.5 rounded-tile border border-line-soft px-[18px] py-3.5">
-            <Badge tone="neutral">{MODE_LABEL[o.mode]}</Badge>
+            <Badge tone="neutral">{t.modes[o.mode]}</Badge>
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-[15px] font-bold">{o.title}</span>
               {o.detail && <span className="text-[13px] text-ink-2">{o.detail}</span>}
@@ -274,6 +342,7 @@ function Transport({ title, options }: { title: string; options: TransportOption
 }
 
 function Guide({ title, id, items, price }: { title: string; id: string; items: GuideItem[]; price?: boolean }) {
+  const t = useCopy(COPY);
   if (!items.length) return null;
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
@@ -287,7 +356,7 @@ function Guide({ title, id, items, price }: { title: string; id: string; items: 
                 {price && typeof it.priceCents === "number" && <span className="shrink-0 text-sm font-bold tabular-nums">≈ {euros(it.priceCents)}</span>}
               </span>
               {it.detail && <span className="text-[13px] text-ink-2">{it.detail}</span>}
-              {it.where && <span className="text-[13px] text-muted">Dónde: {it.where}</span>}
+              {it.where && <span className="text-[13px] text-muted">{t.where(it.where)}</span>}
             </Card>
           </li>
         ))}

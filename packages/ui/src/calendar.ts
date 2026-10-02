@@ -43,8 +43,8 @@ export function dayRole(date: string, start: string | null, end: string | null):
   return "none";
 }
 
-export function monthLabel(year: number, month0: number): string {
-  const name = new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month0, 1)));
+export function monthLabel(year: number, month0: number, locale: "es" | "en" = "es"): string {
+  const name = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "es-ES", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(year, month0, 1)));
   return `${name[0]!.toUpperCase()}${name.slice(1)} ${year}`;
 }
 

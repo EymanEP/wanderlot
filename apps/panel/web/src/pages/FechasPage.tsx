@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  DATE_ANSWER_LABEL,
   MAX_DATE_OPTIONS,
   MIN_DATE_OPTIONS,
   addDaysIso,
   answeredAll,
+  dateAnswerLabel,
   avatarTint,
   bestDateOptions,
   dateCounts,
@@ -389,7 +389,7 @@ function DatesTable({ view, people, onChoose }: { view: DatesView; people: { id:
                   const a = r?.answers[o.id];
                   return (
                     <td key={o.id} className={cn("px-3 py-2.5", o.id === view.chosenOptionId && "bg-accent-soft/60")}>
-                      {a ? <Badge tone={ANSWER_TONE[a]}>{DATE_ANSWER_LABEL[a]}</Badge> : <span className="text-faint">—</span>}
+                      {a ? <Badge tone={ANSWER_TONE[a]}>{dateAnswerLabel(a)}</Badge> : <span className="text-faint">—</span>}
                     </td>
                   );
                 })}

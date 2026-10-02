@@ -1,5 +1,7 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import { copy } from "@wanderlot/core";
 import { cn } from "./cn.ts";
+import { useCopy } from "./locale.tsx";
 import { AlertIcon, CheckIcon, ClockIcon } from "./icons.tsx";
 
 export type BadgeTone = "accent" | "accent-solid" | "claude" | "neutral" | "muted" | "white" | "dark";
@@ -48,17 +50,14 @@ export interface ProvenanceBadgeProps extends Omit<BadgeProps, "tone" | "icon" |
 
 // The two provenance states of SPEC §3, plus "stale" (verified but old), which
 // renders neutral rather than green.
+const BADGE = copy({
+  es: { unverified: "Lo escribió Claude", stale: "Precio caducado", long: "Verificado con la API", short: "Verificado" },
+  en: { unverified: "Written by Claude", stale: "Price out of date", long: "Verified with the API", short: "Verified" },
+});
+
 export function ProvenanceBadge({ trust, label = "short", withIcon, size, ...rest }: ProvenanceBadgeProps) {
-  const text =
-    label === "short" || label === "long"
-      ? trust === "unverified"
-        ? "Lo escribió Claude"
-        : trust === "stale"
-          ? "Precio caducado"
-          : label === "long"
-            ? "Verificado con la API"
-            : "Verificado"
-      : label;
+  const t = useCopy(BADGE);
+  const text = label === "short" || label === "long" ? (trust === "unverified" ? t.unverified : trust === "stale" ? t.stale : label === "long" ? t.long : t.short) : label;
   const tone: BadgeTone = trust === "verified" ? "accent" : trust === "stale" ? "neutral" : "claude";
   const icon =
     withIcon === false ? undefined : trust === "verified" ? <CheckIcon size={14} /> : trust === "stale" ? <ClockIcon size={14} /> : <AlertIcon size={14} />;

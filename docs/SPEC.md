@@ -18,7 +18,8 @@ organiser approves it.** The panel generates twelve options; the group sees the
 four the organiser stands behind.
 
 Design reference: the "Wanderlot · Planes de viaje" canvas (six screens, v1 and
-current). UI copy is Spanish; code and docs are English.
+current). UI copy is Spanish by default, with English for the site (§12);
+code and docs are English.
 
 ---
 
@@ -625,7 +626,7 @@ browser's response. A flow expires after 5 minutes and can be used once.
 | method | path | who | notes |
 |---|---|---|---|
 | `GET` | `/`, `/i/:token`, `/p/*` | anyone | the web UI; it asks the API what to show |
-| `GET` | `/api/site` | anyone | `{ groupName, organiserName }`, for the sign-in screens |
+| `GET` | `/api/site` | anyone | `{ groupName, organiserName, locale }`, for the sign-in screens and the site's language (`locale`: version 14) |
 | `GET` | `/api/invites/:token` | anyone | `{ member: { name }, status: valid \| used \| expired \| cancelled }`; never consumes it |
 | `POST` | `/api/invites/:token/pin` | invitee | `{ pin }`: sets the PIN, uses up the invite, starts a session |
 | `POST` | `/api/invites/:token/passkey/options` | invitee | `410` unless valid |
@@ -826,6 +827,33 @@ are picked in the panel and published as plain URLs with their credits.
 
 ---
 
-## 12. Licence
+## 12. Languages
+
+Spanish (`es`) and English (`en`). Spanish is the default, so a group that
+never chooses sees nothing change.
+
+- **The group's language** is the organiser's choice: `GroupSettings.locale`,
+  set in the panel's Ajustes and returned by `GET /api/site`. The site starts
+  in it for everyone.
+- **Each person** can switch the site for themselves from the account menu.
+  The choice stays on that device (`localStorage` `wanderlot:locale`) and
+  wins over the group's.
+- **Copy** lives next to the code that shows it, as `copy({ es, en })` from
+  `@wanderlot/core`; TypeScript checks that English has every string Spanish
+  has. Components read it with `useCopy()` (`@wanderlot/ui`); dates, prices
+  and other display helpers take the language too, and write "€1,720" and
+  "Sat 7 Nov" in English.
+- **The API** answers the friends' errors in the language the site is
+  showing: the site sends it in the `x-wanderlot-locale` header, and Spanish
+  is used without one. Errors meant for code ("expected {pin}") stay in
+  English.
+- **Not yet in English:** the panel, the WhatsApp messages, the research
+  prompts and the trip guide (ROADMAP 4). Content the organiser or the AI
+  wrote (destinations, pros and cons, the guide) stays in the language it was
+  written in.
+
+---
+
+## 13. Licence
 
 MIT. Photos keep their own licences (§6); the site shows each credit.

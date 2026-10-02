@@ -1,9 +1,37 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
-import { Button, Field, Heading, LockIcon, Notice, Text, TextInput } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { Button, Field, Heading, LockIcon, Notice, Text, TextInput, useCopy } from "@wanderlot/ui";
 import { AuthLayout } from "../components/AuthLayout.tsx";
 import { PinField } from "../components/PinField.tsx";
 import { AuthError, useAuth } from "../data/auth.tsx";
+
+const COPY = copy({
+  es: {
+    failed: "Algo ha fallado. Vuelve a intentarlo.",
+    title: (group: string) => `Entra en ${group}`,
+    intro: "Con tu nombre y el PIN que elegiste al aceptar la invitación.",
+    form: "Entrar con PIN",
+    name: "Tu nombre",
+    entering: "Entrando…",
+    enter: "Entrar",
+    waiting: "Esperando a tu passkey…",
+    passkey: "Entrar con passkey (Face ID o huella)",
+    help: (organiser: string) => `¿Primera vez, o no recuerdas tu PIN? Pide una invitación nueva a ${organiser}.`,
+  },
+  en: {
+    failed: "Something went wrong. Try again.",
+    title: (group: string) => `Sign in to ${group}`,
+    intro: "With your name and the PIN you chose when you accepted the invite.",
+    form: "Sign in with PIN",
+    name: "Your name",
+    entering: "Signing in…",
+    enter: "Sign in",
+    waiting: "Waiting for your passkey…",
+    passkey: "Sign in with a passkey (Face ID or fingerprint)",
+    help: (organiser: string) => `First time, or forgot your PIN? Ask ${organiser} for a new invite.`,
+  },
+});
 
 // The name last used on this device, to save typing it again.
 const NAME_KEY = "wanderlot:name";
@@ -23,6 +51,7 @@ const rememberName = (name: string) => {
 // Name and PIN from any device; a passkey for those who set one up here.
 export function SignInPage() {
   const auth = useAuth();
+  const t = useCopy(COPY);
   const navigate = useNavigate();
   const location = useLocation();
   const [name, setName] = useState(lastName);
@@ -40,7 +69,7 @@ export function SignInPage() {
       await go();
       navigate(back, { replace: true });
     } catch (e) {
-      setError(e instanceof AuthError ? e.message : "Algo ha fallado. Vuelve a intentarlo.");
+      setError(e instanceof AuthError ? e.message : t.failed);
       if (how === "pin") setPin("");
       // Only on failure: clearing it on success would let the signed-in
       // redirect above win over the navigation just made.
@@ -58,29 +87,29 @@ export function SignInPage() {
     <AuthLayout>
       <div className="flex flex-col gap-2">
         <Heading as="h1" size="headline">
-          Entra en {auth.group.groupName}
+          {t.title(auth.group.groupName)}
         </Heading>
-        <Text>Con tu nombre y el PIN que elegiste al aceptar la invitación.</Text>
+        <Text>{t.intro}</Text>
       </div>
       {error && <Notice role="alert">{error}</Notice>}
-      <form onSubmit={withPin} className="flex flex-col gap-4" aria-label="Entrar con PIN">
-        <Field label="Tu nombre">
+      <form onSubmit={withPin} className="flex flex-col gap-4" aria-label={t.form}>
+        <Field label={t.name}>
           {({ inputId }) => (
             <TextInput id={inputId} autoComplete="username" required value={name} onChange={(e) => setName(e.target.value)} autoFocus={!name} />
           )}
         </Field>
         <PinField label="PIN" value={pin} onChange={setPin} autoComplete="current-password" autoFocus={!!name} />
         <Button type="submit" variant="primary" size="lg" block icon={<LockIcon size={18} />} disabled={busy !== null || pin.length !== 4 || !name.trim()}>
-          {busy === "pin" ? "Entrando…" : "Entrar"}
+          {busy === "pin" ? t.entering : t.enter}
         </Button>
       </form>
       {auth.client.supported() && (
         <Button variant="ghost" block onClick={() => void run("passkey", auth.signIn)} disabled={busy !== null}>
-          {busy === "passkey" ? "Esperando a tu passkey…" : "Entrar con passkey (Face ID o huella)"}
+          {busy === "passkey" ? t.waiting : t.passkey}
         </Button>
       )}
       <Text size="sm" tone="muted" className="border-t border-line-faint pt-4">
-        ¿Primera vez, o no recuerdas tu PIN? Pide una invitación nueva a {auth.group.organiserName}.
+        {t.help(auth.group.organiserName)}
       </Text>
     </AuthLayout>
   );
