@@ -1,6 +1,24 @@
 import { Link } from "react-router";
-import { ChoiceChip, Fieldset } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { ChoiceChip, Fieldset, useCopy } from "@wanderlot/ui";
 import type { Person } from "../data/store.tsx";
+
+const COPY = copy({
+  es: {
+    whoGoes: "¿Quién va?",
+    people: (n: number) => `${n} ${n === 1 ? "persona" : "personas"}`,
+    nobody: "Todavía no hay nadie en el grupo.",
+    addPeople: "Añade a la gente en Personas",
+    onlyThem: "Solo quien va ve el viaje en el sitio, vota y comenta. Puedes cambiarlo luego en Personas.",
+  },
+  en: {
+    whoGoes: "Who's going?",
+    people: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
+    nobody: "There's nobody in the group yet.",
+    addPeople: "Add people in People",
+    onlyThem: "Only those going see the trip on the site, vote and comment. You can change it later in People.",
+  },
+});
 
 export interface WhoGoesProps {
   people: Person[];
@@ -10,7 +28,9 @@ export interface WhoGoesProps {
 }
 
 // Who is on a trip: only they see it on the site, vote and comment (SPEC §5).
-export function WhoGoes({ people, value, onChange, legend = "¿Quién va?" }: WhoGoesProps) {
+export function WhoGoes({ people, value, onChange, legend: given }: WhoGoesProps) {
+  const t = useCopy(COPY);
+  const legend = given ?? t.whoGoes;
   const toggle = (id: string, on: boolean) => onChange(on ? [...value, id] : value.filter((x) => x !== id));
   return (
     <Fieldset
@@ -18,14 +38,14 @@ export function WhoGoes({ people, value, onChange, legend = "¿Quién va?" }: Wh
         <span className="flex items-center justify-between gap-3">
           {legend}
           <span className="font-semibold text-accent-strong tabular-nums">
-            {value.length} {value.length === 1 ? "persona" : "personas"}
+            {t.people(value.length)}
           </span>
         </span>
       }
     >
       {people.length === 0 ? (
         <p className="m-0 text-sm text-muted">
-          Todavía no hay nadie en el grupo. <Link to="/personas">Añade a la gente en Personas</Link>.
+          {t.nobody} <Link to="/personas">{t.addPeople}</Link>.
         </p>
       ) : (
         <div role="group" aria-label={legend} className="flex flex-wrap gap-2">
@@ -34,7 +54,7 @@ export function WhoGoes({ people, value, onChange, legend = "¿Quién va?" }: Wh
           ))}
         </div>
       )}
-      <p className="m-0 text-[13px] text-muted">Solo quien va ve el viaje en el sitio, vota y comenta. Puedes cambiarlo luego en Personas.</p>
+      <p className="m-0 text-[13px] text-muted">{t.onlyThem}</p>
     </Fieldset>
   );
 }

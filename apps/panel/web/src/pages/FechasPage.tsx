@@ -4,6 +4,7 @@ import {
   MIN_DATE_OPTIONS,
   addDaysIso,
   answeredAll,
+  copy,
   dateAnswerLabel,
   avatarTint,
   bestDateOptions,
@@ -35,6 +36,7 @@ import {
   TrashIcon,
   cn,
   pickRange,
+  useCopy,
   useToast,
   type BadgeTone,
   type DateRange,
@@ -46,13 +48,168 @@ import { TripDates, datesSummary } from "../components/TripDates.tsx";
 import type { DatesPage, DateWindow } from "../data/backend.ts";
 import { useLoad, usePanel, usePlan } from "../data/store.tsx";
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-const nights = (w: DateWindow) => plural(nightsOf(w), "noche", "noches");
+const COPY = copy({
+  es: {
+    title: "Fechas",
+    changed: "Fechas cambiadas",
+    proposed: "Fechas propuestas",
+    pasteIntro: "Pega este mensaje en el grupo. Lleva la dirección de la votación y las invitaciones de quien aún no ha entrado.",
+    chosenToast: (range: string) => `Fechas elegidas: ${range}`,
+    failed: (msg: string) => `No se pudo: ${msg}`,
+    removedToast: "Votación de fechas quitada",
+    subtitleDecided: (name: string) => `${name} · fechas decididas`,
+    subtitleNone: (name: string) => `${name} · fíjalas, o propón varias y la cuadrilla dice cuáles le vienen bien`,
+    subtitleOpen: (name: string, answered: number, total: number, deadline: string | null) =>
+      `${name} · ${answered} de ${total} han respondido${deadline ? ` · responder antes del ${deadline}` : ""}`,
+    refresh: "Actualizar",
+    changeDates: "Cambiar fechas",
+    reminderTitle: "Recordatorio",
+    reminderIntro: "Nombra a quien falta por responder.",
+    remind: "Recordar a quien falta",
+    decided: "Fechas decididas",
+    pasteShort: "Pega este mensaje en el grupo.",
+    announce: "Anunciar las fechas",
+    loadError: "No se pudieron leer las fechas del sitio:",
+    retry: "Reintentar",
+    orPropose: "O propón varias y que la cuadrilla diga cuáles le vienen bien",
+    saveChanges: "Guardar cambios",
+    reopen: "Volver a abrir",
+    proposeDates: "Proponer fechas",
+    chosen: "Fechas elegidas",
+    chosenNote: (nights: string) => `${nights} · el viaje ya tiene estas fechas. Los precios comprobados para otras se marcan para volver a mirarlos.`,
+    everyoneSees: "Todos los del viaje ven esta tabla en el sitio. Responder no cierra nada: las fechas se deciden cuando eliges unas.",
+    removeVote: "Quitar la votación de fechas",
+    chooseTitle: (range: string) => `¿Elegir ${range}?`,
+    choosing: "Eligiendo…",
+    chooseThese: "Elegir estas fechas",
+    chooseText: "El viaje pasa a estas fechas, aquí y en el sitio, y la votación de fechas se cierra. Los precios comprobados para otras fechas quedarán marcados para volver a comprobarlos.",
+    removeTitle: "¿Quitar la votación de fechas?",
+    removing: "Quitando…",
+    remove: "Quitar",
+    removeText: "Se borran las opciones y lo que ha respondido cada uno. Las fechas del viaje no cambian.",
+    nights: (n: number) => `${n} ${n === 1 ? "noche" : "noches"}`,
+    undecidedToast: "Las fechas vuelven a estar por decidir",
+    noVote: (nights: string) => `${nights} · sin votación`,
+    redecide: "Volver a decidirlas",
+    changeTheDates: "Cambiar las fechas",
+    knowDates: "¿Ya sabéis las fechas?",
+    settleHint: "Elige la ida y la vuelta y fíjalas: no hace falta votar. Los precios comprobados para otras fechas se marcan para volver a mirarlos.",
+    cancel: "Cancelar",
+    fixedToast: (range: string) => `Fechas fijadas: ${range}`,
+    saving: "Guardando…",
+    fixThese: "Fijar estas fechas",
+    leading: "Van ganando",
+    tied: "Van empatadas",
+    nobodyYet: "Todavía no ha respondido nadie",
+    counts: (yes: number, maybe: number, no: number) => `${yes} sí · ${maybe} si hace falta · ${no} no`,
+    caption: "Quién puede cuándo",
+    person: "Persona",
+    chosenBadge: "Elegidas",
+    best: "Las mejores",
+    note: (note: string) => `«${note}»`,
+    noAnswer: "Sin responder",
+    total: "En total",
+    choose: "Elegir",
+    chooseAria: (range: string) => `Elegir ${range}`,
+    minError: (n: number) => `Añade al menos ${n} opciones`,
+    section: "Votación de fechas",
+    pick: "Elige unas fechas",
+    atMost: (n: number) => `Como mucho ${n} opciones`,
+    already: "Ya está entre las opciones",
+    addThese: "Añadir estas fechas",
+    options: "Opciones",
+    optionsHint: (min: number, max: number) =>
+      `De ${min} a ${max}. Cada uno dirá, para cada una, Sí, Si hace falta o No. Cuando elijas unas, el viaje tomará esas fechas.`,
+    fromTo: (from: string, to: string, nights: string) => `Del ${from} al ${to} · ${nights}`,
+    removeAria: (label: string) => `Quitar ${label}`,
+    empty: "Todavía no hay opciones: elige la primera en el calendario.",
+    deadline: "Responder antes del (opcional)",
+    reopenNotice: "Al guardar, la votación de fechas se abre otra vez. Las fechas del viaje no cambian hasta que elijas unas.",
+  },
+  en: {
+    title: "Dates",
+    changed: "Dates changed",
+    proposed: "Dates proposed",
+    pasteIntro: "Paste this message into the group. It has the link to the vote and invitations for anyone who hasn't joined yet.",
+    chosenToast: (range: string) => `Dates chosen: ${range}`,
+    failed: (msg: string) => `Couldn't do it: ${msg}`,
+    removedToast: "Dates vote removed",
+    subtitleDecided: (name: string) => `${name} · dates decided`,
+    subtitleNone: (name: string) => `${name} · set them, or propose a few and the group says which suit them`,
+    subtitleOpen: (name: string, answered: number, total: number, deadline: string | null) =>
+      `${name} · ${answered} of ${total} have answered${deadline ? ` · answer by ${deadline}` : ""}`,
+    refresh: "Refresh",
+    changeDates: "Change dates",
+    reminderTitle: "Reminder",
+    reminderIntro: "It names whoever still has to answer.",
+    remind: "Remind the rest",
+    decided: "Dates decided",
+    pasteShort: "Paste this message into the group.",
+    announce: "Announce the dates",
+    loadError: "Couldn't read the dates from the site:",
+    retry: "Try again",
+    orPropose: "Or propose a few and let the group say which suit them",
+    saveChanges: "Save changes",
+    reopen: "Reopen",
+    proposeDates: "Propose dates",
+    chosen: "Chosen dates",
+    chosenNote: (nights: string) => `${nights} · the trip now has these dates. Prices checked for other dates are marked to be checked again.`,
+    everyoneSees: "Everyone on the trip sees this table on the site. Answering doesn't settle anything: the dates are decided when you choose some.",
+    removeVote: "Remove the dates vote",
+    chooseTitle: (range: string) => `Choose ${range}?`,
+    choosing: "Choosing…",
+    chooseThese: "Choose these dates",
+    chooseText: "The trip moves to these dates, here and on the site, and the dates vote closes. Prices checked for other dates will be marked to be checked again.",
+    removeTitle: "Remove the dates vote?",
+    removing: "Removing…",
+    remove: "Remove",
+    removeText: "The options and everyone's answers are deleted. The trip's dates don't change.",
+    nights: (n: number) => `${n} ${n === 1 ? "night" : "nights"}`,
+    undecidedToast: "The dates are undecided again",
+    noVote: (nights: string) => `${nights} · no vote`,
+    redecide: "Decide them again",
+    changeTheDates: "Change the dates",
+    knowDates: "Already know the dates?",
+    settleHint: "Pick the outbound and return days and set them: no need to vote. Prices checked for other dates are marked to be checked again.",
+    cancel: "Cancel",
+    fixedToast: (range: string) => `Dates set: ${range}`,
+    saving: "Saving…",
+    fixThese: "Set these dates",
+    leading: "In the lead",
+    tied: "Tied",
+    nobodyYet: "Nobody has answered yet",
+    counts: (yes: number, maybe: number, no: number) => `${yes} yes · ${maybe} if need be · ${no} no`,
+    caption: "Who can go when",
+    person: "Person",
+    chosenBadge: "Chosen",
+    best: "The best",
+    note: (note: string) => `“${note}”`,
+    noAnswer: "Not answered",
+    total: "In total",
+    choose: "Choose",
+    chooseAria: (range: string) => `Choose ${range}`,
+    minError: (n: number) => `Add at least ${n} options`,
+    section: "Dates vote",
+    pick: "Pick some dates",
+    atMost: (n: number) => `${n} options at most`,
+    already: "Already one of the options",
+    addThese: "Add these dates",
+    options: "Options",
+    optionsHint: (min: number, max: number) =>
+      `${min} to ${max}. For each one, everyone will say Yes, If need be or No. When you choose one, the trip takes those dates.`,
+    fromTo: (from: string, to: string, nights: string) => `${from} to ${to} · ${nights}`,
+    removeAria: (label: string) => `Remove ${label}`,
+    empty: "No options yet: pick the first one on the calendar.",
+    deadline: "Answer by (optional)",
+    reopenNotice: "Saving opens the dates vote again. The trip's dates don't change until you choose some.",
+  },
+});
 
 // Cuándo (ROADMAP 2.1): propose 2–5 date windows, see who can go when, and
 // choose. Choosing gives the trip those dates, here and on the site.
 export function FechasPage() {
   const { state, dates, proposeDates, chooseDates, cancelDates, fixDates, now } = usePanel();
+  const t = useCopy(COPY);
   const plan = usePlan();
   const toast = useToast();
   // Shown at once from the last visit, and read again (see useLoad).
@@ -74,8 +231,8 @@ export function FechasPage() {
     setPage(next);
     setEditing(false);
     setMessage({
-      title: view ? "Fechas cambiadas" : "Fechas propuestas",
-      intro: "Pega este mensaje en el grupo. Lleva la dirección de la votación y las invitaciones de quien aún no ha entrado.",
+      title: view ? t.changed : t.proposed,
+      intro: t.pasteIntro,
       text: next.message,
     });
   };
@@ -85,10 +242,10 @@ export function FechasPage() {
     setBusy(true);
     try {
       setPage(await chooseDates(choosing.id));
-      toast(`Fechas elegidas: ${rangeLabel(choosing.dateFrom, choosing.dateTo)}`);
+      toast(t.chosenToast(rangeLabel(choosing.dateFrom, choosing.dateTo)));
       setChoosing(null);
     } catch (e) {
-      toast(`No se pudo: ${(e as Error).message}`);
+      toast(t.failed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -98,10 +255,10 @@ export function FechasPage() {
     setBusy(true);
     try {
       setPage(await cancelDates());
-      toast("Votación de fechas quitada");
+      toast(t.removedToast);
       setRemoving(false);
     } catch (e) {
-      toast(`No se pudo: ${(e as Error).message}`);
+      toast(t.failed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -114,37 +271,37 @@ export function FechasPage() {
     <PanelShell>
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-[26px] px-4 py-8 sm:px-8">
         <PageHeader
-          title="Fechas"
+          title={t.title}
           subtitle={
             !view
               ? state.datesDecided
-                ? `${plan.name} · fechas decididas`
-                : `${plan.name} · fíjalas, o propón varias y la cuadrilla dice cuáles le vienen bien`
+                ? t.subtitleDecided(plan.name)
+                : t.subtitleNone(plan.name)
               : open
-                ? `${plan.name} · ${answered} de ${page!.people.length} han respondido${view.deadline ? ` · responder antes del ${deadlineLabel(view.deadline)}` : ""}`
-                : `${plan.name} · fechas decididas`
+                ? t.subtitleOpen(plan.name, answered, page!.people.length, view.deadline ? deadlineLabel(view.deadline) : null)
+                : t.subtitleDecided(plan.name)
           }
           actions={
             view && !editing ? (
               <div className="flex flex-wrap gap-2">
                 {open && (
                   <Button variant="ghost" onClick={() => void load()}>
-                    Actualizar
+                    {t.refresh}
                   </Button>
                 )}
-                <Button onClick={() => setEditing(true)}>Cambiar fechas</Button>
+                <Button onClick={() => setEditing(true)}>{t.changeDates}</Button>
                 {open ? (
                   <Button
                     variant="primary"
                     disabled={!page?.reminder}
-                    onClick={() => setMessage({ title: "Recordatorio", intro: "Nombra a quien falta por responder.", text: page!.reminder! })}
+                    onClick={() => setMessage({ title: t.reminderTitle, intro: t.reminderIntro, text: page!.reminder! })}
                   >
-                    Recordar a quien falta
+                    {t.remind}
                   </Button>
                 ) : (
                   page?.announcement && (
-                    <Button variant="primary" onClick={() => setMessage({ title: "Fechas decididas", intro: "Pega este mensaje en el grupo.", text: page.announcement! })}>
-                      Anunciar las fechas
+                    <Button variant="primary" onClick={() => setMessage({ title: t.decided, intro: t.pasteShort, text: page.announcement! })}>
+                      {t.announce}
                     </Button>
                   )
                 )}
@@ -155,9 +312,9 @@ export function FechasPage() {
 
         {error && (
           <Notice role="alert">
-            No se pudieron leer las fechas del sitio: {error}{" "}
+            {t.loadError} {error}{" "}
             <button type="button" onClick={() => void load()} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent">
-              Reintentar
+              {t.retry}
             </button>
           </Notice>
         )}
@@ -170,7 +327,7 @@ export function FechasPage() {
 
         {page && !view && !editing && !state.datesDecided && (
           <Heading as="h2" size="subheading" className="-mb-2">
-            O propón varias y que la cuadrilla diga cuáles le vienen bien
+            {t.orPropose}
           </Heading>
         )}
 
@@ -181,7 +338,7 @@ export function FechasPage() {
             initialDeadline={view?.deadline ?? null}
             today={today}
             reopening={!!view && !open}
-            submitLabel={view ? (open ? "Guardar cambios" : "Volver a abrir") : "Proponer fechas"}
+            submitLabel={view ? (open ? t.saveChanges : t.reopen) : t.proposeDates}
             onSubmit={propose}
             onCancel={view ? () => setEditing(false) : undefined}
           />
@@ -192,10 +349,10 @@ export function FechasPage() {
             <Card variant="raised" className="flex flex-wrap items-end justify-between gap-3">
               {chosen ? (
                 <div className="flex flex-col gap-1">
-                  <span className="text-sm font-bold text-muted uppercase">Fechas elegidas</span>
+                  <span className="text-sm font-bold text-muted uppercase">{t.chosen}</span>
                   <Heading size="headline">{rangeLabel(chosen.dateFrom, chosen.dateTo)}</Heading>
                   <span className="text-sm text-muted">
-                    {nights(chosen)} · el viaje ya tiene estas fechas. Los precios comprobados para otras se marcan para volver a mirarlos.
+                    {t.chosenNote(t.nights(nightsOf(chosen)))}
                   </span>
                 </div>
               ) : (
@@ -207,10 +364,10 @@ export function FechasPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-faint pt-4">
               <span className="text-[13px] text-muted">
-                Todos los del viaje ven esta tabla en el sitio. Responder no cierra nada: las fechas se deciden cuando eliges unas.
+                {t.everyoneSees}
               </span>
               <Button variant="ghost" onClick={() => setRemoving(true)}>
-                Quitar la votación de fechas
+                {t.removeVote}
               </Button>
             </div>
           </>
@@ -219,26 +376,25 @@ export function FechasPage() {
 
       <Dialog
         open={choosing !== null}
-        title={choosing ? `¿Elegir ${rangeLabel(choosing.dateFrom, choosing.dateTo)}?` : ""}
-        confirmLabel={busy ? "Eligiendo…" : "Elegir estas fechas"}
+        title={choosing ? t.chooseTitle(rangeLabel(choosing.dateFrom, choosing.dateTo)) : ""}
+        confirmLabel={busy ? t.choosing : t.chooseThese}
         busy={busy}
         onConfirm={() => void choose()}
         onClose={() => setChoosing(null)}
       >
-        El viaje pasa a estas fechas, aquí y en el sitio, y la votación de fechas se cierra. Los precios comprobados para otras fechas quedarán marcados para volver a
-        comprobarlos.
+        {t.chooseText}
       </Dialog>
 
       <Dialog
         open={removing}
-        title="¿Quitar la votación de fechas?"
-        confirmLabel={busy ? "Quitando…" : "Quitar"}
+        title={t.removeTitle}
+        confirmLabel={busy ? t.removing : t.remove}
         tone="warning"
         busy={busy}
         onConfirm={() => void remove()}
         onClose={() => setRemoving(false)}
       >
-        Se borran las opciones y lo que ha respondido cada uno. Las fechas del viaje no cambian.
+        {t.removeText}
       </Dialog>
 
       {message && <MessageDialog open title={message.title} intro={message.intro} message={message.text} onClose={() => setMessage(null)} />}
@@ -250,6 +406,7 @@ export function FechasPage() {
 // "Ya sabemos las fechas": the organiser settles them without a vote, and
 // Cuándo is done. Once settled, they can be changed or talked about again.
 function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { dateFrom: string; dateTo: string }; min: string; onFix: (w: DateWindow | null) => Promise<void> }) {
+  const t = useCopy(COPY);
   const toast = useToast();
   const [changing, setChanging] = useState(false);
   const [range, setRange] = useState<DateRange>({ start: plan.dateFrom, end: plan.dateTo });
@@ -261,7 +418,7 @@ function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { 
       setChanging(false);
       toast(done);
     } catch (e) {
-      toast(`No se pudo: ${(e as Error).message}`);
+      toast(t.failed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -271,15 +428,15 @@ function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { 
     return (
       <Card variant="raised" className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <span className="text-sm font-bold text-muted uppercase">Fechas decididas</span>
+          <span className="text-sm font-bold text-muted uppercase">{t.decided}</span>
           <Heading size="headline">{rangeLabel(plan.dateFrom, plan.dateTo)}</Heading>
-          <span className="text-sm text-muted">{nights(plan)} · sin votación</span>
+          <span className="text-sm text-muted">{t.noVote(t.nights(nightsOf(plan)))}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="ghost" disabled={busy} onClick={() => void run(null, "Las fechas vuelven a estar por decidir")}>
-            Volver a decidirlas
+          <Button variant="ghost" disabled={busy} onClick={() => void run(null, t.undecidedToast)}>
+            {t.redecide}
           </Button>
-          <Button onClick={() => setChanging(true)}>Cambiar fechas</Button>
+          <Button onClick={() => setChanging(true)}>{t.changeDates}</Button>
         </div>
       </Card>
     );
@@ -289,21 +446,21 @@ function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { 
     <Card variant="raised" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <Heading as="h2" size="subheading">
-          {changing ? "Cambiar las fechas" : "¿Ya sabéis las fechas?"}
+          {changing ? t.changeTheDates : t.knowDates}
         </Heading>
-        <span className="text-sm text-muted">Elige la ida y la vuelta y fíjalas: no hace falta votar. Los precios comprobados para otras fechas se marcan para volver a mirarlos.</span>
+        <span className="text-sm text-muted">{t.settleHint}</span>
       </div>
       <div className="max-w-[440px]">
         <TripDates value={range} onChange={setRange} min={min} />
       </div>
       <div className="flex flex-wrap gap-2">
-        {changing && <Button onClick={() => setChanging(false)}>Cancelar</Button>}
+        {changing && <Button onClick={() => setChanging(false)}>{t.cancel}</Button>}
         <Button
           variant="primary"
           disabled={busy || !ready}
-          onClick={() => ready && void run({ dateFrom: range.start!, dateTo: range.end! }, `Fechas fijadas: ${rangeLabel(range.start!, range.end!)}`)}
+          onClick={() => ready && void run({ dateFrom: range.start!, dateTo: range.end! }, t.fixedToast(rangeLabel(range.start!, range.end!)))}
         >
-          {busy ? "Guardando…" : "Fijar estas fechas"}
+          {busy ? t.saving : t.fixThese}
         </Button>
       </div>
     </Card>
@@ -311,13 +468,14 @@ function SettleDates({ decided, plan, min, onFix }: { decided: boolean; plan: { 
 }
 
 function BestSoFar({ view }: { view: DatesView }) {
+  const t = useCopy(COPY);
   const best = bestDateOptions(view);
   const counts = new Map(dateCounts(view).map((c) => [c.id, c]));
   if (!best.length) {
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-sm font-bold text-muted uppercase">Van ganando</span>
-        <Heading size="subheading">Todavía no ha respondido nadie</Heading>
+        <span className="text-sm font-bold text-muted uppercase">{t.leading}</span>
+        <Heading size="subheading">{t.nobodyYet}</Heading>
       </div>
     );
   }
@@ -328,11 +486,9 @@ function BestSoFar({ view }: { view: DatesView }) {
   const c = counts.get(best[0]!)!;
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-sm font-bold text-muted uppercase">{best.length > 1 ? "Van empatadas" : "Van ganando"}</span>
+      <span className="text-sm font-bold text-muted uppercase">{best.length > 1 ? t.tied : t.leading}</span>
       <Heading size="headline">{labels.join(" · ")}</Heading>
-      <span className="text-sm text-muted">
-        {c.yes} sí · {c.maybe} si hace falta · {c.no} no
-      </span>
+      <span className="text-sm text-muted">{t.counts(c.yes, c.maybe, c.no)}</span>
     </div>
   );
 }
@@ -341,29 +497,30 @@ export const ANSWER_TONE: Record<DateAnswer, BadgeTone> = { yes: "accent", maybe
 
 // People by windows: who can go when. The organiser chooses from here.
 function DatesTable({ view, people, onChoose }: { view: DatesView; people: { id: string; name: string }[]; onChoose?: (o: DateOption) => void }) {
+  const t = useCopy(COPY);
   const best = new Set(bestDateOptions(view));
   const counts = new Map(dateCounts(view).map((c) => [c.id, c]));
   const byMember = new Map(view.responses.map((r) => [r.memberId, r]));
   return (
     <Card variant="raised" padding="sm" className="overflow-x-auto">
       <table className="w-full min-w-[560px] border-collapse text-sm">
-        <caption className="sr-only">Quién puede cuándo</caption>
+        <caption className="sr-only">{t.caption}</caption>
         <thead>
           <tr className="text-left align-bottom">
             <th scope="col" className="px-3 py-2.5 text-xs font-bold text-muted uppercase">
-              Persona
+              {t.person}
             </th>
             {view.options.map((o) => (
               <th key={o.id} scope="col" className={cn("px-3 py-2.5", o.id === view.chosenOptionId && "bg-accent-soft")}>
                 <span className="flex flex-col items-start gap-1">
                   <span className="font-bold whitespace-nowrap">{rangeLabel(o.dateFrom, o.dateTo)}</span>
                   <span className="text-xs font-normal text-muted">
-                    {shortDate(o.dateFrom)} · {nights(o)}
+                    {shortDate(o.dateFrom)} · {t.nights(nightsOf(o))}
                   </span>
                   {o.id === view.chosenOptionId ? (
-                    <Badge tone="accent-solid">Elegidas</Badge>
+                    <Badge tone="accent-solid">{t.chosenBadge}</Badge>
                   ) : (
-                    view.status === "open" && best.has(o.id) && <Badge tone="accent">Las mejores</Badge>
+                    view.status === "open" && best.has(o.id) && <Badge tone="accent">{t.best}</Badge>
                   )}
                 </span>
               </th>
@@ -380,8 +537,8 @@ function DatesTable({ view, people, onChoose }: { view: DatesView; people: { id:
                     <Avatar initials={initials(p.name)} name={p.name} tint={avatarTint(p.id)} size="sm" />
                     <span className="flex min-w-0 flex-col">
                       <span className="font-semibold">{p.name}</span>
-                      {r?.note && <span className="text-xs text-muted">«{r.note}»</span>}
-                      {!r && <span className="text-xs text-muted">Sin responder</span>}
+                      {r?.note && <span className="text-xs text-muted">{t.note(r.note)}</span>}
+                      {!r && <span className="text-xs text-muted">{t.noAnswer}</span>}
                     </span>
                   </span>
                 </th>
@@ -400,19 +557,17 @@ function DatesTable({ view, people, onChoose }: { view: DatesView; people: { id:
         <tfoot>
           <tr className="border-t border-line-soft align-top">
             <th scope="row" className="px-3 py-2.5 text-left text-xs font-bold text-muted uppercase">
-              En total
+              {t.total}
             </th>
             {view.options.map((o) => {
               const c = counts.get(o.id)!;
               return (
                 <td key={o.id} className="px-3 py-2.5">
                   <span className="flex flex-col gap-2">
-                    <span className="text-xs text-ink-2 tabular-nums">
-                      {c.yes} sí · {c.maybe} si hace falta · {c.no} no
-                    </span>
+                    <span className="text-xs text-ink-2 tabular-nums">{t.counts(c.yes, c.maybe, c.no)}</span>
                     {onChoose && (
-                      <Button size="sm" onClick={() => onChoose(o)} aria-label={`Elegir ${rangeLabel(o.dateFrom, o.dateTo)}`}>
-                        Elegir
+                      <Button size="sm" onClick={() => onChoose(o)} aria-label={t.chooseAria(rangeLabel(o.dateFrom, o.dateTo))}>
+                        {t.choose}
                       </Button>
                     )}
                   </span>
@@ -444,6 +599,7 @@ function DatesEditor({
   onSubmit: (windows: DateWindow[], deadline: string | null) => Promise<void>;
   onCancel?: () => void;
 }) {
+  const t = useCopy(COPY);
   const min = addDaysIso(today, 1);
   const [windows, setWindows] = useState<DateWindow[]>(initial.map(({ dateFrom, dateTo }) => ({ dateFrom, dateTo })));
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
@@ -467,7 +623,7 @@ function DatesEditor({
   };
 
   const submit = async () => {
-    if (windows.length < MIN_DATE_OPTIONS) return setError(`Añade al menos ${MIN_DATE_OPTIONS} opciones`);
+    if (windows.length < MIN_DATE_OPTIONS) return setError(t.minError(MIN_DATE_OPTIONS));
     setBusy(true);
     setError(null);
     try {
@@ -480,29 +636,27 @@ function DatesEditor({
   };
 
   return (
-    <section aria-label="Votación de fechas" className="grid gap-5 lg:grid-cols-2">
+    <section aria-label={t.section} className="grid gap-5 lg:grid-cols-2">
       <Card variant="raised" className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between gap-3">
-          <Heading size="subheading">Elige unas fechas</Heading>
+          <Heading size="subheading">{t.pick}</Heading>
           <span className="text-sm font-semibold text-accent-strong tabular-nums" aria-live="polite">
             {datesSummary(range)}
           </span>
         </div>
         <Calendar {...month} onMonthChange={setMonth} start={range.start} end={range.end} min={min} onPick={(d) => setRange(pickRange(range, d))} />
         <Button variant="primary" disabled={!picked || !!duplicate || full} onClick={add}>
-          {full ? `Como mucho ${MAX_DATE_OPTIONS} opciones` : duplicate ? "Ya está entre las opciones" : "Añadir estas fechas"}
+          {full ? t.atMost(MAX_DATE_OPTIONS) : duplicate ? t.already : t.addThese}
         </Button>
       </Card>
 
       <Card variant="raised" className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <Heading size="subheading">Opciones</Heading>
-          <span className="text-sm text-muted">
-            De {MIN_DATE_OPTIONS} a {MAX_DATE_OPTIONS}. Cada uno dirá, para cada una, Sí, Si hace falta o No. Cuando elijas unas, el viaje tomará esas fechas.
-          </span>
+          <Heading size="subheading">{t.options}</Heading>
+          <span className="text-sm text-muted">{t.optionsHint(MIN_DATE_OPTIONS, MAX_DATE_OPTIONS)}</span>
         </div>
         {sorted.length ? (
-          <ul aria-label="Opciones" className="m-0 flex list-none flex-col gap-2 p-0">
+          <ul aria-label={t.options} className="m-0 flex list-none flex-col gap-2 p-0">
             {sorted.map((w) => {
               const label = rangeLabel(w.dateFrom, w.dateTo);
               return (
@@ -510,10 +664,10 @@ function DatesEditor({
                   <span className="flex flex-col">
                     <span className="font-semibold">{label}</span>
                     <span className="text-[13px] text-muted">
-                      Del {shortDate(w.dateFrom)} al {shortDate(w.dateTo)} · {nights(w)}
+                      {t.fromTo(shortDate(w.dateFrom), shortDate(w.dateTo), t.nights(nightsOf(w)))}
                     </span>
                   </span>
-                  <IconButton label={`Quitar ${label}`} size="md" onClick={() => setWindows(windows.filter((x) => x !== w))}>
+                  <IconButton label={t.removeAria(label)} size="md" onClick={() => setWindows(windows.filter((x) => x !== w))}>
                     <TrashIcon size={16} />
                   </IconButton>
                 </li>
@@ -521,17 +675,17 @@ function DatesEditor({
             })}
           </ul>
         ) : (
-          <p className="m-0 rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-muted">Todavía no hay opciones: elige la primera en el calendario.</p>
+          <p className="m-0 rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-muted">{t.empty}</p>
         )}
-        <Field label="Responder antes del (opcional)" aside={deadline ? deadlineLabel(new Date(`${deadline}T23:59:00`).toISOString()) : undefined}>
+        <Field label={t.deadline} aside={deadline ? deadlineLabel(new Date(`${deadline}T23:59:00`).toISOString()) : undefined}>
           {({ inputId }) => <TextInput id={inputId} type="date" min={min} value={deadline} onChange={(e) => setDeadline(e.target.value)} />}
         </Field>
-        {reopening && <Notice>Al guardar, la votación de fechas se abre otra vez. Las fechas del viaje no cambian hasta que elijas unas.</Notice>}
+        {reopening && <Notice>{t.reopenNotice}</Notice>}
         {error && <Notice role="alert">{error}</Notice>}
         <div className="mt-auto flex flex-wrap justify-end gap-2 border-t border-line-faint pt-3.5">
-          {onCancel && <Button onClick={onCancel}>Cancelar</Button>}
+          {onCancel && <Button onClick={onCancel}>{t.cancel}</Button>}
           <Button variant="primary" disabled={busy || windows.length < MIN_DATE_OPTIONS} onClick={() => void submit()}>
-            {busy ? "Guardando…" : submitLabel}
+            {busy ? t.saving : submitLabel}
           </Button>
         </div>
       </Card>
