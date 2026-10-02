@@ -5,6 +5,8 @@ import {
   allLeaveApproved,
   leaveCounts,
   checkedLabel,
+  copy,
+  pick,
   longDate,
   rangeLabel,
   trustState,
@@ -32,6 +34,7 @@ import {
   TrashIcon,
   buttonClasses,
   cn,
+  useCopy,
   useToast,
 } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
@@ -41,16 +44,232 @@ import { PriceDialog } from "../components/PriceDialog.tsx";
 import type { ScreenshotImage, SearchStep, TripView } from "../data/backend.ts";
 import { useLoad, usePanel, usePlan } from "../data/store.tsx";
 
-const MODES: { value: TransportMode; label: string }[] = [
-  { value: "car", label: "Coche" },
-  { value: "bus", label: "Autobús" },
-  { value: "train", label: "Tren" },
-  { value: "metro", label: "Metro" },
-  { value: "taxi", label: "Taxi" },
-  { value: "shuttle", label: "Lanzadera" },
-  { value: "walk", label: "Andando" },
-  { value: "other", label: "Otro" },
-];
+const COPY = copy({
+  es: {
+    modes: { car: "Coche", bus: "Autobús", train: "Tren", metro: "Metro", taxi: "Taxi", shuttle: "Lanzadera", walk: "Andando", other: "Otro" } as Record<TransportMode, string>,
+    searching: (q: string) => `Buscando «${q}»`,
+    reading: (host: string) => `Leyendo ${host}`,
+    prepareFailed: (msg: string) => `No se pudo preparar: ${msg}`,
+    saved: "Cambios guardados",
+    saveFailed: (msg: string) => `No se pudo guardar: ${msg}`,
+    published: "Página del viaje publicada",
+    unpublished: "Página del viaje retirada del sitio",
+    failed: (msg: string) => `No se pudo: ${msg}`,
+    title: "El viaje",
+    noDestination: "Todavía no hay destino decidido",
+    goVote: "Ir a Votación",
+    noDestinationText: "Cuando la votación se cierre y el destino esté decidido, aquí prepararás la página del viaje para el grupo.",
+    saveAndPublish: "Guardar y publicar",
+    publishChanges: "Publicar cambios",
+    isPublished: "Publicada",
+    publishTrip: "Publicar el viaje",
+    unpublish: "Retirar del sitio",
+    loadFailed: (msg: string) => `No se pudo cargar el viaje: ${msg}`,
+    retry: "Reintentar",
+    beforePublishing: "Antes de publicar",
+    decided: (city: string) => `Destino decidido: ${city}`,
+    allLeave: "Todos tienen los días libres",
+    leaveCount: (approved: number, of: number) => `Días libres: ${approved} de ${of} aprobados`,
+    leaveDenied: (names: string[]) => `A ${names.join(" y ")} no le dan los días: habladlo antes de reservar.`,
+    leaveMissing: (names: string[]) => `Falta ${names.join(", ")}. Mejor no reservar nada hasta que estén todos.`,
+    seeMissing: "Ver quién falta",
+    pricesApi: "Precios comprobados con la API de vuelos",
+    pricesChecked: (label: string | null) => (label ? `Precios comprobados · ${label}` : "Precios comprobados"),
+    checkPrices: "Comprueba los precios de vuelos y alojamiento",
+    yourBrowser: "tu navegador",
+    lookingFlights: (ai: string, browser: string, step: string | null) => `${ai} está mirando Google Flights en una ventana de ${browser}${step ? ` · ${step}` : ""}`,
+    pricesAsIs: "La página del viaje los muestra tal cual.",
+    pricesBrowse: (ai: string) => `Ahora son los de ${ai} o de otras fechas. ${ai} trae de Google Flights los mejores vuelos para que elijas uno; el alojamiento míralo en Airbnb, o pega una captura.`,
+    pricesHand: (ai: string) => `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`,
+    checking: "Comprobando…",
+    checkAgain: "Comprobar vuelos otra vez",
+    checkFlights: "Comprobar vuelos",
+    changePrices: "Cambiar precios",
+    byHand: "Ponerlos a mano",
+    aiPreparing: (ai: string) => `${ai} está preparando la guía`,
+    guidePrepared: (date: string) => `Guía preparada el ${date}`,
+    guideByHand: "Guía escrita a mano",
+    prepareGuide: "Prepara la guía",
+    reviewGuide: "Revísala abajo: quita lo que no encaje y añade la dirección, la hora de entrada y el Tricount.",
+    aiSearches: (ai: string) => `${ai} busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice.`,
+    prepareAgain: "Volver a preparar",
+    leavingFrom: "Salís desde",
+    homePlaceholder: "Logroño",
+    prepareWith: (ai: string) => `Preparar con ${ai}`,
+    writeByHand: "Escribirla a mano",
+    close: "Cerrar",
+    tryAgain: "Volver a probar",
+    unpublishedChanges: "Hay cambios sin publicar",
+    publishedOnSite: "Publicada en el sitio",
+    publishForGroup: "Publícala para el grupo",
+    behind: "Algo cambió desde que la publicaste (precios, fechas o la guía), y el grupo aún ve lo de antes.",
+    unsaved: "Cambios sin guardar",
+    discard: "Descartar",
+    saveChanges: "Guardar cambios",
+    prepareAgainQ: "¿Volver a preparar la guía?",
+    replaces: "Sustituye la guía de ahora. La dirección, las horas y el Tricount se quedan.",
+    leavingFromOptional: "Salís desde (opcional)",
+    toAirport: "Para ir al aeropuerto",
+    pricesSaved: (city: string) => `${city}: precios comprobados`,
+    progress: "Progreso",
+    startingWeb: "Empezando a buscar en la web…",
+    starting: "Empezando…",
+    takesMinutes: "Tarda unos minutos. Puedes seguir por el panel: te avisamos al terminar.",
+    hideSteps: "Ocultar lo que hace",
+    showSteps: (n: number) => `Ver lo que hace (${n})`,
+    running: " (en marcha)",
+    done: " (hecho)",
+    pending: " (pendiente)",
+    intro: "Presentación",
+    introHint: (city: string) => `Dos o tres frases sobre ${city}. Van arriba del todo.`,
+    stay: "Alojamiento y dinero",
+    stayHint: "Lo que la IA no sabe: dónde está exactamente, a qué hora se entra y el Tricount del grupo.",
+    address: "Dirección",
+    checkIn: "Entrada",
+    checkOut: "Salida",
+    tricount: "Enlace del Tricount (opcional)",
+    tricountAside: "Las cuentas del viaje siguen en Tricount",
+    tricountHttps: "Tiene que empezar por https://",
+    gettingThere: "Cómo llegar",
+    gettingThereHint: "Precios por persona, aproximados. El sitio avisa de que hay que confirmarlos.",
+    home: "casa",
+    toAirportTitle: (home: string, code: string) => `De ${home} al aeropuerto (${code})`,
+    fromAirportTitle: (code: string) => `Del aeropuerto (${code}) al alojamiento`,
+    todo: "Qué hacer",
+    todoHint: "Cosas concretas, con lo que cuestan por persona. Sin horarios: es un empujón, no un plan.",
+    food: "Qué comer",
+    foodHint: "Y dónde es típico probarlo.",
+    sights: "Sitios que ver",
+    beforeYouGo: "Antes de ir",
+    beforeYouGoHint: "El país en pocas líneas: dinero, enchufes, propinas, transporte, de qué tener cuidado.",
+    sources: (by: string) => `Fuentes de ${by}:`,
+    nothingYet: "Nada todavía.",
+    itemTitle: (label: string, n: number) => `${label} ${n}: título`,
+    itemDetail: (label: string, n: number) => `${label} ${n}: detalle`,
+    itemPrice: (label: string, n: number) => `${label} ${n}: € por persona`,
+    itemWhere: (label: string, n: number) => `${label} ${n}: dónde`,
+    itemMode: (label: string, n: number) => `${label} ${n}: medio`,
+    itemMinutes: (label: string, n: number) => `${label} ${n}: minutos`,
+    where: "Dónde",
+    remove: (what: string) => `Quitar ${what}`,
+    nth: (label: string, n: number) => `${label} ${n}`,
+    add: "Añadir",
+    addOption: "Añadir una opción",
+  },
+  en: {
+    modes: { car: "Car", bus: "Bus", train: "Train", metro: "Metro", taxi: "Taxi", shuttle: "Shuttle", walk: "On foot", other: "Other" },
+    searching: (q: string) => `Searching “${q}”`,
+    reading: (host: string) => `Reading ${host}`,
+    prepareFailed: (msg: string) => `Couldn't prepare it: ${msg}`,
+    saved: "Changes saved",
+    saveFailed: (msg: string) => `Couldn't save: ${msg}`,
+    published: "Trip page published",
+    unpublished: "Trip page taken off the site",
+    failed: (msg: string) => `That didn't work: ${msg}`,
+    title: "The trip",
+    noDestination: "No destination decided yet",
+    goVote: "Go to Vote",
+    noDestinationText: "Once the vote closes and the destination is decided, this is where you'll prepare the trip page for the group.",
+    saveAndPublish: "Save and publish",
+    publishChanges: "Publish changes",
+    isPublished: "Published",
+    publishTrip: "Publish the trip",
+    unpublish: "Take off the site",
+    loadFailed: (msg: string) => `Couldn't load the trip: ${msg}`,
+    retry: "Retry",
+    beforePublishing: "Before publishing",
+    decided: (city: string) => `Destination decided: ${city}`,
+    allLeave: "Everyone has the days off",
+    leaveCount: (approved: number, of: number) => `Days off: ${approved} of ${of} approved`,
+    leaveDenied: (names: string[]) => `${names.join(" and ")} can't get the days off: talk it over before booking.`,
+    leaveMissing: (names: string[]) => `Still waiting on ${names.join(", ")}. Best not to book anything until everyone has them.`,
+    seeMissing: "See who's missing",
+    pricesApi: "Prices checked with the flights API",
+    pricesChecked: (label: string | null) => (label ? `Prices checked · ${label}` : "Prices checked"),
+    checkPrices: "Check the flight and accommodation prices",
+    yourBrowser: "your browser",
+    lookingFlights: (ai: string, browser: string, step: string | null) => `${ai} is looking at Google Flights in a ${browser} window${step ? ` · ${step}` : ""}`,
+    pricesAsIs: "The trip page shows them as they are.",
+    pricesBrowse: (ai: string) => `For now they're ${ai}'s or for other dates. ${ai} fetches the best flights from Google Flights for you to pick one; check the accommodation on Airbnb, or paste a screenshot.`,
+    pricesHand: (ai: string) => `For now they're ${ai}'s or for other dates. Look up the real flight and accommodation, and paste the screenshots.`,
+    checking: "Checking…",
+    checkAgain: "Check flights again",
+    checkFlights: "Check flights",
+    changePrices: "Change prices",
+    byHand: "Enter them by hand",
+    aiPreparing: (ai: string) => `${ai} is preparing the guide`,
+    guidePrepared: (date: string) => `Guide prepared on ${date}`,
+    guideByHand: "Guide written by hand",
+    prepareGuide: "Prepare the guide",
+    reviewGuide: "Review it below: remove what doesn't fit and add the address, check-in time and the Tricount.",
+    aiSearches: (ai: string) => `${ai} looks up what to do, what to eat, what to see, what to know before you go and how to get there. Its prices are approximate and the site says so.`,
+    prepareAgain: "Prepare again",
+    leavingFrom: "Leaving from",
+    homePlaceholder: "Logroño",
+    prepareWith: (ai: string) => `Prepare with ${ai}`,
+    writeByHand: "Write it by hand",
+    close: "Close",
+    tryAgain: "Try again",
+    unpublishedChanges: "There are unpublished changes",
+    publishedOnSite: "Published on the site",
+    publishForGroup: "Publish it for the group",
+    behind: "Something changed since you published it (prices, dates or the guide), and the group still sees the old version.",
+    unsaved: "Unsaved changes",
+    discard: "Discard",
+    saveChanges: "Save changes",
+    prepareAgainQ: "Prepare the guide again?",
+    replaces: "It replaces the current guide. The address, times and Tricount stay.",
+    leavingFromOptional: "Leaving from (optional)",
+    toAirport: "For getting to the airport",
+    pricesSaved: (city: string) => `${city}: prices checked`,
+    progress: "Progress",
+    startingWeb: "Starting to search the web…",
+    starting: "Starting…",
+    takesMinutes: "It takes a few minutes. You can carry on around the panel: we'll let you know when it's done.",
+    hideSteps: "Hide what it's doing",
+    showSteps: (n: number) => `See what it's doing (${n})`,
+    running: " (in progress)",
+    done: " (done)",
+    pending: " (pending)",
+    intro: "Introduction",
+    introHint: (city: string) => `Two or three sentences about ${city}. They go right at the top.`,
+    stay: "Accommodation and money",
+    stayHint: "What the AI doesn't know: exactly where it is, what time check-in is and the group's Tricount.",
+    address: "Address",
+    checkIn: "Check-in",
+    checkOut: "Check-out",
+    tricount: "Tricount link (optional)",
+    tricountAside: "The trip's accounts stay in Tricount",
+    tricountHttps: "It has to start with https://",
+    gettingThere: "Getting there",
+    gettingThereHint: "Prices per person, approximate. The site warns they need confirming.",
+    home: "home",
+    toAirportTitle: (home: string, code: string) => `From ${home} to the airport (${code})`,
+    fromAirportTitle: (code: string) => `From the airport (${code}) to the accommodation`,
+    todo: "What to do",
+    todoHint: "Specific things, with what they cost per person. No timetables: it's a nudge, not a plan.",
+    food: "What to eat",
+    foodHint: "And where it's typical to try it.",
+    sights: "Places to see",
+    beforeYouGo: "Before you go",
+    beforeYouGoHint: "The country in a few lines: money, plugs, tipping, transport, what to watch out for.",
+    sources: (by: string) => `${by}'s sources:`,
+    nothingYet: "Nothing yet.",
+    itemTitle: (label: string, n: number) => `${label} ${n}: title`,
+    itemDetail: (label: string, n: number) => `${label} ${n}: details`,
+    itemPrice: (label: string, n: number) => `${label} ${n}: € per person`,
+    itemWhere: (label: string, n: number) => `${label} ${n}: where`,
+    itemMode: (label: string, n: number) => `${label} ${n}: mode`,
+    itemMinutes: (label: string, n: number) => `${label} ${n}: minutes`,
+    where: "Where",
+    remove: (what: string) => `Remove ${what}`,
+    nth: (label: string, n: number) => `${label} ${n}`,
+    add: "Add",
+    addOption: "Add an option",
+  },
+});
+
+const MODES: TransportMode[] = ["car", "bus", "train", "metro", "taxi", "shuttle", "walk", "other"];
 
 const EMPTY: Omit<TripPage, "destinationId"> = {
   intro: "",
@@ -89,8 +308,9 @@ function clean(t: TripPage): TripPage {
 }
 
 function stepText(step: SearchStep): string {
-  if (step.kind === "search") return `Buscando «${step.query}»`;
-  if (step.kind === "read") return `Leyendo ${step.host}`;
+  const t = pick(COPY);
+  if (step.kind === "search") return t.searching(step.query);
+  if (step.kind === "read") return t.reading(step.host);
   return step.text;
 }
 
@@ -103,6 +323,7 @@ export function ViajePage() {
   const { state, trip, prepareTrip, saveTrip, publishTrip, publishStatus, setPrices, extract, browse, takeTask, now, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
+  const t = useCopy(COPY);
   const { data: view, error, reload, set: setView } = useLoad(`trip:${plan.id}:${plan.winnerDestinationId ?? ""}`, trip);
   const [draft, setDraft] = useState<TripPage | null>(view?.trip ?? null);
   const [dirty, setDirty] = useState(false);
@@ -127,15 +348,15 @@ export function ViajePage() {
   }, [job?.status]);
 
   // The guide being prepared here, even if the organiser left and came back.
-  const guide = state.tasks.find((t) => t.kind === "guide" && t.planId === plan.id);
+  const guide = state.tasks.find((k) => k.kind === "guide" && k.planId === plan.id);
   useEffect(() => {
     if (!guide || guide.status === "running") return;
     if (guide.status === "done") {
       // The guide at once; the page read again behind it.
-      const t = guide.result as TripPage | undefined;
-      if (t && view) setView({ ...view, trip: t });
+      const ready = guide.result as TripPage | undefined;
+      if (ready && view) setView({ ...view, trip: ready });
       setDirty(false);
-      if (t) setDraft(t);
+      if (ready) setDraft(ready);
       void reload();
       takeTask(guide.id);
     }
@@ -150,13 +371,13 @@ export function ViajePage() {
 
   // The panel's own copy, so checked prices show at once.
   const destination = view?.destination ? (state.proposals.find((p) => p.id === view.destination!.id) ?? view.destination) : null;
-  const readings = destination ? state.tasks.filter((t) => t.kind === "browse" && t.planId === plan.id && t.proposalId === destination.id) : [];
-  const reading = readings.find((t) => t.status === "running");
+  const readings = destination ? state.tasks.filter((k) => k.kind === "browse" && k.planId === plan.id && k.proposalId === destination.id) : [];
+  const reading = readings.find((k) => k.status === "running");
   // A reading that finished opens the prices to review and save.
   useEffect(() => {
-    if (readings.some((t) => t.status !== "running")) setPricing(true);
+    if (readings.some((k) => k.status !== "running")) setPricing(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readings.map((t) => `${t.id}:${t.status}`).join()]);
+  }, [readings.map((k) => `${k.id}:${k.status}`).join()]);
 
   // Days off: before booking anything, everyone should have them.
   const leave = useLeave().data?.leave;
@@ -190,7 +411,7 @@ export function ViajePage() {
     try {
       await prepareTrip(home.trim());
     } catch (e) {
-      toast(`No se pudo preparar: ${(e as Error).message}`);
+      toast(t.prepareFailed((e as Error).message));
     } finally {
       setStarting(false);
     }
@@ -202,9 +423,9 @@ export function ViajePage() {
     try {
       setView(await saveTrip(clean(draft)));
       setDirty(false);
-      toast("Cambios guardados");
+      toast(t.saved);
     } catch (e) {
-      toast(`No se pudo guardar: ${(e as Error).message}`);
+      toast(t.saveFailed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -218,9 +439,9 @@ export function ViajePage() {
       setView(await publishTrip(published));
       setDirty(false);
       setBehind(false);
-      toast(published ? "Página del viaje publicada" : "Página del viaje retirada del sitio");
+      toast(published ? t.published : t.unpublished);
     } catch (e) {
-      toast(`No se pudo: ${(e as Error).message}`);
+      toast(t.failed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -230,16 +451,16 @@ export function ViajePage() {
     return (
       <PanelShell>
         <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-[26px] px-4 py-8 sm:px-8">
-          <PageHeader title="El viaje" subtitle={plan.name} />
+          <PageHeader title={t.title} subtitle={plan.name} />
           <EmptyState
-            title="Todavía no hay destino decidido"
+            title={t.noDestination}
             action={
               <Link to="/votacion" className={buttonClasses({ variant: "primary" })}>
-                Ir a Votación
+                {t.goVote}
               </Link>
             }
           >
-            Cuando la votación se cierre y el destino esté decidido, aquí prepararás la página del viaje para el grupo.
+            {t.noDestinationText}
           </EmptyState>
         </main>
       </PanelShell>
@@ -254,13 +475,13 @@ export function ViajePage() {
   const canPrepare = state.status?.research !== "none" && (!hosted || !!state.status?.ai?.background);
   const ai = state.status?.ai?.name ?? "Claude";
   const published = !!view?.published && !dirty && !behind;
-  const publishLabel = view?.published ? (dirty ? "Guardar y publicar" : behind ? "Publicar cambios" : "Publicada") : "Publicar el viaje";
+  const publishLabel = view?.published ? (dirty ? t.saveAndPublish : behind ? t.publishChanges : t.isPublished) : t.publishTrip;
 
   return (
     <PanelShell>
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-[26px] px-4 py-8 pb-28 sm:px-8">
         <PageHeader
-          title="El viaje"
+          title={t.title}
           subtitle={destination ? `${plan.name} · ${destination.place.city} · ${rangeLabel(plan.dateFrom, plan.dateTo)}` : plan.name}
           actions={
             destination &&
@@ -268,7 +489,7 @@ export function ViajePage() {
               <div className="flex flex-wrap gap-2">
                 {view?.published && (
                   <Button variant="ghost" disabled={busy} onClick={() => void publish(false)}>
-                    Retirar del sitio
+                    {t.unpublish}
                   </Button>
                 )}
                 <Button variant="primary" disabled={busy || preparing || published} onClick={() => void publish(true)}>
@@ -281,34 +502,34 @@ export function ViajePage() {
 
         {error && !view && (
           <Notice role="alert">
-            No se pudo cargar el viaje: {error}{" "}
+            {t.loadFailed(error)}{" "}
             <button type="button" onClick={() => void reload()} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent">
-              Reintentar
+              {t.retry}
             </button>
           </Notice>
         )}
         {!view && !error && <Skeleton className="h-40 rounded-card" />}
 
         {destination && (
-          <Card variant="raised" className="flex flex-col gap-3" aria-label="Antes de publicar">
-            <Heading size="subheading">Antes de publicar</Heading>
+          <Card variant="raised" className="flex flex-col gap-3" aria-label={t.beforePublishing}>
+            <Heading size="subheading">{t.beforePublishing}</Heading>
             <ol className="m-0 flex list-none flex-col gap-2.5 p-0">
-              <Check done title={`Destino decidido: ${destination.place.city}`} />
+              <Check done title={t.decided(destination.place.city)} />
               {leave && leave.people.length > 0 && (
                 <Check
                   done={allLeaveApproved(leave)}
-                  title={allLeaveApproved(leave) ? "Todos tienen los días libres" : `Días libres: ${leaveCounts(leave).approved} de ${leave.people.length} aprobados`}
+                  title={allLeaveApproved(leave) ? t.allLeave : t.leaveCount(leaveCounts(leave).approved, leave.people.length)}
                   {...(!allLeaveApproved(leave)
                     ? {
                         detail: leaveCounts(leave).denied
-                          ? `A ${leave.people.filter((p) => p.status === "denied").map((p) => p.name).join(" y ")} no le dan los días: habladlo antes de reservar.`
-                          : `Falta ${leave.people.filter((p) => p.status !== "approved").map((p) => p.name).join(", ")}. Mejor no reservar nada hasta que estén todos.`,
+                          ? t.leaveDenied(leave.people.filter((p) => p.status === "denied").map((p) => p.name))
+                          : t.leaveMissing(leave.people.filter((p) => p.status !== "approved").map((p) => p.name)),
                       }
                     : {})}
                   action={
                     !allLeaveApproved(leave) && (
                       <Link to="/fechas" className={buttonClasses({ size: "sm", variant: "ghost" })}>
-                        Ver quién falta
+                        {t.seeMissing}
                       </Link>
                     )
                   }
@@ -319,29 +540,29 @@ export function ViajePage() {
                 title={
                   checked
                     ? destination.provenance.kind === "api"
-                      ? "Precios comprobados con la API de vuelos"
-                      : `Precios comprobados · ${checkedLabel(destination.provenance)}`
-                    : "Comprueba los precios de vuelos y alojamiento"
+                      ? t.pricesApi
+                      : t.pricesChecked(checkedLabel(destination.provenance))
+                    : t.checkPrices
                 }
                 detail={
                   reading
-                    ? `${ai} está mirando Google Flights en una ventana de ${state.status?.browser ?? "tu navegador"}${reading.steps.at(-1) ? ` · ${stepText(reading.steps.at(-1)!)}` : ""}`
+                    ? t.lookingFlights(ai, state.status?.browser ?? t.yourBrowser, reading.steps.at(-1) ? stepText(reading.steps.at(-1)!) : null)
                     : checked
-                      ? "La página del viaje los muestra tal cual."
+                      ? t.pricesAsIs
                       : state.status?.browse
-                        ? `Ahora son los de ${ai} o de otras fechas. ${ai} trae de Google Flights los mejores vuelos para que elijas uno; el alojamiento míralo en Airbnb, o pega una captura.`
-                        : `Ahora son los de ${ai} o de otras fechas. Mira el vuelo y el alojamiento reales, y pega las capturas.`
+                        ? t.pricesBrowse(ai)
+                        : t.pricesHand(ai)
                 }
                 busy={!!reading}
                 action={
                   <span className="flex flex-wrap gap-2">
                     {state.status?.browse && (
                       <Button size="sm" variant={checked ? "ghost" : "secondary"} disabled={!!reading} onClick={() => browse(destination.id)}>
-                        {reading ? "Comprobando…" : checked ? "Comprobar vuelos otra vez" : "Comprobar vuelos"}
+                        {reading ? t.checking : checked ? t.checkAgain : t.checkFlights}
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => setPricing(true)}>
-                      {checked ? "Cambiar precios" : "Ponerlos a mano"}
+                      {checked ? t.changePrices : t.byHand}
                     </Button>
                   </span>
                 }
@@ -351,24 +572,26 @@ export function ViajePage() {
                 busy={preparing}
                 title={
                   preparing
-                    ? `${ai} está preparando la guía`
+                    ? t.aiPreparing(ai)
                     : draft
-                      ? `Guía ${draft.preparedAt ? `preparada el ${longDate(draft.preparedAt)}` : "escrita a mano"}`
-                      : "Prepara la guía"
+                      ? draft.preparedAt
+                        ? t.guidePrepared(longDate(draft.preparedAt))
+                        : t.guideByHand
+                      : t.prepareGuide
                 }
                 detail={
                   preparing
                     ? undefined
                     : draft
-                      ? "Revísala abajo: quita lo que no encaje y añade la dirección, la hora de entrada y el Tricount."
-                      : `${ai} busca qué hacer, qué comer, qué ver, qué saber antes de ir y cómo llegar. Sus precios son aproximados y el sitio lo dice.`
+                      ? t.reviewGuide
+                      : t.aiSearches(ai)
                 }
                 action={
                   !preparing &&
                   (draft ? (
                     canPrepare && (
                       <Button size="sm" variant="ghost" onClick={() => setAsking(true)}>
-                        Volver a preparar
+                        {t.prepareAgain}
                       </Button>
                     )
                   ) : (
@@ -376,16 +599,16 @@ export function ViajePage() {
                       {canPrepare && (
                         <>
                           <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted">
-                            Salís desde
-                            <TextInput className="h-9 w-36" maxLength={60} placeholder="Logroño" value={home} onChange={(e) => setHome(e.target.value)} />
+                            {t.leavingFrom}
+                            <TextInput className="h-9 w-36" maxLength={60} placeholder={t.homePlaceholder} value={home} onChange={(e) => setHome(e.target.value)} />
                           </label>
                           <Button size="sm" variant="primary" onClick={() => void prepare()}>
-                            Preparar con {ai}
+                            {t.prepareWith(ai)}
                           </Button>
                         </>
                       )}
                       <Button size="sm" variant="ghost" onClick={() => setDraft({ ...EMPTY, destinationId: destination.id, home: home.trim() })}>
-                        Escribirla a mano
+                        {t.writeByHand}
                       </Button>
                     </span>
                   ))
@@ -395,13 +618,13 @@ export function ViajePage() {
                 {guide?.status === "failed" && (
                   <Notice role="alert">
                     <span className="flex flex-wrap items-center justify-between gap-3">
-                      <span>No se pudo preparar: {guide.error}</span>
+                      <span>{t.prepareFailed(guide.error ?? "")}</span>
                       <span className="flex gap-2">
                         <Button size="sm" onClick={() => takeTask(guide.id)}>
-                          Cerrar
+                          {t.close}
                         </Button>
                         <Button size="sm" variant="primary" onClick={() => void prepare()}>
-                          Volver a probar
+                          {t.tryAgain}
                         </Button>
                       </span>
                     </span>
@@ -410,8 +633,8 @@ export function ViajePage() {
               </Check>
               <Check
                 done={published}
-                title={view?.published ? (dirty || behind ? "Hay cambios sin publicar" : "Publicada en el sitio") : "Publícala para el grupo"}
-                {...(behind && !dirty ? { detail: "Algo cambió desde que la publicaste (precios, fechas o la guía), y el grupo aún ve lo de antes." } : {})}
+                title={view?.published ? (dirty || behind ? t.unpublishedChanges : t.publishedOnSite) : t.publishForGroup}
+                {...(behind && !dirty ? { detail: t.behind } : {})}
                 action={
                   draft &&
                   !published && (
@@ -425,7 +648,7 @@ export function ViajePage() {
           </Card>
         )}
 
-        {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(`No se pudo: ${e.message}`))} />}
+        {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(t.failed(e.message)))} />}
 
         {draft && destination && (
           <TripEditor trip={draft} city={destination.place.city} origin={destination.outbound.from} iata={destination.place.iata} onChange={edit} />
@@ -435,7 +658,7 @@ export function ViajePage() {
       {draft && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line-soft bg-surface/95 px-4 py-3 backdrop-blur sm:px-8">
           <div className="mx-auto flex max-w-[1100px] items-center justify-between gap-3">
-            <span className="text-sm text-ink-2">Cambios sin guardar</span>
+            <span className="text-sm text-ink-2">{t.unsaved}</span>
             <div className="flex gap-2">
               <Button
                 variant="ghost"
@@ -445,21 +668,21 @@ export function ViajePage() {
                   setDraft(view?.trip ?? null);
                 }}
               >
-                Descartar
+                {t.discard}
               </Button>
               <Button variant="primary" disabled={busy} onClick={() => void save()}>
-                Guardar cambios
+                {t.saveChanges}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      <Dialog open={asking} title="¿Volver a preparar la guía?" confirmLabel={`Preparar con ${ai}`} onConfirm={() => void prepare()} onClose={() => setAsking(false)}>
+      <Dialog open={asking} title={t.prepareAgainQ} confirmLabel={t.prepareWith(ai)} onConfirm={() => void prepare()} onClose={() => setAsking(false)}>
         <div className="flex flex-col gap-3.5">
-          <span>Sustituye la guía de ahora. La dirección, las horas y el Tricount se quedan.</span>
-          <Field label="Salís desde (opcional)" aside="Para ir al aeropuerto">
-            {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder="Logroño" value={home} onChange={(e) => setHome(e.target.value)} />}
+          <span>{t.replaces}</span>
+          <Field label={t.leavingFromOptional} aside={t.toAirport}>
+            {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder={t.homePlaceholder} value={home} onChange={(e) => setHome(e.target.value)} />}
           </Field>
         </div>
       </Dialog>
@@ -482,7 +705,7 @@ export function ViajePage() {
           onClose={() => setPricing(false)}
           onSave={async (prices) => {
             await setPrices(destination.id, prices);
-            toast(`${destination.place.city}: precios comprobados`);
+            toast(t.pricesSaved(destination.place.city));
           }}
         />
       )}
@@ -495,23 +718,24 @@ export function ViajePage() {
 function TaskProgress({ steps, startedAt, searches }: { steps: SearchStep[]; startedAt: number; searches: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   const [open, setOpen] = useState(false);
+  const t = useCopy(COPY);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
   }, []);
   const secs = Math.max(0, Math.floor((now - startedAt) / 1000));
   const elapsed = secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)} min ${secs % 60} s`;
   const last = steps.at(-1);
   return (
-    <div role="status" aria-label="Progreso" className="flex flex-col gap-1.5 text-[13px] text-ink-2">
+    <div role="status" aria-label={t.progress} className="flex flex-col gap-1.5 text-[13px] text-ink-2">
       <span className="flex flex-wrap items-center gap-x-2">
         <span className="tabular-nums text-muted">{elapsed}</span>
-        <span className="min-w-0 truncate">{last ? stepText(last) : searches ? "Empezando a buscar en la web…" : "Empezando…"}</span>
+        <span className="min-w-0 truncate">{last ? stepText(last) : searches ? t.startingWeb : t.starting}</span>
       </span>
-      <span className="text-muted">Tarda unos minutos. Puedes seguir por el panel: te avisamos al terminar.</span>
+      <span className="text-muted">{t.takesMinutes}</span>
       {steps.length > 1 && (
         <button type="button" onClick={() => setOpen((o) => !o)} className="cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] font-semibold text-accent" aria-expanded={open}>
-          {open ? "Ocultar lo que hace" : `Ver lo que hace (${steps.length})`}
+          {open ? t.hideSteps : t.showSteps(steps.length)}
         </button>
       )}
       {open && (
@@ -527,6 +751,7 @@ function TaskProgress({ steps, startedAt, searches }: { steps: SearchStep[]; sta
 
 // One step before publishing: done, pending, or with the AI working on it.
 function Check({ done, busy, title, detail, action, children }: { done: boolean; busy?: boolean; title: string; detail?: string; action?: ReactNode; children?: ReactNode }) {
+  const t = useCopy(COPY);
   return (
     <li className="flex flex-col gap-2.5 rounded-xl bg-surface-2 px-3.5 py-3" aria-busy={busy || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -543,7 +768,7 @@ function Check({ done, busy, title, detail, action, children }: { done: boolean;
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className={cn("text-sm font-semibold", !done && "text-ink")}>
               {title}
-              <span className="sr-only">{busy ? " (en marcha)" : done ? " (hecho)" : " (pendiente)"}</span>
+              <span className="sr-only">{busy ? t.running : done ? t.done : t.pending}</span>
             </span>
             {detail && <span className="text-[13px] text-muted">{detail}</span>}
           </span>
@@ -560,37 +785,38 @@ const toCents = (v: string) => (v.trim() === "" ? null : Math.max(0, Math.round(
 
 // Everything the trip page shows that the organiser can change.
 function TripEditor({ trip, city, origin, iata, onChange }: { trip: TripPage; city: string; origin: string; iata: string; onChange: (patch: Partial<TripPage>) => void }) {
+  const t = useCopy(COPY);
   const [tricount, setTricount] = useState(trip.tricountUrl ?? "");
   useEffect(() => setTricount(trip.tricountUrl ?? ""), [trip.tricountUrl]);
   const tricountOk = tricount === "" || /^https:\/\/\S+$/.test(tricount);
 
   return (
     <div className="flex flex-col gap-5">
-      <Section title="Presentación" hint={`Dos o tres frases sobre ${city}. Van arriba del todo.`}>
-        <Field label="Presentación" hideLabel>
+      <Section title={t.intro} hint={t.introHint(city)}>
+        <Field label={t.intro} hideLabel>
           {({ inputId }) => <TextArea id={inputId} rows={3} maxLength={1000} value={trip.intro} onChange={(e) => onChange({ intro: e.target.value })} />}
         </Field>
       </Section>
 
-      <Section title="Alojamiento y dinero" hint="Lo que la IA no sabe: dónde está exactamente, a qué hora se entra y el Tricount del grupo.">
+      <Section title={t.stay} hint={t.stayHint}>
         <div className="grid gap-3 sm:grid-cols-[2fr_1fr_1fr]">
-          <Field label="Dirección">
+          <Field label={t.address}>
             {({ inputId }) => (
               <TextInput id={inputId} maxLength={200} value={trip.stay.address} onChange={(e) => onChange({ stay: { ...trip.stay, address: e.target.value } })} />
             )}
           </Field>
-          <Field label="Entrada">
+          <Field label={t.checkIn}>
             {({ inputId }) => (
               <TextInput id={inputId} maxLength={60} placeholder="15:00" value={trip.stay.checkIn} onChange={(e) => onChange({ stay: { ...trip.stay, checkIn: e.target.value } })} />
             )}
           </Field>
-          <Field label="Salida">
+          <Field label={t.checkOut}>
             {({ inputId }) => (
               <TextInput id={inputId} maxLength={60} placeholder="11:00" value={trip.stay.checkOut} onChange={(e) => onChange({ stay: { ...trip.stay, checkOut: e.target.value } })} />
             )}
           </Field>
         </div>
-        <Field label="Enlace del Tricount (opcional)" aside={tricountOk ? "Las cuentas del viaje siguen en Tricount" : "Tiene que empezar por https://"}>
+        <Field label={t.tricount} aside={tricountOk ? t.tricountAside : t.tricountHttps}>
           {({ inputId }) => (
             <TextInput
               id={inputId}
@@ -607,30 +833,30 @@ function TripEditor({ trip, city, origin, iata, onChange }: { trip: TripPage; ci
         </Field>
       </Section>
 
-      <Section title="Cómo llegar" hint="Precios por persona, aproximados. El sitio avisa de que hay que confirmarlos.">
-        <Field label="Salís desde">
-          {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder="Logroño" value={trip.home} onChange={(e) => onChange({ home: e.target.value })} />}
+      <Section title={t.gettingThere} hint={t.gettingThereHint}>
+        <Field label={t.leavingFrom}>
+          {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder={t.homePlaceholder} value={trip.home} onChange={(e) => onChange({ home: e.target.value })} />}
         </Field>
-        <TransportList title={`De ${trip.home || "casa"} al aeropuerto (${origin})`} options={trip.toAirport} onChange={(toAirport) => onChange({ toAirport })} />
-        <TransportList title={`Del aeropuerto (${iata}) al alojamiento`} options={trip.fromAirport} onChange={(fromAirport) => onChange({ fromAirport })} />
+        <TransportList title={t.toAirportTitle(trip.home || t.home, origin)} options={trip.toAirport} onChange={(toAirport) => onChange({ toAirport })} />
+        <TransportList title={t.fromAirportTitle(iata)} options={trip.fromAirport} onChange={(fromAirport) => onChange({ fromAirport })} />
       </Section>
 
-      <Section title="Qué hacer" hint="Cosas concretas, con lo que cuestan por persona. Sin horarios: es un empujón, no un plan.">
-        <ItemList label="Qué hacer" items={trip.todo} price onChange={(todo) => onChange({ todo })} />
+      <Section title={t.todo} hint={t.todoHint}>
+        <ItemList label={t.todo} items={trip.todo} price onChange={(todo) => onChange({ todo })} />
       </Section>
-      <Section title="Qué comer" hint="Y dónde es típico probarlo.">
-        <ItemList label="Qué comer" items={trip.food} where onChange={(food) => onChange({ food })} />
+      <Section title={t.food} hint={t.foodHint}>
+        <ItemList label={t.food} items={trip.food} where onChange={(food) => onChange({ food })} />
       </Section>
-      <Section title="Sitios que ver">
-        <ItemList label="Sitios que ver" items={trip.sights} onChange={(sights) => onChange({ sights })} />
+      <Section title={t.sights}>
+        <ItemList label={t.sights} items={trip.sights} onChange={(sights) => onChange({ sights })} />
       </Section>
-      <Section title="Antes de ir" hint="El país en pocas líneas: dinero, enchufes, propinas, transporte, de qué tener cuidado.">
-        <ItemList label="Antes de ir" items={trip.beforeYouGo} onChange={(beforeYouGo) => onChange({ beforeYouGo })} />
+      <Section title={t.beforeYouGo} hint={t.beforeYouGoHint}>
+        <ItemList label={t.beforeYouGo} items={trip.beforeYouGo} onChange={(beforeYouGo) => onChange({ beforeYouGo })} />
       </Section>
 
       {trip.sources.length > 0 && (
         <p className="m-0 text-[13px] text-muted">
-          Fuentes de {trip.by ?? "Claude"}:{" "}
+          {t.sources(trip.by ?? "Claude")}{" "}
           {trip.sources.map((s, i) => (
             <span key={s.url}>
               {i > 0 && " · "}
@@ -658,19 +884,20 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 function ItemList({ label, items, price, where, onChange }: { label: string; items: GuideItem[]; price?: boolean; where?: boolean; onChange: (items: GuideItem[]) => void }) {
+  const t = useCopy(COPY);
   const set = (i: number, patch: Partial<GuideItem>) => onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)));
   return (
     <div className="flex flex-col gap-2.5">
-      {items.length === 0 && <p className="m-0 text-sm text-muted">Nada todavía.</p>}
+      {items.length === 0 && <p className="m-0 text-sm text-muted">{t.nothingYet}</p>}
       <ul aria-label={label} className="m-0 flex list-none flex-col gap-2.5 p-0">
         {items.map((it, i) => (
           <li key={i} className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-3">
             <div className={cn("grid min-w-0 flex-1 gap-2", price || where ? "sm:grid-cols-[1fr_2fr_auto]" : "sm:grid-cols-[1fr_2fr]")}>
-              <TextInput aria-label={`${label} ${i + 1}: título`} maxLength={120} value={it.title} onChange={(e) => set(i, { title: e.target.value })} />
-              <TextInput aria-label={`${label} ${i + 1}: detalle`} maxLength={600} value={it.detail} onChange={(e) => set(i, { detail: e.target.value })} />
+              <TextInput aria-label={t.itemTitle(label, i + 1)} maxLength={120} value={it.title} onChange={(e) => set(i, { title: e.target.value })} />
+              <TextInput aria-label={t.itemDetail(label, i + 1)} maxLength={600} value={it.detail} onChange={(e) => set(i, { detail: e.target.value })} />
               {price && (
                 <TextInput
-                  aria-label={`${label} ${i + 1}: € por persona`}
+                  aria-label={t.itemPrice(label, i + 1)}
                   inputMode="decimal"
                   placeholder="€"
                   className="sm:w-24"
@@ -679,23 +906,25 @@ function ItemList({ label, items, price, where, onChange }: { label: string; ite
                 />
               )}
               {where && (
-                <TextInput aria-label={`${label} ${i + 1}: dónde`} maxLength={200} placeholder="Dónde" className="sm:w-56" value={it.where ?? ""} onChange={(e) => set(i, { where: e.target.value })} />
+                <TextInput aria-label={t.itemWhere(label, i + 1)} maxLength={200} placeholder={t.where} className="sm:w-56" value={it.where ?? ""} onChange={(e) => set(i, { where: e.target.value })} />
               )}
             </div>
-            <IconButton label={`Quitar ${it.title || `${label} ${i + 1}`}`} size="md" onClick={() => onChange(items.filter((_, j) => j !== i))}>
+            <IconButton label={t.remove(it.title || t.nth(label, i + 1))} size="md" onClick={() => onChange(items.filter((_, j) => j !== i))}>
               <TrashIcon size={16} />
             </IconButton>
           </li>
         ))}
       </ul>
       <Button size="sm" variant="ghost" icon={<PlusIcon size={14} />} className="self-start" disabled={items.length >= 15} onClick={() => onChange([...items, { title: "", detail: "" }])}>
-        Añadir
+        {t.add}
       </Button>
     </div>
   );
 }
 
 function TransportList({ title, options, onChange }: { title: string; options: TransportOption[]; onChange: (options: TransportOption[]) => void }) {
+  const t = useCopy(COPY);
+  const modes = MODES.map((value) => ({ value, label: t.modes[value] }));
   const set = (i: number, patch: Partial<TransportOption>) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
   return (
     <div className="flex flex-col gap-2.5">
@@ -706,24 +935,24 @@ function TransportList({ title, options, onChange }: { title: string; options: T
         {options.map((o, i) => (
           <li key={i} className="flex items-start gap-2.5 rounded-xl bg-surface-2 p-3">
             <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[9rem_1fr_6rem_6rem]">
-              <Select size="sm" label={`${title} ${i + 1}: medio`} value={o.mode} options={MODES} onChange={(mode) => set(i, { mode })} />
-              <TextInput aria-label={`${title} ${i + 1}: título`} maxLength={120} value={o.title} onChange={(e) => set(i, { title: e.target.value })} />
+              <Select size="sm" label={t.itemMode(title, i + 1)} value={o.mode} options={modes} onChange={(mode) => set(i, { mode })} />
+              <TextInput aria-label={t.itemTitle(title, i + 1)} maxLength={120} value={o.title} onChange={(e) => set(i, { title: e.target.value })} />
               <TextInput
-                aria-label={`${title} ${i + 1}: minutos`}
+                aria-label={t.itemMinutes(title, i + 1)}
                 inputMode="numeric"
                 placeholder="min"
                 value={o.minutes ?? ""}
                 onChange={(e) => set(i, { minutes: Math.round(Number(e.target.value)) > 0 ? Math.round(Number(e.target.value)) : null })}
               />
               <TextInput
-                aria-label={`${title} ${i + 1}: € por persona`}
+                aria-label={t.itemPrice(title, i + 1)}
                 inputMode="decimal"
                 placeholder="€"
                 value={euroValue(o.priceCents)}
                 onChange={(e) => set(i, { priceCents: toCents(e.target.value) })}
               />
               <TextArea
-                aria-label={`${title} ${i + 1}: detalle`}
+                aria-label={t.itemDetail(title, i + 1)}
                 rows={2}
                 maxLength={600}
                 className="sm:col-span-4"
@@ -731,7 +960,7 @@ function TransportList({ title, options, onChange }: { title: string; options: T
                 onChange={(e) => set(i, { detail: e.target.value })}
               />
             </div>
-            <IconButton label={`Quitar ${o.title || `${title} ${i + 1}`}`} size="md" onClick={() => onChange(options.filter((_, j) => j !== i))}>
+            <IconButton label={t.remove(o.title || t.nth(title, i + 1))} size="md" onClick={() => onChange(options.filter((_, j) => j !== i))}>
               <TrashIcon size={16} />
             </IconButton>
           </li>
@@ -745,7 +974,7 @@ function TransportList({ title, options, onChange }: { title: string; options: T
         disabled={options.length >= 6}
         onClick={() => onChange([...options, { mode: "bus", title: "", detail: "", minutes: null, priceCents: null }])}
       >
-        Añadir una opción
+        {t.addOption}
       </Button>
     </div>
   );
