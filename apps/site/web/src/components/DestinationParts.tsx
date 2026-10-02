@@ -1,8 +1,57 @@
 // The building blocks of a destination page.
 import { useState } from "react";
 import { Link } from "react-router";
-import { euros, eurosGrouped, localTime, shortDate, standardImageUrl, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
-import { Button, Card, Dialog, Heading, LockIcon, Photo, Text, buttonClasses, cn } from "@wanderlot/ui";
+import { copy, euros, eurosGrouped, localTime, shortDate, standardImageUrl, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
+import { Button, Card, Dialog, Heading, LockIcon, Photo, Text, buttonClasses, cn, useCopy } from "@wanderlot/ui";
+
+const COPY = copy({
+  es: {
+    photo: "Foto:",
+    photos: "Fotos",
+    photoOf: (city: string) => `Foto de ${city}`,
+    photosOf: (city: string) => `Fotos de ${city}`,
+    seePhotos: (n: number) => (n === 1 ? "Ver la foto" : `Ver las ${n} fotos`),
+    close: "Cerrar",
+    roundTrip: "Ida y vuelta",
+    perPerson: "por persona",
+    recommended: " (recomendado)",
+    nights: (n: number) => `${n} ${n === 1 ? "noche" : "noches"}`,
+    closed: "Votación cerrada",
+    open: "Votación en curso",
+    got: (points: number, max: number) => `Se llevó ${points} puntos de ${max}.`,
+    hidden: (deadline: string, cast: number, of: number) => `Los puntos de cada destino se ven cuando cierre, el ${deadline}. Van ${cast} de ${of} votos.`,
+    notOpen: "La votación aún no está abierta.",
+    gave: (n: number) => `Le diste ${n} ${n === 1 ? "punto" : "puntos"}`,
+    noPoints: "Tú no le has dado puntos",
+    count: "Ver el recuento",
+    change: "Cambiar",
+    give: "Dárselos",
+    sources: "De dónde salen los números",
+  },
+  en: {
+    photo: "Photo:",
+    photos: "Photos",
+    photoOf: (city: string) => `Photo of ${city}`,
+    photosOf: (city: string) => `Photos of ${city}`,
+    seePhotos: (n: number) => (n === 1 ? "See the photo" : `See all ${n} photos`),
+    close: "Close",
+    roundTrip: "Return",
+    perPerson: "per person",
+    recommended: " (recommended)",
+    nights: (n: number) => `${n} ${n === 1 ? "night" : "nights"}`,
+    closed: "Voting closed",
+    open: "Voting open",
+    got: (points: number, max: number) => `It got ${points} of ${max} points.`,
+    hidden: (deadline: string, cast: number, of: number) => `Each destination's points show when voting closes, on ${deadline}. ${cast} of ${of} votes so far.`,
+    notOpen: "Voting isn't open yet.",
+    gave: (n: number) => `You gave it ${n} ${n === 1 ? "point" : "points"}`,
+    noPoints: "You haven't given it points",
+    count: "See the count",
+    change: "Change",
+    give: "Give them",
+    sources: "Where the numbers come from",
+  },
+});
 
 export interface MosaicProps {
   city: string;
@@ -15,9 +64,10 @@ const SOURCE_NAME = { unsplash: "Unsplash", pexels: "Pexels", wikimedia: "Wikime
 
 // "Foto: Ana Pérez · Unsplash": every photo carries its credit (SPEC §6).
 function Credit({ photo }: { photo: PhotoData }) {
+  const t = useCopy(COPY);
   return (
     <span className="rounded-md bg-ink/60 px-2 py-1 text-[11px] text-white">
-      Foto:{" "}
+      {t.photo}{" "}
       <a href={photo.authorUrl ?? photo.sourceUrl} target="_blank" rel="noreferrer" className="text-white underline hover:text-white">
         {photo.author}
       </a>{" "}
@@ -41,6 +91,7 @@ const WIDE: Record<number, string[]> = {
 };
 
 export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
+  const t = useCopy(COPY);
   const [open, setOpen] = useState(false);
   const [hero, ...rest] = photos;
 
@@ -48,8 +99,8 @@ export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
   if (!hero) {
     const placeholder = (i: number, className: string) => <Photo key={i} label={landmarks[i] ?? city} labelPosition="center" className={cn("rounded-xl p-3", className)} />;
     return (
-      <section aria-label="Fotos" className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
-        <Photo label={`Foto de ${city}`} className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1" />
+      <section aria-label={t.photos} className="grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
+        <Photo label={t.photoOf(city)} className="col-span-2 row-span-2 rounded-2xl p-4 max-md:row-span-1" />
         {placeholder(0, "")}
         {placeholder(1, "")}
         {placeholder(2, "max-md:hidden")}
@@ -61,7 +112,7 @@ export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
   const shown = rest.slice(0, 4);
   return (
     <>
-      <section aria-label="Fotos" className="relative grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
+      <section aria-label={t.photos} className="relative grid h-[240px] grid-cols-2 grid-rows-2 gap-2 sm:h-[312px] md:grid-cols-4">
         <Photo
           src={standardImageUrl(hero.url)}
           alt={hero.alt}
@@ -78,11 +129,11 @@ export function PhotoMosaic({ city, photos, landmarks }: MosaicProps) {
           />
         ))}
         <Button size="sm" className="absolute top-3 right-3 shadow-chip" onClick={() => setOpen(true)}>
-          {photos.length === 1 ? "Ver la foto" : `Ver las ${photos.length} fotos`}
+          {t.seePhotos(photos.length)}
         </Button>
       </section>
-      <Dialog open={open} title={`Fotos de ${city}`} wide onClose={() => setOpen(false)} actions={<Button onClick={() => setOpen(false)}>Cerrar</Button>}>
-        <ul aria-label={`Fotos de ${city}`} className="m-0 grid max-h-[65vh] list-none grid-cols-1 gap-4 overflow-y-auto p-0 sm:grid-cols-2">
+      <Dialog open={open} title={t.photosOf(city)} wide onClose={() => setOpen(false)} actions={<Button onClick={() => setOpen(false)}>{t.close}</Button>}>
+        <ul aria-label={t.photosOf(city)} className="m-0 grid max-h-[65vh] list-none grid-cols-1 gap-4 overflow-y-auto p-0 sm:grid-cols-2">
           {photos.map((p) => (
             <li key={p.url} className="flex flex-col gap-1.5">
               <Photo src={standardImageUrl(p.url)} alt={p.alt} label={p.alt} labelPosition="center" className="aspect-[4/3] rounded-xl" bottom={<Credit photo={p} />} />
@@ -115,21 +166,23 @@ export function FlightLegRow({ label, leg, price = true }: { label: string; leg:
 // "Ida y vuelta  MAD ⇄ NAP  104 € por persona": the price the organiser
 // checked, when that's what there is to show.
 export function FlightTotalRow({ from, to, cents }: { from: string; to: string; cents: number }) {
+  const t = useCopy(COPY);
   return (
     <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 rounded-tile border border-line-soft px-[18px] py-3.5">
-      <span className="shrink-0 text-[13px] font-bold text-muted">Ida y vuelta</span>
+      <span className="shrink-0 text-[13px] font-bold text-muted">{t.roundTrip}</span>
       <span className="shrink-0 text-[15px] font-bold">
         {from} ⇄ {to}
       </span>
       <span className="ml-auto flex shrink-0 items-baseline gap-1.5">
         <span className="text-base font-bold tabular-nums">{euros(cents)}</span>
-        <span className="text-xs text-muted">por persona</span>
+        <span className="text-xs text-muted">{t.perPerson}</span>
       </span>
     </div>
   );
 }
 
 export function StayOption({ stay, nights, partySize }: { stay: Stay; nights: number; partySize: number }) {
+  const t = useCopy(COPY);
   return (
     <div
       className={cn(
@@ -146,14 +199,14 @@ export function StayOption({ stay, nights, partySize }: { stay: Stay; nights: nu
           ) : (
             stay.name
           )}
-          {stay.recommended && <span className="sr-only"> (recomendado)</span>}
+          {stay.recommended && <span className="sr-only">{t.recommended}</span>}
         </span>
         {stay.description && <span className="text-[13px] text-ink-2">{stay.description}</span>}
       </div>
       <div className="flex shrink-0 flex-col items-end">
         <span className="text-base font-bold tabular-nums">{eurosGrouped(stayTotalCents(stay, nights))}</span>
         <span className="text-xs text-muted">
-          {nights} {nights === 1 ? "noche" : "noches"} · {euros(Math.ceil(stayTotalCents(stay, nights) / partySize))} por persona
+          {t.nights(nights)} · {euros(Math.ceil(stayTotalCents(stay, nights) / partySize))} {t.perPerson}
         </span>
       </div>
     </div>
@@ -171,25 +224,26 @@ export interface VoteStatusCardProps {
 }
 
 export function VoteStatusCard({ closed, deadline, cast, of, myPoints, points, votingHref }: VoteStatusCardProps) {
+  const t = useCopy(COPY);
   return (
     <Card variant="raised" className="flex flex-col gap-[13px]">
       <div className="flex items-center gap-2.5">
         <LockIcon size={18} />
         <Heading as="h3" size="card">
-          {closed ? "Votación cerrada" : "Votación en curso"}
+          {closed ? t.closed : t.open}
         </Heading>
       </div>
       <Text size="sm">
         {closed
-          ? `Se llevó ${points ?? 0} puntos de ${of * 6}.`
+          ? t.got(points ?? 0, of * 6)
           : deadline
-            ? `Los puntos de cada destino se ven cuando cierre, el ${deadline}. Van ${cast} de ${of} votos.`
-            : "La votación aún no está abierta."}
+            ? t.hidden(deadline, cast, of)
+            : t.notOpen}
       </Text>
       <div className="flex items-center justify-between gap-3 border-t border-line-faint pt-[13px]">
-        <span className="text-[13px] text-ink-2">{myPoints ? `Le diste ${myPoints} ${myPoints === 1 ? "punto" : "puntos"}` : "Tú no le has dado puntos"}</span>
+        <span className="text-[13px] text-ink-2">{myPoints ? t.gave(myPoints) : t.noPoints}</span>
         <Link to={votingHref} className={buttonClasses({ variant: "soft", size: "sm" })}>
-          {closed ? "Ver el recuento" : myPoints ? "Cambiar" : "Dárselos"}
+          {closed ? t.count : myPoints ? t.change : t.give}
         </Link>
       </div>
     </Card>
@@ -197,10 +251,11 @@ export function VoteStatusCard({ closed, deadline, cast, of, myPoints, points, v
 }
 
 export function SourcesCard({ lines }: { lines: string[] }) {
+  const t = useCopy(COPY);
   return (
     <Card variant="muted" className="flex flex-col gap-[9px]">
       <Heading as="h3" size="card">
-        De dónde salen los números
+        {t.sources}
       </Heading>
       <ul className="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px] text-ink-2">
         {lines.map((l) => (

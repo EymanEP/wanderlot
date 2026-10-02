@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { airportCity, longDate, shortDate, type Category } from "@wanderlot/core";
+import { airportCity, copy, longDate, weekdayDay, type Category } from "@wanderlot/core";
 import {
   BeachIcon,
   Button,
@@ -21,6 +21,7 @@ import {
   buttonClasses,
   chipClasses,
   cn,
+  useCopy,
 } from "@wanderlot/ui";
 import { CommentCard } from "../components/CommentCard.tsx";
 import { LeaveCard } from "../components/LeaveCard.tsx";
@@ -30,18 +31,103 @@ import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { memberOf, numberWord, overridden, trustOf } from "../lib/view.ts";
 
+const COPY = copy({
+  es: {
+    tabs: { all: "Todos", ciudad: "Ciudad", escapada: "Escapada", playa: "Playa", naturaleza: "Naturaleza" },
+    category: "Categoría",
+    datesOpen: "Fechas por decidir",
+    range: (from: string, to: string) => `Del ${from} al ${to}`,
+    from: (city: string) => `salida desde ${city}`,
+    proposals: (n: string) => `${n} propuestas sobre la mesa`,
+    goingTo: (city: string, voted: string) => `Vamos a ${city} · la votación la ganó ${voted}`,
+    closed: (city: string | null) => `Votación cerrada${city ? ` · ganó ${city}` : ""}`,
+    votedOf: (n: number, of: number) => `Votasteis ${n} de ${of}`,
+    notOpen: "La votación aún no está abierta",
+    meanwhile: "Mientras tanto, mirad los destinos y comentad",
+    voting: (n: number, of: number) => `${n} de ${of} habéis votado`,
+    opens: (date: string) => `El marcador se abre el ${date}`,
+    suggest: "Proponer un destino",
+    count: "Ver el recuento",
+    change: "Cambiar mi reparto",
+    give: "Repartir mis puntos",
+    filters: "Filtros",
+    direct: "Solo directos",
+    under400: "Hasta 400 € por persona",
+    tripReady: "El viaje está listo",
+    tripText: (city: string | null) => `Vuelos, alojamiento, cómo llegar y qué hacer en ${city ?? "el destino"}, todo en una página.`,
+    seeTrip: "Ver el viaje",
+    voted: "Este plan ya se votó",
+    none: "Todavía no hay destinos",
+    sayDates: "Decir qué fechas me vienen bien",
+    closedText: "La votación está cerrada.",
+    preparing: (organiser: string) => `${organiser} está preparando las propuestas. Os avisará cuando se abra la votación.`,
+    noMatch: "Ningún destino con estos filtros",
+    noMatchText: "Prueba con otra categoría o quita algún filtro.",
+    destinations: "Destinos",
+    recent: "Lo último que habéis dicho",
+    allComments: (n: number) => `Ver los ${n} comentarios`,
+    otherPlans: "Otros planes",
+    draft: "borrador",
+    closedWord: "cerrado",
+    votingWord: "votando",
+    checked: (date: string, year: string) => `Precios consultados el ${date} de ${year}.`,
+  },
+  en: {
+    tabs: { all: "All", ciudad: "City", escapada: "Getaway", playa: "Beach", naturaleza: "Nature" },
+    category: "Category",
+    datesOpen: "Dates to be decided",
+    range: (from: string, to: string) => `${from} to ${to}`,
+    from: (city: string) => `leaving from ${city}`,
+    proposals: (n: string) => `${n} ideas on the table`,
+    goingTo: (city: string, voted: string) => `We're going to ${city} · ${voted} won the vote`,
+    closed: (city: string | null) => `Voting closed${city ? ` · ${city} won` : ""}`,
+    votedOf: (n: number, of: number) => `${n} of ${of} of you voted`,
+    notOpen: "Voting isn't open yet",
+    meanwhile: "In the meantime, look around and comment",
+    voting: (n: number, of: number) => `${n} of ${of} of you have voted`,
+    opens: (date: string) => `The scores show on ${date}`,
+    suggest: "Suggest a destination",
+    count: "See the count",
+    change: "Change my points",
+    give: "Give my points",
+    filters: "Filters",
+    direct: "Direct only",
+    under400: "Up to €400 per person",
+    tripReady: "The trip is ready",
+    tripText: (city: string | null) => `Flights, where you're staying, getting there and what to do in ${city ?? "the destination"}, all on one page.`,
+    seeTrip: "See the trip",
+    voted: "This plan has been voted on",
+    none: "No destinations yet",
+    sayDates: "Say which dates suit me",
+    closedText: "Voting is closed.",
+    preparing: (organiser: string) => `${organiser} is getting the ideas ready. You'll hear when voting opens.`,
+    noMatch: "No destinations with these filters",
+    noMatchText: "Try another category or remove a filter.",
+    destinations: "Destinations",
+    recent: "What you've said lately",
+    allComments: (n: number) => `See all ${n} comments`,
+    otherPlans: "Other plans",
+    draft: "draft",
+    closedWord: "closed",
+    votingWord: "voting",
+    checked: (date: string, year: string) => `Prices checked on ${date} ${year}.`,
+  },
+});
+
 type CategoryFilter = "all" | Category;
 
 const TABS = [
-  { id: "all", label: "Todos", icon: <GlobeIcon size={22} /> },
-  { id: "ciudad", label: "Ciudad", icon: <CityIcon size={22} /> },
-  { id: "escapada", label: "Escapada", icon: <HouseIcon size={22} /> },
-  { id: "playa", label: "Playa", icon: <BeachIcon size={22} /> },
-  { id: "naturaleza", label: "Naturaleza", icon: <MountainIcon size={22} /> },
+  { id: "all", icon: <GlobeIcon size={22} /> },
+  { id: "ciudad", icon: <CityIcon size={22} /> },
+  { id: "escapada", icon: <HouseIcon size={22} /> },
+  { id: "playa", icon: <BeachIcon size={22} /> },
+  { id: "naturaleza", icon: <MountainIcon size={22} /> },
 ] as const;
 
 export function PlanPage() {
   const site = useSite();
+  const t = useCopy(COPY);
+  const tabs = TABS.map((tab) => ({ ...tab, label: t.tabs[tab.id] }));
   const { planId } = useParams();
   const { group } = useAuth();
   const { plan, destinations, myRanking, voted, comments, members, now, result, closed, dates, trip } = site;
@@ -67,8 +153,6 @@ export function PlanPage() {
   const winnerId = result?.winnerId ?? plan.winnerDestinationId;
   const winner = winnerId ? destinations.find((d) => d.id === winnerId) : undefined;
   const draft = plan.status === "draft";
-  const [from, to] = [shortDate(plan.dateFrom), shortDate(plan.dateTo)];
-  const weekday = (s: string) => ({ lun: "lunes", mar: "martes", mié: "miércoles", jue: "jueves", vie: "viernes", sáb: "sábado", dom: "domingo" })[s.split(" ")[0]!] ?? "";
   const checkedAt = destinations.map((d) => (d.provenance.kind !== "claude" ? d.provenance.checkedAt : null)).filter(Boolean).sort()[0];
 
   return (
@@ -76,7 +160,7 @@ export function PlanPage() {
       <PageHeader
         size="display"
         title={plan.name}
-        subtitle={`${datesOpen ? "Fechas por decidir" : `Del ${weekday(from)} ${from.split(" ")[1]} al ${weekday(to)} ${to.split(" ")[1]}`} · salida desde ${airportCity(plan.origin)}${destinations.length ? ` · ${numberWord(destinations.length)} propuestas sobre la mesa` : ""}`}
+        subtitle={`${datesOpen ? t.datesOpen : t.range(weekdayDay(plan.dateFrom), weekdayDay(plan.dateTo))} · ${t.from(airportCity(plan.origin))}${destinations.length ? ` · ${t.proposals(numberWord(destinations.length))}` : ""}`}
         actions={
           <>
             <div className="flex flex-col gap-0.5 lg:items-end">
@@ -84,34 +168,34 @@ export function PlanPage() {
                 <>
                   <span className="text-[15px] font-bold">
                     {overridden(result) && winner
-                      ? `Vamos a ${winner.place.city} · la votación la ganó ${destinations.find((d) => d.id === result!.voteWinnerId)?.place.city ?? ""}`
-                      : `Votación cerrada${winner ? ` · ganó ${winner.place.city}` : ""}`}
+                      ? t.goingTo(winner.place.city, destinations.find((d) => d.id === result!.voteWinnerId)?.place.city ?? "")
+                      : t.closed(winner?.place.city ?? null)}
                   </span>
                   {overridden(result) && result!.decidedNote && <span className="text-[13px] text-ink-2">«{result!.decidedNote}»</span>}
-                  <span className="text-[13px] text-muted">Votasteis {voted.size} de {plan.partySize}</span>
+                  <span className="text-[13px] text-muted">{t.votedOf(voted.size, plan.partySize)}</span>
                 </>
               ) : draft ? (
                 <>
-                  <span className="text-[15px] font-bold">La votación aún no está abierta</span>
-                  <span className="text-[13px] text-muted">Mientras tanto, mirad los destinos y comentad</span>
+                  <span className="text-[15px] font-bold">{t.notOpen}</span>
+                  <span className="text-[13px] text-muted">{t.meanwhile}</span>
                 </>
               ) : (
                 <>
                   <span className="text-[15px] font-bold">
-                    {voted.size} de {plan.partySize} habéis votado
+                    {t.voting(voted.size, plan.partySize)}
                   </span>
-                  <span className="text-[13px] text-muted">El marcador se abre el {longDate(plan.voteDeadline!)}</span>
+                  <span className="text-[13px] text-muted">{t.opens(longDate(plan.voteDeadline!))}</span>
                 </>
               )}
             </div>
             {!closed && (
               <Button size="lg" onClick={() => setSuggesting(true)}>
-                Proponer un destino
+                {t.suggest}
               </Button>
             )}
             {!draft && destinations.length > 0 && (
               <Link to={`${base}/votacion`} className={buttonClasses({ variant: "primary", size: "lg" })}>
-                {closed ? "Ver el recuento" : myRanking.length ? "Cambiar mi reparto" : "Repartir mis puntos"}
+                {closed ? t.count : myRanking.length ? t.change : t.give}
               </Link>
             )}
           </>
@@ -121,7 +205,7 @@ export function PlanPage() {
       <LeaveCard />
 
       <section className="flex flex-col gap-3 border-b border-line-soft pb-0.5 sm:flex-row sm:items-end sm:justify-between">
-        <IconTabs label="Categoría" tabs={TABS} value={category} onChange={setCategory} />
+        <IconTabs label={t.category} tabs={tabs} value={category} onChange={setCategory} />
         <button
           type="button"
           aria-expanded={showFilters}
@@ -130,16 +214,16 @@ export function PlanPage() {
           className={cn(buttonClasses({ variant: "secondary" }), "mb-2.5 h-[46px] self-start sm:self-auto")}
         >
           <FiltersIcon size={17} />
-          Filtros
+          {t.filters}
         </button>
       </section>
       {showFilters && (
-        <ScrollRow id="filtros" role="group" aria-label="Filtros">
+        <ScrollRow id="filtros" role="group" aria-label={t.filters}>
           <Chip on={onlyDirect} onClick={() => setOnlyDirect((x) => !x)}>
-            Solo directos
+            {t.direct}
           </Chip>
           <Chip on={under400} onClick={() => setUnder400((x) => !x)}>
-            Hasta 400 € por persona
+            {t.under400}
           </Chip>
         </ScrollRow>
       )}
@@ -147,34 +231,34 @@ export function PlanPage() {
       {trip && (
         <Card variant="accent" className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex flex-col gap-0.5">
-            <span className="text-[13px] font-bold">El viaje está listo</span>
+            <span className="text-[13px] font-bold">{t.tripReady}</span>
             <span className="text-sm">
-              Vuelos, alojamiento, cómo llegar y qué hacer en {destinations.find((d) => d.id === trip.destinationId)?.place.city ?? "el destino"}, todo en una página.
+              {t.tripText(destinations.find((d) => d.id === trip.destinationId)?.place.city ?? null)}
             </span>
           </span>
           <Link to={`${base}/viaje`} className={buttonClasses({ variant: "primary" })}>
-            Ver el viaje
+            {t.seeTrip}
           </Link>
         </Card>
       )}
 
       {destinations.length === 0 ? (
         <EmptyState
-          title={closed && winnerId ? "Este plan ya se votó" : "Todavía no hay destinos"}
+          title={closed && winnerId ? t.voted : t.none}
           action={
             datesOpen ? (
               <Link to={`${base}/fechas`} className={buttonClasses({ variant: "primary" })}>
-                Decir qué fechas me vienen bien
+                {t.sayDates}
               </Link>
             ) : undefined
           }
         >
-          {closed ? "La votación está cerrada." : `${group.organiserName} está preparando las propuestas. Os avisará cuando se abra la votación.`}
+          {closed ? t.closedText : t.preparing(group.organiserName)}
         </EmptyState>
       ) : ordered.length === 0 ? (
-        <EmptyState title="Ningún destino con estos filtros">Prueba con otra categoría o quita algún filtro.</EmptyState>
+        <EmptyState title={t.noMatch}>{t.noMatchText}</EmptyState>
       ) : (
-        <section aria-label="Destinos" data-stagger className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+        <section aria-label={t.destinations} data-stagger className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {ordered.map((d) => (
             <DestinationCard
               key={d.id}
@@ -195,10 +279,10 @@ export function PlanPage() {
       <section className="flex flex-col gap-3.5">
         <SectionHeader
           size="subheading"
-          title="Lo último que habéis dicho"
+          title={t.recent}
           aside={
             <Link to={`${base}/comentarios`} className="text-sm font-semibold">
-              Ver los {comments.length} comentarios
+              {t.allComments(comments.length)}
             </Link>
           }
         />
@@ -220,16 +304,16 @@ export function PlanPage() {
 
       <Footer>
         <div className="flex flex-wrap items-center gap-3.5">
-          <span className="text-[13px] font-bold text-muted">Otros planes</span>
+          <span className="text-[13px] font-bold text-muted">{t.otherPlans}</span>
           {site.otherPlans.map((p) => (
             <Link key={p.id} to={`/p/${p.id}`} className={chipClasses("nav", p.status === "draft")}>
-              {p.name} · {p.status === "draft" ? "borrador" : p.status === "closed" ? (p.winnerCity ?? "cerrado") : "votando"}
+              {p.name} · {p.status === "draft" ? t.draft : p.status === "closed" ? (p.winnerCity ?? t.closedWord) : t.votingWord}
             </Link>
           ))}
         </div>
         {checkedAt && (
           <span className="text-[13px] text-muted">
-            Precios consultados el {longDate(checkedAt)} de {checkedAt.slice(0, 4)}.
+            {t.checked(longDate(checkedAt), checkedAt.slice(0, 4))}
           </span>
         )}
       </Footer>

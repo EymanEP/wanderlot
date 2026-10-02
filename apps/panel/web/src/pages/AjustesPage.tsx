@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DEFAULT_LOCALE, LOCALES, LOCALE_NAMES, type Locale } from "@wanderlot/core";
 import { Badge, Card, EmptyState, Heading, Notice, PageHeader, RadioCard, Skeleton, Text, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import type { AiOption, AiView, BrowserView, Status } from "../data/backend.ts";
@@ -52,6 +53,44 @@ function BrowserCard({ status }: { status: Status }) {
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+const LOCALE_NOTE: Record<Locale, string> = {
+  es: "Lo que ve el grupo, en español.",
+  en: "What the group sees, in English.",
+};
+
+// The group's language (ROADMAP 4): the site starts in it for everyone, and
+// each person can still switch it on their own device.
+function LanguageCard() {
+  const { state, saveSettings } = usePanel();
+  const toast = useToast();
+  const settings = state.settings;
+  if (!settings) return null;
+  const current = settings.locale ?? DEFAULT_LOCALE;
+  const choose = async (locale: Locale) => {
+    try {
+      await saveSettings({ ...settings, locale });
+      toast(`El sitio ya sale en ${LOCALE_NAMES[locale]}`);
+    } catch (e) {
+      toast(`No se pudo: ${(e as Error).message}`);
+    }
+  };
+  return (
+    <Card as="section" variant="raised" aria-labelledby="idioma" className="flex flex-col gap-3">
+      <Heading id="idioma" size="subheading">
+        Idioma del grupo
+      </Heading>
+      <Text tone="muted" size="sm">
+        El sitio de tus amigos sale en este idioma; cada uno puede cambiarlo para sí en su menú de cuenta. Si no cambia, actualiza el sitio con npm run deploy:site.
+      </Text>
+      <div role="radiogroup" aria-label="Idioma del grupo" className="flex flex-col gap-2">
+        {LOCALES.map((l) => (
+          <RadioCard key={l} name="idioma" title={LOCALE_NAMES[l]} description={LOCALE_NOTE[l]} checked={current === l} onChange={() => void choose(l)} />
+        ))}
+      </div>
     </Card>
   );
 }
@@ -120,6 +159,8 @@ export function AjustesPage() {
             )}
           </Card>
         )}
+
+        <LanguageCard />
 
         {!hosted && state.status && <BrowserCard status={state.status} />}
 

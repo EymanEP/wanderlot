@@ -549,12 +549,10 @@ pages checked at the organiser's request.
 Not planned in detail yet. They wait until the flows above are in use.
 
 - **Other languages, English first.**
-  - Every UI string is Spanish today, in the components, the site and the
-    panel.
-  - Needs a message catalogue per language and a language setting for the
-    group, with Spanish as the default so nothing changes for current groups.
-  - Research prompts and the guide must also be written in the group's
-    language.
+  - ~~The setup and the friends' site in English, with a language for the
+    group (Ajustes) and a switch for each person (SPEC §12).~~ Done.
+  - Next: the panel, the WhatsApp messages, and the research prompts and
+    trip guide written in the group's language.
 - **Currency and locale.**
   - Prices are euros everywhere (cents, `euros()` formatting).
   - A group setting for its currency, with number and date formats to match.
@@ -584,4 +582,5 @@ Not planned in detail yet. They wait until the flows above are in use.
      endpoints, adding by hand, and searching from `/admin` in the
      background. Left: `codex` and `opencode` as local commands.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
-6. **Later:** languages and currency.
+6. **Later:** languages (the site is in English; the panel is next) and
+   currency.

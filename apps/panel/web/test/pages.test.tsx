@@ -743,6 +743,16 @@ describe("Ajustes", () => {
     // The status dot and Generar follow the choice.
     expect(await screen.findByText("OpenAI", { selector: "span" })).toBeTruthy();
   });
+
+  it("sets the group's language, Spanish until chosen", async () => {
+    const user = userEvent.setup();
+    renderAt("/ajustes");
+    const group = await screen.findByRole("radiogroup", { name: "Idioma del grupo" });
+    expect((within(group).getByLabelText(/Español/) as HTMLInputElement).checked).toBe(true);
+    await user.click(within(group).getByLabelText(/English/));
+    expect(await screen.findByText("El sitio ya sale en English")).toBeTruthy();
+    expect((within(group).getByLabelText(/English/) as HTMLInputElement).checked).toBe(true);
+  });
 });
 
 describe("Añadir a mano", () => {

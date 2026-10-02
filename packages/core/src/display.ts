@@ -1,11 +1,13 @@
-// Spanish display helpers shared by the panel and the site.
+// Display helpers shared by the panel and the site, in the current language
+// (i18n.ts) or the one given.
 import type { Destination, FlightLeg, Proposal, Provenance, Stay } from "./model.ts";
 import { baseStay } from "./pricing.ts";
+import { INTL_LOCALE, currentLocale, type Locale } from "./i18n.ts";
 
 const TZ = "Europe/Madrid";
 
-export function euros(cents: number, opts: { decimals?: boolean } = {}): string {
-  return new Intl.NumberFormat("es-ES", {
+export function euros(cents: number, opts: { decimals?: boolean } = {}, l: Locale = currentLocale()): string {
+  return new Intl.NumberFormat(INTL_LOCALE[l], {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: opts.decimals ? 2 : 0,
@@ -16,9 +18,11 @@ export function euros(cents: number, opts: { decimals?: boolean } = {}): string 
     .replace(/ €/, " €");
 }
 
-// Spanish groups thousands with a space in prose ("1 720 €"), even for 4 digits.
-export function eurosGrouped(cents: number): string {
+// Spanish groups thousands with a space in prose ("1 720 €"), even for 4
+// digits; English writes "€1,720".
+export function eurosGrouped(cents: number, l: Locale = currentLocale()): string {
   const whole = Math.round(cents / 100);
+  if (l === "en") return `€${String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
   return `${String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} €`;
 }
 
@@ -38,7 +42,8 @@ export function legDuration(leg: FlightLeg): string {
   return duration(minutesBetween(leg.departAt, leg.arriveAt));
 }
 
-export function stopsLabel(stops: number): string {
+export function stopsLabel(stops: number, l: Locale = currentLocale()): string {
+  if (l === "en") return stops === 0 ? "Direct" : stops === 1 ? "1 stop" : `${stops} stops`;
   if (stops === 0) return "Directo";
   return stops === 1 ? "1 escala" : `${stops} escalas`;
 }
@@ -55,22 +60,25 @@ export function flightDetailsKnown(p: Pick<Proposal, "provenance">): boolean {
 
 // A price the organiser checked, and where: "Visto en Google Flights y
 // Airbnb", or "Comprobado a mano". null for others.
-export function checkedLabel(p: Provenance): string | null {
+export function checkedLabel(p: Provenance, l: Locale = currentLocale()): string | null {
   if (p.kind !== "organiser") return null;
   const seen = (p.seenOn ?? []).map((s) => (s === "google-flights" ? "Google Flights" : "Airbnb"));
+  if (l === "en") return seen.length ? `Seen on ${seen.join(" and ")}` : "Checked by hand";
   return seen.length ? `Visto en ${seen.join(" y ")}` : "Comprobado a mano";
 }
 
 // Who wrote research's figures, as a badge says it: "Lo escribió Claude",
 // "Estimado por OpenAI" (ROADMAP 3.3). null for checked prices.
-export function researchLabel(p: Provenance): string | null {
+export function researchLabel(p: Provenance, l: Locale = currentLocale()): string | null {
   if (p.kind !== "claude") return null;
-  return p.estimate ? `Estimado por ${p.by ?? "Claude"}` : `Lo escribió ${p.by ?? "Claude"}`;
+  const by = p.by ?? "Claude";
+  if (l === "en") return p.estimate ? `Estimated by ${by}` : `Written by ${by}`;
+  return p.estimate ? `Estimado por ${by}` : `Lo escribió ${by}`;
 }
 
 // "Directo · 1 h 20 m"
-export function tripLabel(leg: FlightLeg): string {
-  return `${stopsLabel(leg.stops)} · ${legDuration(leg)}`;
+export function tripLabel(leg: FlightLeg, l: Locale = currentLocale()): string {
+  return `${stopsLabel(leg.stops, l)} · ${legDuration(leg)}`;
 }
 
 // Local wall-clock time of a leg's departure or arrival, in the airport's own offset.
@@ -102,44 +110,54 @@ export function thingsCount(p: Pick<Destination, "todo" | "see">): number {
   return p.todo.length + p.see.length;
 }
 
-// ICU abbreviates September as "sept"; the designs use "sep".
-const tidy = (s: string) => s.replace(/\./g, "").replace(/\bsept\b/, "sep");
+// ICU abbreviates September as "sept" ("Sept" in British English); the
+// designs use "sep".
+const tidy = (s: string) => s.replace(/\./g, "").replace(/\bsept\b/, "sep").replace(/\bSept\b/, "Sep");
 
-const dateFmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("es-ES", { timeZone: TZ, ...opts });
+const dateFmt = (l: Locale, opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(INTL_LOCALE[l], { timeZone: TZ, ...opts });
+const day = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
 
-// "sáb 7 nov"
-export function shortDate(iso: string): string {
-  const d = new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
-  return tidy(dateFmt({ weekday: "short", day: "numeric", month: "short" }).format(d)).replace(",", "");
+// "sáb 7 nov" · "Sat 7 Nov"
+export function shortDate(iso: string, l: Locale = currentLocale()): string {
+  return tidy(dateFmt(l, { weekday: "short", day: "numeric", month: "short" }).format(day(iso))).replace(",", "");
 }
 
-// "24 sep 2026"
-export function mediumDate(iso: string): string {
-  const d = new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso);
-  return tidy(dateFmt({ day: "numeric", month: "short", year: "numeric" }).format(d));
+// "viernes 12" · "Friday 12": a day the group already knows the month of.
+export function weekdayDay(iso: string, l: Locale = currentLocale()): string {
+  return dateFmt(l, { weekday: "long", day: "numeric" }).format(day(iso)).replace(",", "");
 }
 
-// "10 de octubre"
-export function longDate(iso: string): string {
-  return dateFmt({ day: "numeric", month: "long" }).format(new Date(iso));
+// "24 sep 2026" · "24 Sep 2026"
+export function mediumDate(iso: string, l: Locale = currentLocale()): string {
+  return tidy(dateFmt(l, { day: "numeric", month: "short", year: "numeric" }).format(day(iso)));
 }
 
-// "sábado 10 de octubre a las 23:59"
-export function deadlineLabel(iso: string): string {
+// "10 de octubre" · "10 October"
+export function longDate(iso: string, l: Locale = currentLocale()): string {
+  return dateFmt(l, { day: "numeric", month: "long" }).format(new Date(iso));
+}
+
+// "sábado 10 de octubre a las 23:59" · "Saturday 10 October at 23:59"
+export function deadlineLabel(iso: string, l: Locale = currentLocale()): string {
   const d = new Date(iso);
-  const day = dateFmt({ weekday: "long", day: "numeric", month: "long" }).format(d).replace(",", "");
-  const time = dateFmt({ hour: "2-digit", minute: "2-digit" }).format(d);
-  return `${day} a las ${time}`;
+  const date = dateFmt(l, { weekday: "long", day: "numeric", month: "long" }).format(d).replace(",", "");
+  const time = dateFmt(l, { hour: "2-digit", minute: "2-digit" }).format(d);
+  return l === "en" ? `${date} at ${time}` : `${date} a las ${time}`;
 }
 
-// "7 – 14 nov"
-export function rangeLabel(fromIso: string, toIso: string): string {
+// "7 – 14 nov" · "7 – 14 Nov"
+export function rangeLabel(fromIso: string, toIso: string, l: Locale = currentLocale()): string {
   const from = new Date(`${fromIso}T12:00:00Z`);
   const to = new Date(`${toIso}T12:00:00Z`);
-  const month = (d: Date) => tidy(dateFmt({ month: "short" }).format(d));
+  const month = (d: Date) => tidy(dateFmt(l, { month: "short" }).format(d));
   return from.getUTCMonth() === to.getUTCMonth()
     ? `${from.getUTCDate()} – ${to.getUTCDate()} ${month(to)}`
     : `${from.getUTCDate()} ${month(from)} – ${to.getUTCDate()} ${month(to)}`;
+}
+
+// The month's name, as the trip's calendar says it: "noviembre" · "November".
+export function monthName(iso: string, l: Locale = currentLocale()): string {
+  return dateFmt(l, { month: "long" }).format(day(iso));
 }
 
 // Whole days left, rounded down: 15.5 days is "15 días más".
@@ -147,9 +165,17 @@ export function daysUntil(iso: string, now: Date): number {
   return Math.max(0, Math.floor((Date.parse(iso) - now.getTime()) / 86_400_000));
 }
 
-// "hace 4 horas", "hace 2 días", "ahora mismo"
-export function relativeTime(iso: string, now: Date): string {
+// "hace 4 horas", "hace 2 días", "ahora mismo" · "4 hours ago", "just now"
+export function relativeTime(iso: string, now: Date, l: Locale = currentLocale()): string {
   const minutes = Math.floor((now.getTime() - Date.parse(iso)) / 60_000);
+  if (l === "en") {
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} ${days === 1 ? "day" : "days"} ago`;
+  }
   if (minutes < 1) return "ahora mismo";
   if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.floor(minutes / 60);
@@ -158,8 +184,13 @@ export function relativeTime(iso: string, now: Date): string {
   return `hace ${days} ${days === 1 ? "día" : "días"}`;
 }
 
-// "Tu 1.ª opción"
-export function ordinal(n: number): string {
+// "Tu 1.ª opción" · "Your 1st choice"
+export function ordinal(n: number, l: Locale = currentLocale()): string {
+  if (l === "en") {
+    const tens = n % 100;
+    const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+    return `${n}${suffix}`;
+  }
   return `${n}.ª`;
 }
 
@@ -228,9 +259,9 @@ export function standardImageUrl(url: string): string {
 
 // Google Flights, searched for this route and the trip's dates, round trip,
 // one person, in euros: where to check a price by hand.
-export function googleFlightsUrl(from: string, to: string, dateFrom: string, dateTo: string): string {
+export function googleFlightsUrl(from: string, to: string, dateFrom: string, dateTo: string, l: Locale = currentLocale()): string {
   const q = `Flights from ${from} to ${to} on ${dateFrom} through ${dateTo}`;
-  return `https://www.google.com/travel/flights?hl=es&curr=EUR&q=${encodeURIComponent(q)}`;
+  return `https://www.google.com/travel/flights?hl=${l}&curr=EUR&q=${encodeURIComponent(q)}`;
 }
 
 // The stay, checked by hand on Airbnb: the listing already chosen for the

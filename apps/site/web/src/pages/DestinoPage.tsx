@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router";
-import { baseStay, euros, flightDetailsKnown, flightPriceCents, checkedLabel, longDate, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
+import { baseStay, copy, euros, flightDetailsKnown, flightPriceCents, checkedLabel, longDate, monthName, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
 import {
   BulletList,
   Card,
@@ -11,6 +11,7 @@ import {
   SectionHeader,
   StatTile,
   buttonClasses,
+  useCopy,
 } from "@wanderlot/ui";
 import { CommentComposer, CommentThread } from "../components/Comments.tsx";
 import { FlightLegRow, FlightTotalRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
@@ -18,8 +19,73 @@ import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { groupWord, memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
 
+const COPY = copy({
+  es: {
+    missing: "Este destino no está en el plan",
+    seeAll: "Ver los destinos",
+    approved: (organiser: string, date: string) => ` · aprobado por ${organiser} el ${date}`,
+    days: (from: number, to: number, month: string) => `del ${from} al ${to} de ${month}`,
+    people: (n: number) => `${n} personas`,
+    perPerson: "por persona · vuelo + alojamiento",
+    count: "Ver el recuento",
+    change: (rank: string) => `${rank} · cambiar`,
+    give: "Darle mis puntos",
+    summary: "Resumen",
+    flight: "Vuelo",
+    returnPrice: (price: string) => `${price} ida y vuelta`,
+    stay: (n: number) => `Alojamiento · ${n} ${n === 1 ? "noche" : "noches"}`,
+    flightData: "Datos de vuelo",
+    // "Datos de vuelo": the labels agree with it, in the plural.
+    research: (label: string) => label.replace("Lo escribió", "Los escribió").replace("Estimado", "Estimados"),
+    checked: (label: string) => label.replace("Visto", "Vistos").replace("Comprobado", "Comprobados"),
+    stale: "Precio por revisar",
+    api: "Verificados con la API",
+    flights: "Vuelos",
+    out: "Ida",
+    back: "Vuelta",
+    sleep: "Dónde dormimos",
+    there: "Qué hay allí",
+    noTimes: "Sin horarios: ya lo iremos viendo sobre la marcha",
+    todo: "Qué hacer",
+    see: "Qué ver",
+    comments: (n: number) => `Comentarios · ${n}`,
+    private: (n: number, word: string) => `Solo los vemos nosotros${n > 1 ? ` ${word}` : ""}`,
+  },
+  en: {
+    missing: "This destination isn't in the plan",
+    seeAll: "See the destinations",
+    approved: (organiser: string, date: string) => ` · approved by ${organiser} on ${date}`,
+    days: (from: number, to: number, month: string) => `${from}–${to} ${month}`,
+    people: (n: number) => `${n} people`,
+    perPerson: "per person · flight + stay",
+    count: "See the count",
+    change: (rank: string) => `${rank} · change`,
+    give: "Give it my points",
+    summary: "Summary",
+    flight: "Flight",
+    returnPrice: (price: string) => `${price} return`,
+    stay: (n: number) => `Stay · ${n} ${n === 1 ? "night" : "nights"}`,
+    flightData: "Flight details",
+    research: (label: string) => label,
+    checked: (label: string) => label,
+    stale: "Price to be checked",
+    api: "Verified with the API",
+    flights: "Flights",
+    out: "Out",
+    back: "Back",
+    sleep: "Where we're staying",
+    there: "What's there",
+    noTimes: "No timetable: we'll see as we go",
+    todo: "Things to do",
+    see: "Things to see",
+    comments: (n: number) => `Comments · ${n}`,
+    private: (n: number, word: string) => (n > 1 ? `Only the ${word} of us can see these` : "Only we can see these"),
+  },
+});
+
 export function DestinoPage() {
   const site = useSite();
+  const t = useCopy(COPY);
   const { planId, destinationId } = useParams();
   const { plan, destinations, members, me, now, myRanking, voted, result, closed } = site;
   const { group } = useAuth();
@@ -30,10 +96,10 @@ export function DestinoPage() {
     return (
       <Main>
         <EmptyState
-          title="Este destino no está en el plan"
+          title={t.missing}
           action={
             <Link to={base} className={buttonClasses({ variant: "primary" })}>
-              Ver los destinos
+              {t.seeAll}
             </Link>
           }
         />
@@ -45,9 +111,9 @@ export function DestinoPage() {
   const myPoints = myPos >= 0 ? pointsFor(myPos) : 0;
   const trust = trustOf(d, now);
   const comments = site.comments.filter((c) => c.destinationId === d.id);
-  const month = new Intl.DateTimeFormat("es-ES", { month: "long", timeZone: "UTC" }).format(new Date(`${plan.dateFrom}T12:00:00Z`));
-  const approved = d.approvedAt ? ` · aprobado por ${group.organiserName} el ${longDate(d.approvedAt)}` : "";
-  const days = `del ${Number(plan.dateFrom.slice(8))} al ${Number(plan.dateTo.slice(8))} de ${month}`;
+  const month = monthName(plan.dateFrom);
+  const approved = d.approvedAt ? t.approved(group.organiserName, longDate(d.approvedAt)) : "";
+  const days = t.days(Number(plan.dateFrom.slice(8)), Number(plan.dateTo.slice(8)), month);
 
   return (
     <Main className="gap-7">
@@ -60,15 +126,15 @@ export function DestinoPage() {
           </Link>
         }
         title={d.place.city}
-        subtitle={`${d.place.country} · ${days} · ${plan.partySize} personas${approved}`}
+        subtitle={`${d.place.country} · ${days} · ${t.people(plan.partySize)}${approved}`}
         actions={
           <>
             <div className="flex flex-col gap-px lg:items-end">
               <span className="text-[30px] font-extrabold tracking-[-0.03em] tabular-nums">{euros(d.totalPerPersonCents)}</span>
-              <span className="text-[13px] text-muted">por persona · vuelo + alojamiento</span>
+              <span className="text-[13px] text-muted">{t.perPerson}</span>
             </div>
             <Link to={`${base}/votacion`} className={buttonClasses({ variant: myPos >= 0 || closed ? "secondary" : "primary", size: "lg" })}>
-              {closed ? "Ver el recuento" : myPos >= 0 ? `${rankLabel(myPos)} · cambiar` : "Darle mis puntos"}
+              {closed ? t.count : myPos >= 0 ? t.change(rankLabel(myPos)) : t.give}
             </Link>
           </>
         }
@@ -76,28 +142,28 @@ export function DestinoPage() {
 
       <PhotoMosaic city={d.place.city} photos={d.photos} landmarks={d.see.map((s) => s.title)} />
 
-      <section aria-label="Resumen" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatTile label="Vuelo" value={flightDetailsKnown(d) ? tripLabel(d.outbound) : `${euros(flightPriceCents(d))} ida y vuelta`} />
-        <StatTile label={`Alojamiento · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"}`} value={stayShareLabel(d, plan) ?? "—"} />
+      <section aria-label={t.summary} className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatTile label={t.flight} value={flightDetailsKnown(d) ? tripLabel(d.outbound) : t.returnPrice(euros(flightPriceCents(d)))} />
+        <StatTile label={t.stay(plan.nights)} value={stayShareLabel(d, plan) ?? "—"} />
         <StatTile label={month[0]!.toUpperCase() + month.slice(1)} value={d.weather} />
         {trust === "unverified" ? (
-          <StatTile label="Datos de vuelo" value={researchLabel(d.provenance)!.replace("Lo escribió", "Los escribió").replace("Estimado", "Estimados")} tone="claude" />
+          <StatTile label={t.flightData} value={t.research(researchLabel(d.provenance)!)} tone="claude" />
         ) : (
-          <StatTile label="Datos de vuelo" value={trust === "stale" ? "Precio por revisar" : d.provenance.kind === "organiser" ? checkedLabel(d.provenance)!.replace("Visto", "Vistos").replace("Comprobado", "Comprobados") : "Verificados con la API"} tone={trust === "stale" ? "neutral" : "accent"} />
+          <StatTile label={t.flightData} value={trust === "stale" ? t.stale : d.provenance.kind === "organiser" ? t.checked(checkedLabel(d.provenance)!) : t.api} tone={trust === "stale" ? "neutral" : "accent"} />
         )}
       </section>
 
       <div className="flex flex-col gap-8 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-[22px]">
           <section className="flex flex-col gap-2.5">
-            <SectionHeader title="Vuelos" />
+            <SectionHeader title={t.flights} />
             <div className="flex flex-col gap-2">
               {/* Checked by hand: the round trip's price, and the times only
                   if they were checked too (from a screenshot). */}
               {flightDetailsKnown(d) && (
                 <>
-                  <FlightLegRow label="Ida" leg={d.outbound} price={d.provenance.kind !== "organiser"} />
-                  <FlightLegRow label="Vuelta" leg={d.inbound} price={d.provenance.kind !== "organiser"} />
+                  <FlightLegRow label={t.out} leg={d.outbound} price={d.provenance.kind !== "organiser"} />
+                  <FlightLegRow label={t.back} leg={d.inbound} price={d.provenance.kind !== "organiser"} />
                 </>
               )}
               {d.provenance.kind === "organiser" && <FlightTotalRow from={d.outbound.from} to={d.outbound.to} cents={flightPriceCents(d)} />}
@@ -105,7 +171,7 @@ export function DestinoPage() {
           </section>
 
           <section className="flex flex-col gap-2.5">
-            <SectionHeader title="Dónde dormimos" />
+            <SectionHeader title={t.sleep} />
             <div className="flex flex-col gap-2">
               {/* Checked by hand: the stay they're going with, not research's other options. */}
               {(d.provenance.kind === "organiser" ? d.stays.filter((s) => s === baseStay(d.stays)) : d.stays).map((s) => (
@@ -115,10 +181,10 @@ export function DestinoPage() {
           </section>
 
           <section className="flex flex-col gap-3.5">
-            <SectionHeader title="Qué hay allí" aside="Sin horarios: ya lo iremos viendo sobre la marcha" />
+            <SectionHeader title={t.there} aside={t.noTimes} />
             <div className="grid gap-[26px] sm:grid-cols-2">
-              <BulletList label="Qué hacer" items={d.todo} />
-              <BulletList label="Qué ver" items={d.see} tone="neutral" />
+              <BulletList label={t.todo} items={d.todo} />
+              <BulletList label={t.see} items={d.see} tone="neutral" />
             </div>
           </section>
         </div>
@@ -136,12 +202,12 @@ export function DestinoPage() {
           <Card variant="raised">
             <ProsCons pros={d.pros} cons={d.cons} />
           </Card>
-          <SourcesCard lines={sourcesFor(d)} />
+          <SourcesCard lines={sourcesFor(d, month)} />
         </aside>
       </div>
 
       <section id="comentarios" aria-labelledby="comentarios-titulo" className="flex scroll-mt-28 flex-col gap-3.5">
-        <SectionHeader id="comentarios-titulo" title={`Comentarios · ${comments.length}`} aside={`Solo los vemos nosotros${plan.partySize > 1 ? ` ${groupWord(plan.partySize)}` : ""}`} />
+        <SectionHeader id="comentarios-titulo" title={t.comments(comments.length)} aside={t.private(plan.partySize, groupWord(plan.partySize))} />
         <CommentComposer me={me} onSubmit={(body) => site.addComment(d.id, body)} />
         <CommentThread
           comments={comments}

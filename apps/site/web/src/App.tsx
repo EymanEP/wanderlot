@@ -3,7 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 import { Skeleton } from "@wanderlot/ui";
 import { PageErrorBoundary } from "./components/PageErrorBoundary.tsx";
 import { SiteShell } from "./components/SiteShell.tsx";
-import { useAuth } from "./data/auth.tsx";
+import { SiteLocale, useAuth } from "./data/auth.tsx";
 import { ComentariosPage } from "./pages/ComentariosPage.tsx";
 import { InvitePage } from "./pages/InvitePage.tsx";
 import { NewPinPage } from "./pages/NewPinPage.tsx";
@@ -33,6 +33,7 @@ function RequireSession({ children }: { children: ReactNode }) {
 
 export function App() {
   return (
+    <SiteLocale>
     <PageErrorBoundary>
       <Routes>
         <Route index element={<RequireSession><TripsPage /></RequireSession>} />
@@ -50,5 +51,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PageErrorBoundary>
+    </SiteLocale>
   );
 }

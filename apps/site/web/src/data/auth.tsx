@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { startAuthentication, startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { ME } from "@wanderlot/mocks";
+import { LocaleProvider } from "@wanderlot/ui";
+import { DEFAULT_LOCALE, copy, currentLocale, isLocale, pick, type Locale } from "@wanderlot/core";
 
 export interface Member {
   id: string;
@@ -14,7 +16,32 @@ export type InviteStatus = "valid" | "used" | "expired" | "cancelled";
 export interface GroupInfo {
   groupName: string;
   organiserName: string;
+  // The group's language (ROADMAP 4); older sites leave it out.
+  locale?: Locale;
 }
+
+const COPY = copy({
+  es: {
+    organiser: "quien organiza",
+    cancelled: "No se completó. Vuelve a intentarlo cuando quieras.",
+    hasPasskey: "Este dispositivo ya tiene una passkey para ti. Usa «Entrar».",
+    failed: "Algo ha fallado. Vuelve a intentarlo.",
+    pinDigits: "El PIN son 4 números",
+    wrongPin: "Nombre o PIN incorrectos",
+  },
+  en: {
+    organiser: "the organiser",
+    cancelled: "It didn't finish. Try again whenever you like.",
+    hasPasskey: "This device already has a passkey for you. Use “Sign in”.",
+    failed: "Something went wrong. Try again.",
+    pinDigits: "The PIN is 4 digits",
+    wrongPin: "Wrong name or PIN",
+  },
+});
+
+// Every call says which language to answer in, so the site's messages come
+// back in the one on screen.
+export const localeHeaders = (): Record<string, string> => ({ "x-wanderlot-locale": currentLocale() });
 
 export interface AuthClient {
   // The group's name and organiser: public, for the sign-in screens.
@@ -40,16 +67,17 @@ export class AuthError extends Error {}
 function friendly(e: unknown): AuthError {
   const name = (e as { name?: string })?.name;
   // The person closed the passkey prompt or it timed out.
-  if (name === "NotAllowedError" || name === "AbortError") return new AuthError("No se completó. Vuelve a intentarlo cuando quieras.");
-  if (name === "InvalidStateError") return new AuthError("Este dispositivo ya tiene una passkey para ti. Usa «Entrar».");
-  return e instanceof AuthError ? e : new AuthError((e as Error)?.message || "Algo ha fallado. Vuelve a intentarlo.");
+  const t = pick(COPY);
+  if (name === "NotAllowedError" || name === "AbortError") return new AuthError(t.cancelled);
+  if (name === "InvalidStateError") return new AuthError(t.hasPasskey);
+  return e instanceof AuthError ? e : new AuthError((e as Error)?.message || t.failed);
 }
 
 async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T> {
   const res = await fetch(path, {
     method,
     credentials: "same-origin",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...localeHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -61,14 +89,14 @@ async function post<T>(path: string, body?: unknown, method = "POST"): Promise<T
 export const httpAuthClient: AuthClient = {
   async site() {
     const res = await fetch("/api/site");
-    return res.ok ? ((await res.json()) as GroupInfo) : { groupName: "Wanderlot", organiserName: "quien organiza" };
+    return res.ok ? ((await res.json()) as GroupInfo) : { groupName: "Wanderlot", organiserName: pick(COPY).organiser };
   },
   async session() {
-    const res = await fetch("/api/session", { credentials: "same-origin" });
+    const res = await fetch("/api/session", { credentials: "same-origin", headers: localeHeaders() });
     return res.ok ? ((await res.json()) as { member: Member }).member : null;
   },
   async invite(token) {
-    const res = await fetch(`/api/invites/${encodeURIComponent(token)}`);
+    const res = await fetch(`/api/invites/${encodeURIComponent(token)}`, { headers: localeHeaders() });
     if (!res.ok) return null;
     const data = (await res.json()) as { member: { name: string }; status: InviteStatus };
     return { name: data.member.name, status: data.status };
@@ -108,28 +136,28 @@ export const httpAuthClient: AuthClient = {
 
 // For previews and tests: always succeeds after a moment. Invite tokens
 // "usada", "caducada" and "cancelada" show those states; any other is valid.
-export function mockAuthClient(startSignedIn = true): AuthClient {
+export function mockAuthClient(startSignedIn = true, groupLocale?: Locale): AuthClient {
   let member: Member | null = startSignedIn ? { id: ME.id, name: ME.name } : null;
   const wait = () => new Promise((r) => setTimeout(r, 400));
   const states: Record<string, InviteStatus> = { usada: "used", caducada: "expired", cancelada: "cancelled" };
   return {
-    site: async () => ({ groupName: "Grupo 51", organiserName: ME.name }),
+    site: async () => ({ groupName: "Grupo 51", organiserName: ME.name, ...(groupLocale ? { locale: groupLocale } : {}) }),
     session: async () => member,
     invite: async (token) => ({ name: ME.name, status: states[token] ?? "valid" }),
     acceptInviteWithPin: async (_token, pin) => {
       await wait();
-      if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
+      if (!/^\d{4}$/.test(pin)) throw new AuthError(pick(COPY).pinDigits);
       return (member = { id: ME.id, name: ME.name });
     },
     // The design's PIN for everyone is 4801.
     signInWithPin: async (name, pin) => {
       await wait();
-      if (pin !== "4801" || !name.trim()) throw new AuthError("Nombre o PIN incorrectos");
+      if (pin !== "4801" || !name.trim()) throw new AuthError(pick(COPY).wrongPin);
       return (member = { id: ME.id, name: ME.name });
     },
     changePin: async (pin) => {
       await wait();
-      if (!/^\d{4}$/.test(pin)) throw new AuthError("El PIN son 4 números");
+      if (!/^\d{4}$/.test(pin)) throw new AuthError(pick(COPY).pinDigits);
     },
     acceptInvite: async () => {
       await wait();
@@ -164,7 +192,7 @@ const Ctx = createContext<AuthApi | null>(null);
 
 export function AuthProvider({ client, children }: { client: AuthClient; children: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
-  const [group, setGroup] = useState<GroupInfo>({ groupName: "Wanderlot", organiserName: "quien organiza" });
+  const [group, setGroup] = useState<GroupInfo>({ groupName: "Wanderlot", organiserName: pick(COPY).organiser });
 
   useEffect(() => {
     client.site().then(setGroup, () => {});
@@ -211,4 +239,32 @@ export function useAuth(): AuthApi {
   const api = useContext(Ctx);
   if (!api) throw new Error("useAuth needs an <AuthProvider>");
   return api;
+}
+
+// The site's language: what this person chose on this device, or the
+// group's, or Spanish. The choice is a convenience kept in the browser.
+const LOCALE_KEY = "wanderlot:locale";
+function chosenLocale(): Locale | null {
+  try {
+    const v = localStorage.getItem(LOCALE_KEY);
+    return isLocale(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function SiteLocale({ children }: { children: ReactNode }) {
+  const { group } = useAuth();
+  const [chosen, setChosen] = useState<Locale | null>(chosenLocale);
+  const choose = useCallback((l: Locale) => {
+    setChosen(l);
+    try {
+      localStorage.setItem(LOCALE_KEY, l);
+    } catch {}
+  }, []);
+  return (
+    <LocaleProvider locale={chosen ?? group.locale ?? DEFAULT_LOCALE} setLocale={choose}>
+      {children}
+    </LocaleProvider>
+  );
 }
