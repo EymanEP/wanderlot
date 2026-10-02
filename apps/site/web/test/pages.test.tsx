@@ -53,6 +53,26 @@ describe("Plan", () => {
   });
 });
 
+describe("Moving around", () => {
+  it("has a menu that fits, and a phone bar that starts at home", async () => {
+    const user = userEvent.setup();
+    renderAt("/p/noviembre-2026");
+    await user.click(await screen.findByRole("button", { name: "Tu cuenta" }));
+    const menu = screen.getByRole("menu", { name: "Tu cuenta" });
+    expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Tus viajes", "Cambiar mi PIN", "Cerrar sesión"]);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    const bar = screen.getAllByRole("navigation", { name: "Secciones" }).at(-1)!;
+    const links = within(bar).getAllByRole("link");
+    expect(links[0]!.textContent).toBe("Viajes");
+    expect(links[0]!.getAttribute("href")).toBe("/");
+    expect(links.map((l) => l.textContent)).toEqual(expect.arrayContaining(["Destinos", "Votación", "Comentarios"]));
+    await user.click(links[0]!);
+    expect(await screen.findByRole("heading", { name: "Tus viajes" })).toBeTruthy();
+  });
+});
+
 describe("Días libres", () => {
   it("lets me say I've got the days off, and shows where everyone is", async () => {
     const user = userEvent.setup();
@@ -262,7 +282,7 @@ describe("Signing in", () => {
     renderAt("/p/noviembre-2026/votacion");
     await screen.findByRole("heading", { level: 1, name: "Votación" });
     await user.click(screen.getAllByRole("button", { name: "Tu cuenta" })[0]!);
-    await user.click(screen.getByRole("button", { name: "Cambiar mi PIN" }));
+    await user.click(screen.getByRole("menuitem", { name: "Cambiar mi PIN" }));
     expect(await screen.findByRole("heading", { name: "Cambia tu PIN" })).toBeTruthy();
     await user.type(screen.getByLabelText("PIN nuevo"), "7304");
     await user.type(screen.getByLabelText("Repítelo"), "7305");
@@ -315,7 +335,7 @@ describe("Signing in", () => {
     const user = userEvent.setup();
     renderAt("/p/noviembre-2026");
     await user.click(await screen.findByRole("button", { name: "Tu cuenta" }));
-    await user.click(screen.getByRole("button", { name: "Cerrar sesión en este dispositivo" }));
+    await user.click(screen.getByRole("menuitem", { name: "Cerrar sesión" }));
     expect(await screen.findByRole("heading", { name: "Entra en Grupo 51" })).toBeTruthy();
   });
 });

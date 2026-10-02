@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { airbnbUrl, baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
-import { Button, DataRow, Dialog, Field, Notice, RadioCard, TextInput } from "@wanderlot/ui";
+import { Button, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
 
@@ -54,6 +54,9 @@ function readImages(files: File[]): Promise<ScreenshotImage[]> {
   );
 }
 
+// In the list of flights, where the dates are the trip's: "11:55 BIO → 14:05 AMS · KLM KL1524 · directo"
+const legShort = (l: ExtractedLeg) => `${localTime(l.departAt)} ${l.from} → ${localTime(l.arriveAt)} ${l.to} · ${l.carrier} ${l.flightNumber} · ${stopsLabel(l.stops).toLowerCase()}`;
+
 // "11:55 BIO → 14:05 AMS · mié 18 nov · KLM KL1524 · directo"
 const legLine = (l: ExtractedLeg) => `${localTime(l.departAt)} ${l.from} → ${localTime(l.arriveAt)} ${l.to} · ${shortDate(l.departAt)} · ${l.carrier} ${l.flightNumber} · ${stopsLabel(l.stops).toLowerCase()}`;
 
@@ -88,16 +91,14 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
           e.target.value = "";
         }}
       />
-      <div className="flex flex-wrap gap-2">
-        {canReadClipboard && !busy && (
-          <Button size="sm" variant="ghost" onClick={() => void clipboardImages().then(onImages, (e: Error) => onImages(Object.assign([], { error: e.message })))}>
-            Pegar captura
-          </Button>
-        )}
-        <Button size="sm" disabled={busy} onClick={() => input.current?.click()}>
-          {busy ? "Leyendo la captura…" : label}
+      {canReadClipboard && !busy && (
+        <Button size="sm" variant="ghost" onClick={() => void clipboardImages().then(onImages, (e: Error) => onImages(Object.assign([], { error: e.message })))}>
+          Pegar captura
         </Button>
-      </div>
+      )}
+      <Button size="sm" variant="ghost" aria-label={label.replace(/^Leer/, "Subir")} disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? "Leyendo…" : "Subir captura"}
+      </Button>
     </>
   );
 }
@@ -271,26 +272,30 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     }
   };
 
-  const euroField = (label: string, hint: string, value: string, set: (v: string) => void, required = true) => (
-    <Field label={label}>
-      {({ inputId }) => (
-        <>
-          <TextInput id={inputId} aria-describedby={`${inputId}-hint`} inputMode="decimal" required={required} value={value} onChange={(e) => set(e.target.value)} />
-          <span id={`${inputId}-hint`} className="-mt-1 text-[13px] text-muted">
-            {hint}
-          </span>
-        </>
-      )}
-    </Field>
+  // A price in euros, with a short visible label and the full one for
+  // screen readers.
+  const euroInput = (name: string, label: string, value: string, set: (v: string) => void, required = true) => (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[13px] font-semibold text-ink-2">{label}</span>
+      <span className="relative flex items-center">
+        <TextInput aria-label={name} inputMode="decimal" required={required} value={value} onChange={(e) => set(e.target.value)} className="pr-9 text-[17px] font-bold tabular-nums" />
+        <span aria-hidden className="pointer-events-none absolute right-3.5 text-[15px] font-semibold text-muted">
+          €
+        </span>
+      </span>
+    </label>
   );
 
   const timesKnown = legs !== null || (p ? flightDetailsKnown(p) && p.provenance.kind !== "claude" : false);
+  const linkClass = "inline-flex items-center gap-1 text-[13px] font-semibold text-accent no-underline hover:text-accent-hover";
+  const total = flightCents === null || stayShare === null ? null : flightCents + (stayShare ?? 0);
 
   return (
     <Dialog
       open={p !== undefined}
       wide
       title={p ? `Precios de ${p.place.city}` : ""}
+      subtitle={`${shortDate(plan.dateFrom)} – ${shortDate(plan.dateTo)} · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"} · ${people} personas`}
       onClose={onClose}
       actions={
         <>
@@ -301,18 +306,18 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
         </>
       }
     >
-      <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-5">
-        <span>
-          {onExtract
-            ? `Pon lo que cuestan hoy, o sube o pega (Ctrl+V) una captura y ${aiName} lo rellena por ti: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Revisa lo que lea antes de guardar.`
-            : `Pon lo que cuestan hoy: el vuelo de una persona, y el alojamiento entero para los ${people}, como lo muestra Airbnb. Leer capturas necesita una IA: mira en Ajustes cómo añadir una.`}{" "}
-          Se mostrarán como «Comprobado a mano» durante 72 horas.
-          {browse && ` Con «Mirar en Google Flights», ${aiName} abre Google Flights en una ventana de este ordenador y trae los mejores vuelos, con el precio de la página de reserva, para que elijas uno: mírala, y si sale un aviso de cookies o un CAPTCHA, resuélvelo tú. El alojamiento míralo tú en Airbnb con el enlace de abajo.`}
+      <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-4">
+        <span className="text-sm text-ink-2">
+          Lo que cuesta hoy: el vuelo de una persona y el alojamiento entero para el grupo. En el sitio se verá como «Comprobado a mano».
+          {onExtract ? ` Puedes pegar (Ctrl+V) una captura y ${aiName} la lee.` : " Leer capturas necesita una IA: mira en Ajustes cómo añadir una."}
         </span>
 
         {browsing && (
-          <div role="status" className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
-            {step ?? "Abriendo Google Flights en el navegador…"}
+          <div role="status" className="flex items-center gap-3 rounded-xl bg-accent-soft px-3.5 py-3 text-sm text-accent-strong">
+            <span aria-hidden className="size-3.5 shrink-0 rounded-full border-2 border-accent border-t-transparent motion-safe:animate-spin" />
+            <span>
+              {step ?? "Abriendo Google Flights en el navegador…"} Si sale un aviso de cookies o un CAPTCHA, resuélvelo en esa ventana.
+            </span>
           </div>
         )}
 
@@ -328,108 +333,147 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
           </div>
         )}
 
-        <section aria-label="Vuelos" className="flex flex-col gap-3" onFocus={() => setFocus("flight")}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-[15px]">Vuelos</strong>
-            <div className="flex flex-wrap items-center gap-2">
+        <section aria-label="Vuelos" className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("flight")}>
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-ink-2">
+                <PlaneIcon size={18} />
+              </span>
+              <div className="flex flex-col">
+                <strong className="text-[15px]">Vuelo</strong>
+                {p && (
+                  <span className="text-[13px] text-muted">
+                    {p.outbound.from} ⇄ {p.outbound.to} · ida y vuelta, por persona
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
               {browse && (
                 <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={look}>
-                  {browsing ? "Mirando en Google Flights…" : "Mirar en Google Flights"}
+                  {browsing ? "Mirando…" : "Mirar en Google Flights"}
                 </Button>
               )}
               {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
             </div>
-          </div>
-          {p && (
-            <a
-              href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)}
-              target="_blank"
-              rel="noreferrer"
-              className="self-start text-[13px] font-semibold text-accent hover:text-accent-hover"
-            >
-              Buscar en Google Flights · {shortDate(plan.dateFrom)} – {shortDate(plan.dateTo)}
-            </a>
-          )}
+          </header>
+
           {flightOptions && (
-            <div role="radiogroup" aria-label="Vuelos encontrados" className="flex flex-col gap-2">
-              <span className="text-[13px] text-muted">Las mejores opciones que vio en Google Flights. Elige una:</span>
+            <div role="radiogroup" aria-label="Vuelos encontrados" className="flex flex-col overflow-hidden rounded-xl border border-line-soft">
               {flightOptions.map((o, i) => (
-                <RadioCard
+                <label
                   key={i}
-                  name="vuelo"
-                  title={`${euros(o.flightCents)} por persona${o.note ? ` · ${o.note}` : ""}`}
-                  description={[
-                    o.checkedToEnd
-                      ? `Precio al reservar${o.bookWith ? ` con ${o.bookWith}` : ""}${o.listedCents !== null && o.listedCents !== o.flightCents ? ` (en la lista ponía ${euros(o.listedCents)})` : ""}`
-                      : "Precio de la lista: puede cambiar al reservar",
-                    o.outbound ? `Ida ${legLine(o.outbound)}${o.inbound ? ` · Vuelta ${legLine(o.inbound)}` : ""}` : "Sin horarios",
-                  ].join(" · ")}
-                  checked={flightPick === i}
-                  onChange={() => pickFlight(flightOptions, i)}
-                />
+                  className={cn(
+                    "flex cursor-pointer items-start gap-3 px-3.5 py-3 [&+&]:border-t [&+&]:border-line-faint",
+                    flightPick === i ? "bg-accent-soft" : "hover:bg-surface-2",
+                  )}
+                >
+                  <input type="radio" name="vuelo" checked={flightPick === i} onChange={() => pickFlight(flightOptions, i)} className="mt-1 accent-[var(--color-accent)]" />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-[15px] font-bold tabular-nums">{euros(o.flightCents)}</span>
+                      {o.note && <span className="text-sm font-semibold">{o.note}</span>}
+                    </span>
+                    {o.outbound && <span className="text-[13px] text-ink-2">Ida · {legShort(o.outbound)}</span>}
+                    {o.inbound && <span className="text-[13px] text-ink-2">Vuelta · {legShort(o.inbound)}</span>}
+                    <span className="text-xs text-muted">
+                      {o.checkedToEnd
+                        ? `Precio al reservar${o.bookWith ? ` con ${o.bookWith}` : ""}${o.listedCents !== null && o.listedCents !== o.flightCents ? ` (en la lista ponía ${euros(o.listedCents)})` : ""}`
+                        : "Precio de la lista: puede cambiar al reservar"}
+                    </span>
+                  </span>
+                </label>
               ))}
             </div>
           )}
-          {p &&
-            euroField(
-              "Vuelo, ida y vuelta · € por persona",
-              `${p.outbound.from} → ${p.outbound.to} y vuelta, una persona`,
-              flights,
-              setFlights,
+
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+            <div className="w-full sm:w-[220px]">{euroInput("Vuelo, ida y vuelta · € por persona", "Precio por persona", flights, setFlights)}</div>
+            {p && (
+              <a href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)} target="_blank" rel="noreferrer" className={cn(linkClass, "pb-3")}>
+                Abrir Google Flights <ExternalIcon size={13} />
+              </a>
             )}
-          {legs ? (
-            <div className="flex flex-col gap-1 rounded-xl bg-accent-soft px-3.5 py-3 text-[13px] text-accent-strong">
-              <span>Ida · {legLine(legs.outbound)}</span>
-              <span>Vuelta · {legLine(legs.inbound)}</span>
-              <button type="button" onClick={() => setLegs(null)} className="cursor-pointer self-start border-0 bg-transparent p-0 font-semibold text-accent-strong underline">
+          </div>
+          {legs && !flightOptions ? (
+            <div className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px]">
+              <span className="flex flex-col gap-0.5">
+                <span>Ida · {legLine(legs.outbound)}</span>
+                <span>Vuelta · {legLine(legs.inbound)}</span>
+              </span>
+              <button type="button" onClick={() => setLegs(null)} className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-accent underline">
                 Quitar horarios
               </button>
             </div>
           ) : (
-            !timesKnown && <span className="text-[13px] text-muted">Sin captura del vuelo, la cuadrilla verá solo el precio, sin horarios ni fechas.</span>
+            !timesKnown && !legs && <span className="text-[13px] text-muted">Sin horarios, el grupo verá solo el precio.</span>
           )}
         </section>
 
-        <section aria-label="Alojamiento" className="flex flex-col gap-3 border-t border-line-faint pt-4" onFocus={() => setFocus("stay")}>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-[15px]">Alojamiento</strong>
-            <div className="flex flex-wrap items-center gap-2">
+        <section aria-label="Alojamiento" className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("stay")}>
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-ink-2">
+                <HouseIcon size={18} />
+              </span>
+              <div className="flex flex-col">
+                <strong className="text-[15px]">Alojamiento</strong>
+                <span className="text-[13px] text-muted">
+                  Todo el grupo, {plan.nights} {plan.nights === 1 ? "noche" : "noches"}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1">
+              {p && (
+                <a
+                  href={airbnbUrl({ city: p.place.city, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: people }, stay?.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonClasses({ size: "sm", variant: "secondary" })}
+                >
+                  {stay?.url && /airbnb\./.test(stay.url) ? "Ver en Airbnb" : "Buscar en Airbnb"} <ExternalIcon size={13} />
+                </a>
+              )}
               {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
             </div>
-          </div>
-          {p && (
-            <a
-              href={airbnbUrl({ city: p.place.city, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: people }, stay?.url)}
-              target="_blank"
-              rel="noreferrer"
-              className="self-start text-[13px] font-semibold text-accent hover:text-accent-hover"
-            >
-              {stay?.url && /airbnb\./.test(stay.url) ? "Ver el alojamiento en Airbnb" : "Buscar en Airbnb"} · {shortDate(plan.dateFrom)} – {shortDate(plan.dateTo)} · {people} personas
-            </a>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Nombre del alojamiento">
-              {({ inputId }) => <TextInput id={inputId} maxLength={120} value={stayName} onChange={(e) => setStayName(e.target.value)} />}
+          </header>
+          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <Field label="Nombre">
+              {({ inputId }) => <TextInput id={inputId} aria-label="Nombre del alojamiento" maxLength={120} placeholder="Piso con terraza en el centro" value={stayName} onChange={(e) => setStayName(e.target.value)} />}
             </Field>
-            <Field label="Enlace (opcional)">
-              {({ inputId }) => <TextInput id={inputId} type="url" placeholder="https://www.airbnb.es/rooms/…" value={stayUrl} onChange={(e) => setStayUrl(e.target.value)} />}
-            </Field>
+            {euroInput("Alojamiento · € en total", "Total de la estancia", stayTotal, setStayTotal, false)}
           </div>
-          {euroField("Alojamiento · € en total", `Las ${plan.nights} noches, todo el grupo. Déjalo vacío si no hay alojamiento.`, stayTotal, setStayTotal, false)}
-          {stay && <span className="text-[13px] text-muted">Al guardar, en el sitio solo se verá este alojamiento; las otras opciones de la búsqueda se quitan.</span>}
+          <Field label="Enlace (opcional)">
+            {({ inputId }) => <TextInput id={inputId} type="url" placeholder="https://www.airbnb.es/rooms/…" value={stayUrl} onChange={(e) => setStayUrl(e.target.value)} />}
+          </Field>
+          <span className="text-[13px] text-muted">
+            Déjalo vacío si no hay alojamiento.{stay ? " Al guardar, en el sitio solo se verá este; las otras opciones de la búsqueda se quitan." : ""}
+          </span>
         </section>
 
-        <dl className="m-0 flex flex-col gap-2" aria-label="Por persona">
-          <DataRow label="Vuelo por persona" value={flightCents === null ? "—" : euros(flightCents)} />
-          <DataRow label="Alojamiento por persona" value={stayShare === null ? "—" : stayShare === undefined ? "Sin alojamiento" : euros(stayShare)} />
-          <DataRow variant="highlight" label="Total por persona" value={flightCents === null || stayShare === null ? "—" : euros(flightCents + (stayShare ?? 0))} />
-        </dl>
         {notes.map((n) => (
           <Notice key={n} tone="neutral">
             {n}
           </Notice>
         ))}
         {error && <Notice role="alert">{error}</Notice>}
+
+        <dl aria-label="Por persona" className="m-0 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-card bg-surface-2 px-4 py-3.5">
+          <div className="flex gap-6">
+            <div className="flex flex-col">
+              <dt className="text-xs text-muted">Vuelo</dt>
+              <dd className="m-0 text-[15px] font-semibold tabular-nums">{flightCents === null ? "—" : euros(flightCents)}</dd>
+            </div>
+            <div className="flex flex-col">
+              <dt className="text-xs text-muted">Alojamiento</dt>
+              <dd className="m-0 text-[15px] font-semibold tabular-nums">{stayShare === null ? "—" : stayShare === undefined ? "Sin alojamiento" : euros(stayShare)}</dd>
+            </div>
+          </div>
+          <div className="flex flex-col items-end">
+            <dt className="text-xs font-semibold text-muted">Total por persona</dt>
+            <dd className="m-0 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{total === null ? "—" : euros(total)}</dd>
+          </div>
+        </dl>
       </form>
     </Dialog>
   );
