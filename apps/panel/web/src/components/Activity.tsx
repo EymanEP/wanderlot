@@ -1,7 +1,39 @@
 import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router";
-import { useToast } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { useCopy, useToast } from "@wanderlot/ui";
 import { usePanel, type Task } from "../data/store.tsx";
+
+const COPY = copy({
+  es: {
+    guide: (ai: string, city?: string | null) => `${ai} prepara la guía${city ? ` de ${city}` : ""}`,
+    flights: (ai: string, city?: string | null) => `${ai} mira vuelos en Google Flights${city ? ` · ${city}` : ""}`,
+    searching: (ai: string, n: number) => `${ai} busca destinos · ${n}`,
+    background: (ai: string) => `${ai} busca en segundo plano`,
+    see: "Ver",
+    searchDone: (n: number) => `Búsqueda terminada: ${n} propuestas nuevas`,
+    searchCut: "La búsqueda se cortó",
+    guideReady: (city?: string | null) => `La guía${city ? ` de ${city}` : ""} está lista`,
+    guideFailed: (error: string) => `No se pudo preparar la guía: ${error}`,
+    flightsRead: (city?: string | null) => `Vuelos${city ? ` de ${city}` : ""} leídos en Google Flights: elige uno`,
+    flightsFailed: (error: string) => `No se pudo leer Google Flights: ${error}`,
+    running: (labels: string) => `En marcha: ${labels}`,
+  },
+  en: {
+    guide: (ai: string, city?: string | null) => `${ai} is preparing the guide${city ? ` to ${city}` : ""}`,
+    flights: (ai: string, city?: string | null) => `${ai} is checking flights on Google Flights${city ? ` · ${city}` : ""}`,
+    searching: (ai: string, n: number) => `${ai} is finding destinations · ${n}`,
+    background: (ai: string) => `${ai} is searching in the background`,
+    see: "View",
+    searchDone: (n: number) => `Search finished: ${n} new proposals`,
+    searchCut: "The search stopped",
+    guideReady: (city?: string | null) => `The guide${city ? ` to ${city}` : ""} is ready`,
+    guideFailed: (error: string) => `Couldn't prepare the guide: ${error}`,
+    flightsRead: (city?: string | null) => `Flights${city ? ` to ${city}` : ""} read on Google Flights: pick one`,
+    flightsFailed: (error: string) => `Couldn't read Google Flights: ${error}`,
+    running: (labels: string) => `In progress: ${labels}`,
+  },
+});
 
 interface Item {
   key: string;
@@ -13,23 +45,21 @@ interface Item {
 // in the panel: a search, the trip's guide, a page read in the browser. Each
 // links to its screen, and says so when it ends.
 export function Activity() {
+  const t = useCopy(COPY);
   const { state } = usePanel();
   const toast = useToast();
   const { pathname } = useLocation();
   const ai = state.status?.ai?.name ?? "Claude";
   const winner = state.plan?.winnerDestinationId;
 
-  const place = (t: Task) => (t.kind !== "guide" && t.proposalId !== winner ? "/revisar" : "/viaje");
-  const doing = (t: Task) =>
-    t.kind === "guide"
-      ? `${ai} prepara la guía${t.city ? ` de ${t.city}` : ""}`
-      : `${ai} mira vuelos en Google Flights${t.city ? ` · ${t.city}` : ""}`;
+  const place = (task: Task) => (task.kind !== "guide" && task.proposalId !== winner ? "/revisar" : "/viaje");
+  const doing = (task: Task) => (task.kind === "guide" ? t.guide(ai, task.city) : t.flights(ai, task.city));
   const running: Item[] = [
-    ...(state.generation?.running ? [{ key: "generation", label: `${ai} busca destinos · ${state.generation.received}`, to: "/generar" }] : []),
-    ...(state.job?.status === "running" ? [{ key: "job", label: `${state.job.aiName} busca en segundo plano`, to: state.job.kind === "guide" ? "/viaje" : "/generar" }] : []),
+    ...(state.generation?.running ? [{ key: "generation", label: t.searching(ai, state.generation.received), to: "/generar" }] : []),
+    ...(state.job?.status === "running" ? [{ key: "job", label: t.background(state.job.aiName), to: state.job.kind === "guide" ? "/viaje" : "/generar" }] : []),
     ...state.tasks
-      .filter((t) => t.status === "running")
-      .map((t) => ({ key: t.id, label: doing(t), to: place(t) })),
+      .filter((task) => task.status === "running")
+      .map((task) => ({ key: task.id, label: doing(task), to: place(task) })),
   ];
 
   // Say when something ends, with a way back to it from anywhere.
@@ -37,31 +67,31 @@ export function Activity() {
   useEffect(() => {
     const was = seen.current;
     const now = new Map<string, string>();
-    for (const t of state.tasks) now.set(t.id, t.status);
+    for (const task of state.tasks) now.set(task.id, task.status);
     if (state.generation) now.set("generation", state.generation.running ? "running" : state.generation.error ? "failed" : "done");
     for (const [id, status] of now) {
       if (was.get(id) !== "running" || status === "running") continue;
-      const t = state.tasks.find((x) => x.id === id);
-      const to = t ? place(t) : "/generar";
+      const task = state.tasks.find((x) => x.id === id);
+      const to = task ? place(task) : "/generar";
       // Generar shows how its search ended; elsewhere, say it here.
       if (id === "generation" && pathname.startsWith("/generar")) continue;
       const where = pathname.startsWith(to) ? null : (
         <Link to={to} className="font-semibold text-white underline">
-          Ver
+          {t.see}
         </Link>
       );
       const text =
         id === "generation"
           ? status === "done"
-            ? `Búsqueda terminada: ${state.generation?.received ?? 0} propuestas nuevas`
-            : "La búsqueda se cortó"
-          : t?.kind === "guide"
+            ? t.searchDone(state.generation?.received ?? 0)
+            : t.searchCut
+          : task?.kind === "guide"
             ? status === "done"
-              ? `La guía${t.city ? ` de ${t.city}` : ""} está lista`
-              : `No se pudo preparar la guía: ${t.error ?? "error"}`
+              ? t.guideReady(task.city)
+              : t.guideFailed(task.error ?? "error")
             : status === "done"
-              ? `Vuelos${t?.city ? ` de ${t.city}` : ""} leídos en Google Flights: elige uno`
-              : `No se pudo leer Google Flights: ${t?.error ?? "error"}`;
+              ? t.flightsRead(task?.city)
+              : t.flightsFailed(task?.error ?? "error");
       toast(
         <span className="flex items-center gap-3">
           {text}
@@ -80,7 +110,7 @@ export function Activity() {
     <Link
       to={first!.to}
       role="status"
-      aria-label={`En marcha: ${running.map((r) => r.label).join(", ")}`}
+      aria-label={t.running(running.map((r) => r.label).join(", "))}
       className="flex max-w-[260px] items-center gap-2 rounded-full bg-accent-soft px-3 py-1.5 text-[13px] font-semibold text-accent-strong no-underline hover:bg-accent-soft/80"
     >
       <span aria-hidden className="size-3 shrink-0 rounded-full border-2 border-accent border-t-transparent motion-safe:animate-spin" />

@@ -1,9 +1,21 @@
 // The panel's state. <PanelProvider> loads everything through a backend (the
 // local server, or the mocks) and screens read and change it with usePanel().
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { avatarTint, initials, slugify, type GroupSettings, type LeaveStatus, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
+import { avatarTint, copy, initials, pick, slugify, type GroupSettings, type LeaveStatus, type Plan, type Proposal, type SuggestionView, type TripPage } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 import type { AiId, AiView, Browsed, BrowserView, LeavePage, ManualProposal, PanelJob, PriceSave, Access, MemberAccess, NewPlan, CheckedPrices, PanelBackend, DatesPage, DateWindow, OrganiserAccess, TripView, Extracted, PhotoResults, PublishStatus, Review, ScreenshotImage, TripSummary, SearchOptions, SearchStep, Status, VoteView } from "./backend.ts";
+import { useGroupLocale } from "./locale.tsx";
+
+const COPY = copy({
+  es: {
+    noPlan: "No hay plan seleccionado",
+    guideInBackground: "El panel del sitio prepara la guía en segundo plano",
+  },
+  en: {
+    noPlan: "No trip selected",
+    guideInBackground: "The site's panel prepares the guide in the background",
+  },
+});
 
 export type { Review } from "./backend.ts";
 
@@ -197,6 +209,7 @@ const Ctx = createContext<PanelApi | null>(null);
 // How often a background job is checked on while it runs.
 export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend: PanelBackend; children: ReactNode; jobPollMs?: number }) {
   const [state, setState] = useState<PanelState>(INITIAL);
+  useGroupLocale(state.settings?.locale);
   const abort = useRef<AbortController | null>(null);
   const planId = state.plan?.id ?? null;
   const patch = useCallback((fn: (s: PanelState) => Partial<PanelState>) => setState((s) => ({ ...s, ...fn(s) })), []);
@@ -307,7 +320,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
 
   const api = useMemo<PanelApi>(() => {
     const need = () => {
-      if (!planId) throw new Error("No hay plan seleccionado");
+      if (!planId) throw new Error(pick(COPY).noPlan);
       return planId;
     };
     return {
@@ -532,7 +545,7 @@ export function PanelProvider({ backend, children, jobPollMs = 8000 }: { backend
         }
         runTask({ planId: pid, kind: "guide", city }, async (onStep) => {
           const r = await backend.prepareTrip(pid, home, onStep);
-          if ("job" in r) throw new Error("El panel del sitio prepara la guía en segundo plano");
+          if ("job" in r) throw new Error(pick(COPY).guideInBackground);
           return r;
         });
       },

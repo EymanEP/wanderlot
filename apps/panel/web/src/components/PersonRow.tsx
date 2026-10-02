@@ -1,7 +1,7 @@
-import { deadlineLabel, longDate, relativeTime } from "@wanderlot/core";
+import { copy, deadlineLabel, longDate, relativeTime } from "@wanderlot/core";
 import type { Access } from "../data/backend.ts";
 import type { Person } from "../data/store.tsx";
-import { Avatar, Badge, Button, Card, type BadgeTone } from "@wanderlot/ui";
+import { Avatar, Badge, Button, Card, useCopy, type BadgeTone } from "@wanderlot/ui";
 
 export type PersonState = "inside" | "pending" | "expired" | "none";
 
@@ -12,11 +12,48 @@ export function personState(a: Access): PersonState {
   return "none";
 }
 
-const BADGE: Record<PersonState, { label: string; tone: BadgeTone }> = {
-  inside: { label: "Dentro", tone: "accent" },
-  pending: { label: "Invitación pendiente", tone: "claude" },
-  expired: { label: "Invitación caducada", tone: "neutral" },
-  none: { label: "Sin invitar", tone: "muted" },
+const COPY = copy({
+  es: {
+    badge: { inside: "Dentro", pending: "Invitación pendiente", expired: "Invitación caducada", none: "Sin invitar" } as Record<PersonState, string>,
+    pinLocked: "PIN bloqueado por intentos fallidos",
+    withPin: "Con PIN",
+    aDevice: "Un dispositivo",
+    lastSeen: (when: string) => ` · última vez ${when}`,
+    noSession: " · sin sesión abierta",
+    pending: (sent: string, expires: string) => `Invitación enviada el ${sent} · caduca el ${expires}`,
+    expired: (date: string) => `Su invitación caducó el ${date} sin usarse`,
+    none: "Todavía no le has mandado invitación",
+    inviteOf: (name: string) => `Invitación de ${name}`,
+    closeSessions: "Cerrar sesiones",
+    revoke: "Quitar acceso",
+    newInvite: "Nueva invitación",
+    copyInvite: "Copiar invitación",
+    createInvite: "Crear invitación",
+  },
+  en: {
+    badge: { inside: "In", pending: "Invite pending", expired: "Invite expired", none: "Not invited" } as Record<PersonState, string>,
+    pinLocked: "PIN locked after failed attempts",
+    withPin: "With PIN",
+    aDevice: "A device",
+    lastSeen: (when: string) => ` · last seen ${when}`,
+    noSession: " · no open session",
+    pending: (sent: string, expires: string) => `Invite sent on ${sent} · expires ${expires}`,
+    expired: (date: string) => `Their invite expired on ${date} unused`,
+    none: "You haven't sent them an invite yet",
+    inviteOf: (name: string) => `${name}'s invite`,
+    closeSessions: "Close sessions",
+    revoke: "Remove access",
+    newInvite: "New invite",
+    copyInvite: "Copy invite",
+    createInvite: "Create invite",
+  },
+});
+
+const BADGE: Record<PersonState, BadgeTone> = {
+  inside: "accent",
+  pending: "claude",
+  expired: "neutral",
+  none: "muted",
 };
 
 export interface PersonRowProps {
@@ -31,6 +68,7 @@ export interface PersonRowProps {
 
 // One person on "Personas": how they get in, and what the organiser can do.
 export function PersonRow({ member: m, access: a, now, onInvite, onCopy, onCloseSessions, onRevoke }: PersonRowProps) {
+  const t = useCopy(COPY);
   const state = personState(a);
   const lastSeen = a.sessions.map((s) => s.lastSeenAt).sort().at(-1);
   return (
@@ -39,17 +77,17 @@ export function PersonRow({ member: m, access: a, now, onInvite, onCopy, onClose
       <div className="flex min-w-[calc(100%-56px)] flex-1 flex-col gap-1 md:min-w-0">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="text-[17px] font-bold">{m.name}</span>
-          <Badge tone={BADGE[state].tone}>{BADGE[state].label}</Badge>
+          <Badge tone={BADGE[state]}>{t.badge[state]}</Badge>
         </div>
         <span className="text-[13px] text-ink-2">
           {state === "inside" &&
-            `${[...(a.pin ? [a.pin.locked ? "PIN bloqueado por intentos fallidos" : "Con PIN"] : []), ...a.passkeys.map((p) => p.device ?? "Un dispositivo")].join(" · ")}${lastSeen ? ` · última vez ${relativeTime(lastSeen, now)}` : " · sin sesión abierta"}`}
-          {state === "pending" && `Invitación enviada el ${longDate(a.invite!.createdAt)} · caduca el ${deadlineLabel(a.invite!.expiresAt)}`}
-          {state === "expired" && `Su invitación caducó el ${longDate(a.invite!.expiresAt)} sin usarse`}
-          {state === "none" && "Todavía no le has mandado invitación"}
+            `${[...(a.pin ? [a.pin.locked ? t.pinLocked : t.withPin] : []), ...a.passkeys.map((p) => p.device ?? t.aDevice)].join(" · ")}${lastSeen ? t.lastSeen(relativeTime(lastSeen, now)) : t.noSession}`}
+          {state === "pending" && t.pending(longDate(a.invite!.createdAt), deadlineLabel(a.invite!.expiresAt))}
+          {state === "expired" && t.expired(longDate(a.invite!.expiresAt))}
+          {state === "none" && t.none}
         </span>
         {state === "pending" && a.inviteUrl && (
-          <span className="text-xs break-all text-muted select-all" aria-label={`Invitación de ${m.name}`}>
+          <span className="text-xs break-all text-muted select-all" aria-label={t.inviteOf(m.name)}>
             {a.inviteUrl}
           </span>
         )}
@@ -58,24 +96,24 @@ export function PersonRow({ member: m, access: a, now, onInvite, onCopy, onClose
         {state === "inside" && (
           <>
             <Button onClick={onCloseSessions} disabled={a.sessions.length === 0}>
-              Cerrar sesiones
+              {t.closeSessions}
             </Button>
             <Button variant="ghost" onClick={onRevoke}>
-              Quitar acceso
+              {t.revoke}
             </Button>
           </>
         )}
         {state === "pending" && (
           <>
-            <Button onClick={onInvite}>Nueva invitación</Button>
+            <Button onClick={onInvite}>{t.newInvite}</Button>
             <Button variant="soft" onClick={() => onCopy(a.inviteUrl!)}>
-              Copiar invitación
+              {t.copyInvite}
             </Button>
           </>
         )}
         {(state === "expired" || state === "none") && (
           <Button variant="primary" onClick={onInvite}>
-            Crear invitación
+            {t.createInvite}
           </Button>
         )}
       </div>

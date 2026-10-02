@@ -553,7 +553,9 @@ Not planned in detail yet. They wait until the flows above are in use.
     group (Ajustes) and a switch for each person (SPEC §12).~~ Done.
   - ~~What the AI writes (research, the guide, screenshots) and the
     messages for the group chat, in the group's language.~~ Done.
-  - Next: the panel itself in English.
+  - ~~The panel in English, with a switch of its own in Ajustes.~~ Done.
+  - Next language: add it to `LOCALES` in `@wanderlot/core` and TypeScript
+    lists every string that needs it.
 - **Currency and locale.**
   - Prices are euros everywhere (cents, `euros()` formatting).
   - A group setting for its currency, with number and date formats to match.
@@ -583,5 +585,4 @@ Not planned in detail yet. They wait until the flows above are in use.
      endpoints, adding by hand, and searching from `/admin` in the
      background. Left: `codex` and `opencode` as local commands.
 5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
-6. **Later:** languages (the site, the AI and the messages are in English;
-   the panel is next) and currency.
+6. **Later:** currency (Spanish and English are done).

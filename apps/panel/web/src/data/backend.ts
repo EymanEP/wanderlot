@@ -3,6 +3,13 @@
 // go through usePanel().
 import type { CheckedPrices, DatesView, LeaveStatus, LeaveView, FlightLeg, GroupSettings, Photo, Plan, Proposal, SuggestionView, TripPage, VoteState } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
+import { copy, pick } from "@wanderlot/core";
+import { localeHeaders } from "./locale.tsx";
+
+const COPY = copy({
+  es: { browseEmpty: "El navegador terminó sin resultado", prepareEmpty: "La preparación terminó sin resultado" },
+  en: { browseEmpty: "The browser finished without a result", prepareEmpty: "Preparing finished without a result" },
+});
 
 export type Review = Proposal["review"];
 
@@ -320,7 +327,7 @@ const ROOT = import.meta.env.BASE_URL.replace(/\/$/, "");
 async function call<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const res = await fetch(ROOT + path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...localeHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -332,7 +339,7 @@ const enc = encodeURIComponent;
 
 // A streamed answer (NDJSON): each line to `onLine`, until an {error}.
 async function ndjson<T>(path: string, body: unknown, onLine: (msg: T) => void): Promise<void> {
-  const res = await fetch(ROOT + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(ROOT + path, { method: "POST", headers: { "content-type": "application/json", ...localeHeaders() }, body: JSON.stringify(body) });
   if (!res.ok || !res.body) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new BackendError(data.error ?? `Error ${res.status}`);
@@ -377,7 +384,7 @@ export const httpBackend: PanelBackend = {
   async generate(planId, opts, onProposal, signal, onStep) {
     const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/generate`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...localeHeaders() },
       body: JSON.stringify(opts),
       signal,
     });
@@ -419,7 +426,7 @@ export const httpBackend: PanelBackend = {
       if (msg.progress) onStep?.(msg.progress);
       if (msg.fields) fields = msg.fields;
     });
-    if (!fields) throw new BackendError("El navegador terminó sin resultado");
+    if (!fields) throw new BackendError(pick(COPY).browseEmpty);
     return fields;
   },
   browsers: () => call<BrowserView>("/api/browser"),
@@ -454,7 +461,7 @@ export const httpBackend: PanelBackend = {
   fixDates: (planId, window) => call<PlanEntry>(`/api/plans/${enc(planId)}/dates/fix`, window ? "POST" : "DELETE", window ?? undefined),
   trip: (planId) => call<TripView>(`/api/plans/${enc(planId)}/trip`),
   async prepareTrip(planId, home, onStep) {
-    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ home }) });
+    const res = await fetch(`${ROOT}/api/plans/${enc(planId)}/trip/prepare`, { method: "POST", headers: { "content-type": "application/json", ...localeHeaders() }, body: JSON.stringify({ home }) });
     if (res.status === 202) return (await res.json()) as { job: PanelJob };
     if (!res.ok || !res.body) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -478,7 +485,7 @@ export const httpBackend: PanelBackend = {
         if (msg.trip) return msg.trip;
       }
     }
-    throw new BackendError("La preparación terminó sin resultado");
+    throw new BackendError(pick(COPY).prepareEmpty);
   },
   saveTrip: (planId, trip) => call<TripView>(`/api/plans/${enc(planId)}/trip`, "PUT", trip),
   publishTrip: (planId, published) => call<TripView>(`/api/plans/${enc(planId)}/trip/publish`, "POST", { published }),

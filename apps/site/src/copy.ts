@@ -34,6 +34,10 @@ export const SERVER_COPY = copy({
     voteClosed: "la votación ya se cerró",
     suggestion: "Escribe el destino (hasta 80 letras) y, si quieres, por qué",
     tooManyIdeas: (n: number) => `Ya tienes ${n} ideas pendientes en este viaje`,
+    organiserOff: "El panel en el sitio no está activado. Actívalo desde el panel de tu ordenador, en Personas.",
+    wrongPassword: "Contraseña incorrecta",
+    passwordLocked: (wait: string) => `Demasiados intentos. Prueba otra vez en ${wait}, o pon una contraseña nueva desde tu ordenador.`,
+    passwordShort: "Usa al menos 10 caracteres",
   },
   en: {
     tooMany: "Too many tries; wait a minute",
@@ -59,6 +63,10 @@ export const SERVER_COPY = copy({
     voteClosed: "voting has already closed",
     suggestion: "Write the destination (up to 80 characters) and, if you like, why",
     tooManyIdeas: (n: number) => `You already have ${n} ideas waiting on this trip`,
+    organiserOff: "The panel on the site isn't switched on. Switch it on from the panel on your computer, in People.",
+    wrongPassword: "Wrong password",
+    passwordLocked: (wait: string) => `Too many tries. Try again in ${wait}, or set a new password from your computer.`,
+    passwordShort: "Use at least 10 characters",
   },
 });
 

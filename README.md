@@ -232,11 +232,11 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   to do, eat and see, what to know before going (drafted by Claude, edited by
   the organiser), each person's share and the group's Tricount.
 - Friends can install the site on their phone's home screen.
-- Languages: the site is in Spanish or English. The organiser sets the
-  group's language in Ajustes, and each friend can switch it for themselves
-  from their account menu (SPEC §12). The AI writes destinations and the
-  guide in the group's language, and the messages for the group chat follow
-  it too. The panel itself is still Spanish only.
+- Languages: Spanish or English, everywhere. The organiser sets the
+  group's language in Ajustes; each friend can switch the site for
+  themselves from their account menu, and the organiser the panel (SPEC
+  §12). The AI writes destinations and the guide in the group's language,
+  and the messages for the group chat follow it too.
 - Prices: research's are labelled as written by Claude. The organiser checks
   the finalists by hand, typing the prices or having Claude read screenshots
   of the flights and the stay. The site then shows only what was checked. The

@@ -1,7 +1,36 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { standardImageUrl, type Photo } from "@wanderlot/core";
-import { Button, Chip, Dialog, Field, Notice, ScrollRow, Skeleton, TextInput, cn } from "@wanderlot/ui";
+import { copy, standardImageUrl, type Photo } from "@wanderlot/core";
+import { Button, Chip, Dialog, Field, Notice, ScrollRow, Skeleton, TextInput, cn, useCopy } from "@wanderlot/ui";
 import type { PhotoResults } from "../data/backend.ts";
+
+const COPY = copy({
+  es: {
+    title: (city: string) => `Fotos de ${city}`,
+    cancel: "Cancelar",
+    save: (n: number) => (n ? `Guardar ${n} ${n === 1 ? "foto" : "fotos"}` : "Guardar sin fotos"),
+    searchLabel: "Buscar fotos",
+    placeholder: (city: string) => `${city}, un barrio, un monumento…`,
+    search: "Buscar",
+    ideas: "Ideas de Claude",
+    pickUpTo: (max: number, n: number) => `Elige hasta ${max}, en orden: la primera será la portada. ${n}/${max} elegidas.`,
+    searchFailed: (msg: string) => `No se pudo buscar: ${msg}`,
+    sourceDown: (source: string, msg: string) => `${source} no respondió (${msg}); el resto sí.`,
+    nothing: (query: string) => `Nada con «${query}». Prueba con otra búsqueda.`,
+  },
+  en: {
+    title: (city: string) => `Photos of ${city}`,
+    cancel: "Cancel",
+    save: (n: number) => (n ? `Save ${n} ${n === 1 ? "photo" : "photos"}` : "Save without photos"),
+    searchLabel: "Search photos",
+    placeholder: (city: string) => `${city}, a neighbourhood, a landmark…`,
+    search: "Search",
+    ideas: "Claude's ideas",
+    pickUpTo: (max: number, n: number) => `Choose up to ${max}, in order: the first will be the cover. ${n}/${max} chosen.`,
+    searchFailed: (msg: string) => `Couldn't search: ${msg}`,
+    sourceDown: (source: string, msg: string) => `${source} didn't respond (${msg}); the rest did.`,
+    nothing: (query: string) => `Nothing for “${query}”. Try another search.`,
+  },
+});
 
 // Up to this many photos per destination: a hero and three tiles on the site.
 export const MAX_PHOTOS = 4;
@@ -22,6 +51,7 @@ export interface PhotoPickerProps {
 // Search Wikimedia/Unsplash/Pexels and pick up to four, in order. Photos are
 // linked, never copied, and each keeps its credit (SPEC §6).
 export function PhotoPicker({ open, city, suggestions, chosen, search, onSave, onClose }: PhotoPickerProps) {
+  const t = useCopy(COPY);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PhotoResults | null>(null);
   const [loading, setLoading] = useState(false);
@@ -69,28 +99,28 @@ export function PhotoPicker({ open, city, suggestions, chosen, search, onSave, o
     <Dialog
       open={open}
       wide
-      title={`Fotos de ${city}`}
+      title={t.title(city)}
       onClose={onClose}
       actions={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t.cancel}</Button>
           <Button variant="primary" onClick={() => onSave(picked)}>
-            {picked.length ? `Guardar ${picked.length} ${picked.length === 1 ? "foto" : "fotos"}` : "Guardar sin fotos"}
+            {t.save(picked.length)}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-3.5">
         <form onSubmit={onSubmit} className="flex items-end gap-2">
-          <Field label="Buscar fotos" className="flex-1">
-            {({ inputId }) => <TextInput id={inputId} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`${city}, un barrio, un monumento…`} />}
+          <Field label={t.searchLabel} className="flex-1">
+            {({ inputId }) => <TextInput id={inputId} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.placeholder(city)} />}
           </Field>
           <Button type="submit" disabled={loading}>
-            Buscar
+            {t.search}
           </Button>
         </form>
         {suggestions.length > 0 && (
-          <ScrollRow role="group" aria-label="Ideas de Claude">
+          <ScrollRow role="group" aria-label={t.ideas}>
             {suggestions.map((s) => (
               <Chip key={s} on={s === query} onClick={() => void run(s)}>
                 {s}
@@ -100,12 +130,12 @@ export function PhotoPicker({ open, city, suggestions, chosen, search, onSave, o
         )}
 
         <p className="m-0 text-[13px] text-muted">
-          Elige hasta {MAX_PHOTOS}, en orden: la primera será la portada. {picked.length}/{MAX_PHOTOS} elegidas.
+          {t.pickUpTo(MAX_PHOTOS, picked.length)}
         </p>
-        {error && <Notice>No se pudo buscar: {error}</Notice>}
+        {error && <Notice>{t.searchFailed(error)}</Notice>}
         {results?.errors.map((e) => (
           <Notice key={e.source} tone="neutral">
-            {SOURCE_LABEL[e.source]} no respondió ({e.message}); el resto sí.
+            {t.sourceDown(SOURCE_LABEL[e.source], e.message)}
           </Notice>
         ))}
 
@@ -147,7 +177,7 @@ export function PhotoPicker({ open, city, suggestions, chosen, search, onSave, o
             ))}
         </ul>
         {!loading && results && results.photos.length === 0 && picked.length === 0 && (
-          <p className="m-0 text-sm text-muted">Nada con «{query}». Prueba con otra búsqueda.</p>
+          <p className="m-0 text-sm text-muted">{t.nothing(query)}</p>
         )}
       </div>
     </Dialog>

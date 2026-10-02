@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes } from "react-router";
-import { EmptyState, Page, Skeleton, buttonClasses } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { EmptyState, Page, Skeleton, buttonClasses, useCopy } from "@wanderlot/ui";
 import { PanelShell, ShellLayout } from "./components/PanelShell.tsx";
 import { usePanel } from "./data/store.tsx";
 import { AjustesPage } from "./pages/AjustesPage.tsx";
@@ -14,9 +15,25 @@ import { PersonasPage } from "./pages/PersonasPage.tsx";
 import { RevisarPage } from "./pages/RevisarPage.tsx";
 import { TripsPage } from "./pages/TripsPage.tsx";
 
+const COPY = copy({
+  es: {
+    noStart: "El panel no arranca",
+    noPlan: "Todavía no hay ningún plan",
+    createFirst: "Crear el primero",
+    planIs: "Un plan es una ventana de viaje: sus fechas, quién va y cuánto gastar.",
+  },
+  en: {
+    noStart: "The panel won't start",
+    noPlan: "There's no plan yet",
+    createFirst: "Create the first one",
+    planIs: "A plan is a travel window: its dates, who's going and how much to spend.",
+  },
+});
+
 // Generar, Revisar and Comparativa work on a plan; without one, make one.
 function RequirePlan({ children }: { children: ReactNode }) {
   const { state } = usePanel();
+  const t = useCopy(COPY);
   if (state.loading) {
     return (
       <Page>
@@ -31,7 +48,7 @@ function RequirePlan({ children }: { children: ReactNode }) {
     return (
       <PanelShell trip={false}>
         <main className="mx-auto w-full max-w-[720px] px-4 py-12">
-          <EmptyState title="El panel no arranca">{state.error}</EmptyState>
+          <EmptyState title={t.noStart}>{state.error}</EmptyState>
         </main>
       </PanelShell>
     );
@@ -41,14 +58,14 @@ function RequirePlan({ children }: { children: ReactNode }) {
       <PanelShell trip={false}>
         <main className="mx-auto w-full max-w-[720px] px-4 py-12">
           <EmptyState
-            title="Todavía no hay ningún plan"
+            title={t.noPlan}
             action={
               <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
-                Crear el primero
+                {t.createFirst}
               </Link>
             }
           >
-            Un plan es una ventana de viaje: sus fechas, quién va y cuánto gastar.
+            {t.planIs}
           </EmptyState>
         </main>
       </PanelShell>

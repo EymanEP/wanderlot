@@ -1,0 +1,109 @@
+// What the panel's API says to the organiser, in the panel's language: the
+// panel sends the one it's showing in the x-wanderlot-locale header. Errors
+// meant for code ("expected {id}", "not found") stay in English.
+import { copy, DEFAULT_LOCALE, isLocale, type Locale } from "@wanderlot/core";
+
+export const LOCALE_HEADER = "x-wanderlot-locale";
+
+export function requestLocale(header: string | undefined): Locale {
+  return isLocale(header) ? header : DEFAULT_LOCALE;
+}
+
+export const PANEL_COPY = copy({
+  es: {
+    aiShape: "La respuesta de la IA no venía como se esperaba. Vuelve a probar; si se repite, hazlo a mano.",
+    siteSaid: (status: number, reason: string) => `sitio ${status}: ${reason}`,
+    hostedNoAi:
+      "Para buscar desde el panel del sitio hace falta una clave de Claude (API de Anthropic) u OpenAI en el sitio: mira en Ajustes, o busca desde el panel de tu ordenador.",
+    hostedNoBackground: (name: string | undefined) =>
+      `${name ?? "Esta IA"} no puede buscar en segundo plano, que es como busca el panel del sitio: usa Claude (API de Anthropic) u OpenAI, o busca desde el panel de tu ordenador.`,
+    jobRunning: "Ya hay una búsqueda en marcha en este viaje: espera a que termine o cancélala.",
+    jobBadData: (ai: string) => `${ai} respondió con datos que no encajan; vuelve a probar`,
+    jobDestinationChanged: "El destino del viaje cambió mientras se preparaba la guía",
+    cantReadTrips: (why: string) => `No se pudieron leer los viajes del sitio: ${why}`,
+    cantChangeAi: "Aquí no se puede cambiar la IA",
+    cantChooseBrowser: "Aquí no se puede elegir navegador",
+    passwordShort: "Usa al menos 10 caracteres",
+    oldSite: (what: string) => `Tu sitio tiene una versión anterior al panel y no sabe ${what}. Actualízalo con npm run deploy:site y vuelve a probar.`,
+    oldServePanel: "servir el panel",
+    oldDeleteTrips: "borrar viajes",
+    oldExport: "exportar",
+    oldEstimates: "mostrar precios estimados",
+    oldChangeDestination: "cambiar de destino",
+    oldTripPage: "mostrar la página del viaje",
+    oldDatesVote: "votar fechas",
+    ideaGone: "esa idea ya no está",
+    noFlightsApi: "No hay ninguna API de vuelos conectada. Busca con Claude, o añade la clave con npm run setup.",
+    noAi: "No hay ninguna IA configurada: mira en Ajustes cómo añadir una.",
+    notFoundOn: (provider: string) => `${provider} no encuentra ese itinerario`,
+    badProposal: "propuesta no válida",
+    screenshots: "Sube entre 1 y 4 capturas en PNG, JPG, WebP o GIF, de menos de 5 MB cada una",
+    screenshotsNeedAi: "Para leer capturas hace falta una IA: mira en Ajustes cómo añadir una.",
+    cantReadScreenshot: "No he sabido leer esa captura. Prueba con otra más clara.",
+    browseNeedsClaude: "Comprobar vuelos en el navegador necesita el comando claude en este ordenador.",
+    browseApproveFirst: "Comprueba en el navegador solo las propuestas que vais a usar: apruébala primero.",
+    cantReadFlights: "No he sabido leer Google Flights. Prueba otra vez, o pon el precio a mano.",
+    staysByHand: "El alojamiento se mira a mano en Airbnb: aquí solo se comprueban los vuelos.",
+    noneApproved: "no hay propuestas aprobadas",
+    voteNotOpen: "la votación no está abierta",
+    pickPeopleVote: "elige quién va al viaje (en Personas) antes de abrir la votación",
+    stalePrices: "hay precios verificados caducados: vuelve a verificarlos",
+    decideFirst: "primero decide el destino en Votación",
+    guideNeedsAi: "Preparar el viaje necesita una IA: mira en Ajustes cómo añadir una.",
+    badTripPage: "página del viaje no válida",
+    prepareFirst: "prepara la página del viaje antes de publicarla",
+    destinationNotApproved: "el destino elegido no está aprobado en Revisar",
+    pickPeopleDates: "elige quién va al viaje (en Personas) antes de proponer fechas",
+    returnAfterOutbound: "la vuelta tiene que ser después de la ida",
+    datesVoteOpen: "Hay una votación de fechas abierta: elige una de sus opciones o quítala primero.",
+  },
+  en: {
+    aiShape: "The AI's answer didn't come back as expected. Try again; if it keeps happening, do it by hand.",
+    siteSaid: (status: number, reason: string) => `site ${status}: ${reason}`,
+    hostedNoAi:
+      "To search from the panel on the site, the site needs a Claude (Anthropic API) or OpenAI key: see Settings, or search from the panel on your computer.",
+    hostedNoBackground: (name: string | undefined) =>
+      `${name ?? "This AI"} can't search in the background, which is how the panel on the site searches: use Claude (Anthropic API) or OpenAI, or search from the panel on your computer.`,
+    jobRunning: "There's already a search running for this trip: wait for it to finish or cancel it.",
+    jobBadData: (ai: string) => `${ai} answered with data that doesn't fit; try again`,
+    jobDestinationChanged: "The trip's destination changed while the guide was being prepared",
+    cantReadTrips: (why: string) => `Couldn't read the trips from the site: ${why}`,
+    cantChangeAi: "The AI can't be changed here",
+    cantChooseBrowser: "The browser can't be chosen here",
+    passwordShort: "Use at least 10 characters",
+    oldSite: (what: string) => `Your site is older than the panel and can't ${what}. Update it with npm run deploy:site and try again.`,
+    oldServePanel: "serve the panel",
+    oldDeleteTrips: "delete trips",
+    oldExport: "export",
+    oldEstimates: "show estimated prices",
+    oldChangeDestination: "change the destination",
+    oldTripPage: "show the trip page",
+    oldDatesVote: "run a dates vote",
+    ideaGone: "that idea is no longer there",
+    noFlightsApi: "No flights API is connected. Search with Claude, or add the key with npm run setup.",
+    noAi: "No AI is set up: see Settings for how to add one.",
+    notFoundOn: (provider: string) => `${provider} can't find that itinerary`,
+    badProposal: "invalid proposal",
+    screenshots: "Upload 1 to 4 screenshots in PNG, JPG, WebP or GIF, each under 5 MB",
+    screenshotsNeedAi: "Reading screenshots needs an AI: see Settings for how to add one.",
+    cantReadScreenshot: "I couldn't read that screenshot. Try a clearer one.",
+    browseNeedsClaude: "Checking flights in the browser needs the claude command on this computer.",
+    browseApproveFirst: "Only check in the browser the proposals you're going to use: approve it first.",
+    cantReadFlights: "I couldn't read Google Flights. Try again, or enter the price by hand.",
+    staysByHand: "The stay is checked by hand on Airbnb: only flights are checked here.",
+    noneApproved: "there are no approved proposals",
+    voteNotOpen: "voting isn't open",
+    pickPeopleVote: "choose who's going on the trip (in People) before opening the vote",
+    stalePrices: "some checked prices are out of date: check them again",
+    decideFirst: "decide the destination in Vote first",
+    guideNeedsAi: "Preparing the trip needs an AI: see Settings for how to add one.",
+    badTripPage: "invalid trip page",
+    prepareFirst: "prepare the trip page before publishing it",
+    destinationNotApproved: "the chosen destination isn't approved in Review",
+    pickPeopleDates: "choose who's going on the trip (in People) before proposing dates",
+    returnAfterOutbound: "the return has to be after the outbound flight",
+    datesVoteOpen: "There's a dates vote open: choose one of its options or remove it first.",
+  },
+});
+
+export type PanelCopy = (typeof PANEL_COPY)["es"];

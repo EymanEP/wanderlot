@@ -1,7 +1,43 @@
 import { useEffect, useState } from "react";
-import { Button, Card, GlobeIcon, Heading, SearchIcon, cn } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { Button, Card, GlobeIcon, Heading, SearchIcon, cn, useCopy } from "@wanderlot/ui";
 import type { SearchStep } from "../data/backend.ts";
 import type { GenerationState } from "../data/store.tsx";
+
+const COPY = copy({
+  es: {
+    searching: (q: string) => `Buscando «${q}»`,
+    reading: (host: string) => `Leyendo ${host}`,
+    researching: (idea: string) => `Investigando ${idea}`,
+    aiSearching: (ai: string) => `${ai} está buscando destinos`,
+    api: "Consultando la API de vuelos",
+    inProgress: "Búsqueda en curso",
+    slow: "Suele tardar entre 2 y 10 minutos. Las propuestas llegan al final; puedes dejar esta página abierta.",
+    fast: "Unos segundos.",
+    elapsed: "Tiempo buscando",
+    stop: "Detener",
+    starting: "Empezando…",
+    counts: (searches: number, pages: number, received: number): string =>
+      `${searches} ${searches === 1 ? "búsqueda" : "búsquedas"} · ${pages} ${pages === 1 ? "página leída" : "páginas leídas"} · ${received} ${received === 1 ? "propuesta" : "propuestas"}`,
+    earlier: "Pasos anteriores",
+  },
+  en: {
+    searching: (q: string) => `Searching "${q}"`,
+    reading: (host: string) => `Reading ${host}`,
+    researching: (idea: string) => `Researching ${idea}`,
+    aiSearching: (ai: string) => `${ai} is looking for destinations`,
+    api: "Checking the flight API",
+    inProgress: "Search in progress",
+    slow: "It usually takes 2 to 10 minutes. The proposals arrive at the end; you can leave this page open.",
+    fast: "A few seconds.",
+    elapsed: "Time searching",
+    stop: "Stop",
+    starting: "Starting…",
+    counts: (searches: number, pages: number, received: number): string =>
+      `${searches} ${searches === 1 ? "search" : "searches"} · ${pages} ${pages === 1 ? "page read" : "pages read"} · ${received} ${received === 1 ? "proposal" : "proposals"}`,
+    earlier: "Earlier steps",
+  },
+});
 
 // "0:07", "4:32"
 function clock(ms: number): string {
@@ -9,9 +45,9 @@ function clock(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function stepText(step: SearchStep): string {
-  if (step.kind === "search") return `Buscando «${step.query}»`;
-  if (step.kind === "read") return `Leyendo ${step.host}`;
+function stepText(t: (typeof COPY)["es"], step: SearchStep): string {
+  if (step.kind === "search") return t.searching(step.query);
+  if (step.kind === "read") return t.reading(step.host);
   return step.text;
 }
 
@@ -26,10 +62,11 @@ export interface GenerationProgressProps {
 // and what it has looked at. A Claude search takes minutes and its proposals
 // arrive at the end, so this is what the organiser watches meanwhile.
 export function GenerationProgress({ generation: g, onStop, aiName = "Claude" }: GenerationProgressProps) {
+  const t = useCopy(COPY);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const searches = g.steps.filter((s) => s.kind === "search").length;
@@ -38,10 +75,10 @@ export function GenerationProgress({ generation: g, onStop, aiName = "Claude" }:
   const recent = g.steps.slice(-7, -1).reverse();
   // Claude researching takes minutes, with steps; a flight API, seconds.
   const source = g.source;
-  const title = g.idea ? `Investigando ${g.idea}` : source === "claude" ? `${aiName} está buscando destinos` : "Consultando la API de vuelos";
+  const title = g.idea ? t.researching(g.idea) : source === "claude" ? t.aiSearching(aiName) : t.api;
 
   return (
-    <Card as="section" variant="raised" aria-label="Búsqueda en curso" className="flex flex-col gap-4">
+    <Card as="section" variant="raised" aria-label={t.inProgress} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span aria-hidden="true" className="relative flex size-3">
@@ -53,37 +90,34 @@ export function GenerationProgress({ generation: g, onStop, aiName = "Claude" }:
               {title}
             </Heading>
             <span className="text-sm text-muted">
-              {source === "claude"
-                ? "Suele tardar entre 2 y 10 minutos. Las propuestas llegan al final; puedes dejar esta página abierta."
-                : "Unos segundos."}
+              {source === "claude" ? t.slow : t.fast}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xl font-bold tabular-nums" aria-label="Tiempo buscando">
+          <span className="text-xl font-bold tabular-nums" aria-label={t.elapsed}>
             {clock(now - g.startedAt)}
           </span>
-          <Button onClick={onStop}>Detener</Button>
+          <Button onClick={onStop}>{t.stop}</Button>
         </div>
       </div>
 
       <p className="m-0 rounded-xl bg-accent-soft px-4 py-3 text-[15px] text-accent-strong" aria-live="polite">
-        {current ? stepText(current) : "Empezando…"}
+        {current ? stepText(t, current) : t.starting}
       </p>
 
       {(searches > 0 || pages > 0 || g.received > 0) && (
         <p className="m-0 text-sm text-muted tabular-nums">
-          {searches} {searches === 1 ? "búsqueda" : "búsquedas"} · {pages} {pages === 1 ? "página leída" : "páginas leídas"} · {g.received}{" "}
-          {g.received === 1 ? "propuesta" : "propuestas"}
+          {t.counts(searches, pages, g.received)}
         </p>
       )}
 
       {recent.length > 0 && (
-        <ul aria-label="Pasos anteriores" className="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px] text-muted">
+        <ul aria-label={t.earlier} className="m-0 flex list-none flex-col gap-1.5 p-0 text-[13px] text-muted">
           {recent.map((s, i) => (
             <li key={`${g.steps.length}-${i}`} className={cn("flex min-w-0 items-center gap-2", i > 2 && "opacity-70")}>
               {s.kind === "read" ? <GlobeIcon size={14} /> : s.kind === "search" ? <SearchIcon size={14} /> : <span className="w-3.5" />}
-              <span className="truncate">{stepText(s)}</span>
+              <span className="truncate">{stepText(t, s)}</span>
             </li>
           ))}
         </ul>

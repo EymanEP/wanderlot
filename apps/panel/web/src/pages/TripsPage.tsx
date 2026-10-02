@@ -1,20 +1,107 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { addDaysIso, mediumDate, rangeLabel, type Plan } from "@wanderlot/core";
-import { Badge, Button, Card, Dialog, EmptyState, Field, Heading, Notice, PageHeader, Skeleton, TextInput, buttonClasses, nightsBetween, useToast, type DateRange } from "@wanderlot/ui";
+import { addDaysIso, copy, mediumDate, rangeLabel, type Plan } from "@wanderlot/core";
+import { Badge, Button, Card, Dialog, EmptyState, Field, Heading, Notice, PageHeader, Skeleton, TextInput, buttonClasses, nightsBetween, useCopy, useToast, type DateRange } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { TripDates, type FlexDays } from "../components/TripDates.tsx";
 import type { TripSummary } from "../data/backend.ts";
 import { useLoad, usePanel } from "../data/store.tsx";
 import { downloadJson } from "../lib/download.ts";
 
-const STATUS = {
-  draft: { label: "Borrador", tone: "neutral" },
-  voting: { label: "En votación", tone: "accent" },
-  closed: { label: "Votación cerrada", tone: "muted" },
-} as const;
+const COPY = copy({
+  es: {
+    status: { draft: "Borrador", voting: "En votación", closed: "Votación cerrada" },
+    exportFile: "viajes",
+    exported: (name: string) => `${name} exportado`,
+    allExported: "Viajes exportados",
+    exportFailed: (msg: string) => `No se pudo exportar: ${msg}`,
+    deleted: (name: string) => `${name} borrado`,
+    deleteFailed: (msg: string) => `No se pudo borrar: ${msg}`,
+    title: "Viajes",
+    summary: (trips: number, voting: number) => `${trips} ${trips === 1 ? "viaje" : "viajes"} · ${voting} en votación`,
+    loading: "Cargando…",
+    exportAllTitle: "Los viajes publicados, con votos, comentarios e ideas, en un archivo JSON",
+    exportAll: "Exportar todo",
+    newTrip: "Nuevo viaje",
+    loadFailed: (msg: string) => `No se pudieron cargar los viajes: ${msg}`,
+    noTrips: "Todavía no hay ningún viaje",
+    createFirst: "Crear el primero",
+    tripIs: "Un viaje es una ventana de fechas, quién va y cuánto gastar. Luego buscas destinos, los apruebas y la cuadrilla vota.",
+    open: "Abierto",
+    nights: (n: number) => `${n} ${n === 1 ? "noche" : "noches"}`,
+    people: (n: number) => `${n} ${n === 1 ? "persona" : "personas"}`,
+    proposals: (n: number, approved: number, pending: number) => `${n} ${n === 1 ? "propuesta" : "propuestas"} · ${approved} ${approved === 1 ? "aprobada" : "aprobadas"} · ${pending} por revisar`,
+    noProposals: "Sin propuestas todavía",
+    published: (date: string, changed: boolean) => `Publicado el ${date}${changed ? " · cambios sin publicar" : ""}`,
+    notPublished: "Sin publicar",
+    openBtn: "Abrir",
+    datesTitle: "Proponer fechas y ver quién puede cuándo",
+    dates: "Fechas",
+    edit: "Editar",
+    export: "Exportar",
+    delete: "Borrar",
+    saved: (name: string) => `${name} guardado`,
+    deleteQ: (name: string) => `¿Borrar ${name}?`,
+    deleting: "Borrando…",
+    deleteTrip: "Borrar viaje",
+    deleteText: (n: number) => `Se borran aquí sus ${n} propuestas y, en el sitio, sus destinos, votos, comentarios e ideas. No se puede deshacer.`,
+    needName: "Ponle un nombre",
+    pickDates: "Elige en el calendario el día de salida y el de vuelta",
+    editTitle: (name: string) => `Editar ${name}`,
+    cancel: "Cancelar",
+    saving: "Guardando…",
+    save: "Guardar",
+    name: "Nombre",
+    editNote: "Quién va y el presupuesto se cambian en Personas y en Generar. Publica de nuevo para que la cuadrilla vea los cambios.",
+  },
+  en: {
+    status: { draft: "Draft", voting: "Voting", closed: "Voting closed" },
+    exportFile: "trips",
+    exported: (name: string) => `${name} exported`,
+    allExported: "Trips exported",
+    exportFailed: (msg: string) => `Couldn't export: ${msg}`,
+    deleted: (name: string) => `${name} deleted`,
+    deleteFailed: (msg: string) => `Couldn't delete: ${msg}`,
+    title: "Trips",
+    summary: (trips: number, voting: number) => `${trips} ${trips === 1 ? "trip" : "trips"} · ${voting} voting`,
+    loading: "Loading…",
+    exportAllTitle: "The published trips, with votes, comments and ideas, in a JSON file",
+    exportAll: "Export all",
+    newTrip: "New trip",
+    loadFailed: (msg: string) => `Couldn't load the trips: ${msg}`,
+    noTrips: "There are no trips yet",
+    createFirst: "Create the first one",
+    tripIs: "A trip is a window of dates, who's going and how much to spend. Then you search for destinations, approve them and the group votes.",
+    open: "Open",
+    nights: (n: number) => `${n} ${n === 1 ? "night" : "nights"}`,
+    people: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
+    proposals: (n: number, approved: number, pending: number) => `${n} ${n === 1 ? "proposal" : "proposals"} · ${approved} approved · ${pending} to review`,
+    noProposals: "No proposals yet",
+    published: (date: string, changed: boolean) => `Published on ${date}${changed ? " · unpublished changes" : ""}`,
+    notPublished: "Not published",
+    openBtn: "Open",
+    datesTitle: "Suggest dates and see who can make when",
+    dates: "Dates",
+    edit: "Edit",
+    export: "Export",
+    delete: "Delete",
+    saved: (name: string) => `${name} saved`,
+    deleteQ: (name: string) => `Delete ${name}?`,
+    deleting: "Deleting…",
+    deleteTrip: "Delete trip",
+    deleteText: (n: number) => `This deletes its ${n} proposals here and, on the site, its destinations, votes, comments and ideas. It can't be undone.`,
+    needName: "Give it a name",
+    pickDates: "Pick the departure and return days on the calendar",
+    editTitle: (name: string) => `Edit ${name}`,
+    cancel: "Cancel",
+    saving: "Saving…",
+    save: "Save",
+    name: "Name",
+    editNote: "Who's going and the budget are changed in People and Generate. Publish again so the group sees the changes.",
+  },
+});
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const STATUS_TONE = { draft: "neutral", voting: "accent", closed: "muted" } as const;
 
 // Where the organiser starts: every trip, how far along it is, and opening,
 // editing or deleting one.
@@ -22,6 +109,7 @@ export function TripsPage() {
   const { state, now, trips, selectPlan, savePlan, deletePlan, exportData } = usePanel();
   const navigate = useNavigate();
   const toast = useToast();
+  const t = useCopy(COPY);
   // Shown at once from the last visit, and read again (see useLoad).
   const { data: list, error, reload } = useLoad<TripSummary[]>("trips", trips);
   const [editing, setEditing] = useState<Plan | null>(null);
@@ -41,10 +129,10 @@ export function TripsPage() {
   const exportTrips = async (trip?: TripSummary) => {
     try {
       const data = await exportData(trip?.plan.id);
-      downloadJson(`wanderlot-${trip?.plan.id ?? "viajes"}-${now.toISOString().slice(0, 10)}.json`, data);
-      toast(trip ? `${trip.plan.name} exportado` : "Viajes exportados");
+      downloadJson(`wanderlot-${trip?.plan.id ?? t.exportFile}-${now.toISOString().slice(0, 10)}.json`, data);
+      toast(trip ? t.exported(trip.plan.name) : t.allExported);
     } catch (e) {
-      toast(`No se pudo exportar: ${(e as Error).message}`);
+      toast(t.exportFailed((e as Error).message));
     }
   };
 
@@ -53,10 +141,10 @@ export function TripsPage() {
     setBusy(true);
     try {
       await deletePlan(deleting.plan.id);
-      toast(`${deleting.plan.name} borrado`);
+      toast(t.deleted(deleting.plan.name));
       setDeleting(null);
     } catch (e) {
-      toast(`No se pudo borrar: ${(e as Error).message}`);
+      toast(t.deleteFailed((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -66,22 +154,22 @@ export function TripsPage() {
     <PanelShell trip={false}>
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 py-8 sm:px-8">
         <PageHeader
-          title="Viajes"
-          subtitle={list ? `${plural(list.length, "viaje", "viajes")} · ${plural(list.filter((t) => t.plan.status === "voting").length, "en votación", "en votación")}` : "Cargando…"}
+          title={t.title}
+          subtitle={list ? t.summary(list.length, list.filter((x) => x.plan.status === "voting").length) : t.loading}
           actions={
             <>
-              {list?.some((t) => t.publishedAt) && (
-                <Button variant="ghost" onClick={() => void exportTrips()} title="Los viajes publicados, con votos, comentarios e ideas, en un archivo JSON">
-                  Exportar todo
+              {list?.some((x) => x.publishedAt) && (
+                <Button variant="ghost" onClick={() => void exportTrips()} title={t.exportAllTitle}>
+                  {t.exportAll}
                 </Button>
               )}
               <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
-                Nuevo viaje
+                {t.newTrip}
               </Link>
             </>
           }
         />
-        {error && <Notice role="alert">No se pudieron cargar los viajes: {error}</Notice>}
+        {error && <Notice role="alert">{t.loadFailed(error)}</Notice>}
         {!list && !error ? (
           <div aria-busy="true" className="grid gap-4 md:grid-cols-2">
             <Skeleton className="h-44" />
@@ -89,57 +177,57 @@ export function TripsPage() {
           </div>
         ) : list?.length === 0 ? (
           <EmptyState
-            title="Todavía no hay ningún viaje"
+            title={t.noTrips}
             action={
               <Link to="/planes/nuevo" className={buttonClasses({ variant: "primary" })}>
-                Crear el primero
+                {t.createFirst}
               </Link>
             }
           >
-            Un viaje es una ventana de fechas, quién va y cuánto gastar. Luego buscas destinos, los apruebas y la cuadrilla vota.
+            {t.tripIs}
           </EmptyState>
         ) : (
           <ul data-stagger className="m-0 grid list-none gap-4 p-0 md:grid-cols-2">
-            {list?.map((t) => {
-              const current = state.plan?.id === t.plan.id;
+            {list?.map((trip) => {
+              const current = state.plan?.id === trip.plan.id;
               return (
-                <li key={t.plan.id}>
-                  <Card as="article" variant="raised" aria-label={t.plan.name} className="flex h-full flex-col gap-3">
+                <li key={trip.plan.id}>
+                  <Card as="article" variant="raised" aria-label={trip.plan.name} className="flex h-full flex-col gap-3">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <Heading as="h2" size="subheading">
-                        {t.plan.name}
+                        {trip.plan.name}
                       </Heading>
                       <div className="flex gap-1.5">
-                        {current && <Badge tone="dark">Abierto</Badge>}
-                        <Badge tone={STATUS[t.plan.status].tone}>{STATUS[t.plan.status].label}</Badge>
+                        {current && <Badge tone="dark">{t.open}</Badge>}
+                        <Badge tone={STATUS_TONE[trip.plan.status]}>{t.status[trip.plan.status]}</Badge>
                       </div>
                     </div>
                     <div className="flex flex-col gap-1 text-sm text-ink-2">
                       <span>
-                        {rangeLabel(t.plan.dateFrom, t.plan.dateTo)} · {plural(t.plan.nights, "noche", "noches")} · {plural(t.participants, "persona", "personas")}
+                        {rangeLabel(trip.plan.dateFrom, trip.plan.dateTo)} · {t.nights(trip.plan.nights)} · {t.people(trip.participants)}
                       </span>
                       <span>
-                        {t.proposals ? `${plural(t.proposals, "propuesta", "propuestas")} · ${t.approved} ${t.approved === 1 ? "aprobada" : "aprobadas"} · ${t.pending} por revisar` : "Sin propuestas todavía"}
+                        {trip.proposals ? t.proposals(trip.proposals, trip.approved, trip.pending) : t.noProposals}
                       </span>
-                      <span className={t.changed ? "font-semibold text-claude" : "text-muted"}>
-                        {t.publishedAt ? `Publicado el ${mediumDate(t.publishedAt)}${t.changed ? " · cambios sin publicar" : ""}` : "Sin publicar"}
+                      <span className={trip.changed ? "font-semibold text-claude" : "text-muted"}>
+                        {trip.publishedAt ? t.published(mediumDate(trip.publishedAt), trip.changed) : t.notPublished}
                       </span>
                     </div>
                     <div className="mt-auto flex flex-wrap gap-2 border-t border-line-faint pt-3">
-                      <Button variant="primary" onClick={() => void open(t)}>
-                        Abrir
+                      <Button variant="primary" onClick={() => void open(trip)}>
+                        {t.openBtn}
                       </Button>
-                      <Button onClick={() => void open(t, "/fechas")} title="Proponer fechas y ver quién puede cuándo">
-                        Fechas
+                      <Button onClick={() => void open(trip, "/fechas")} title={t.datesTitle}>
+                        {t.dates}
                       </Button>
-                      <Button onClick={() => setEditing(t.plan)}>Editar</Button>
-                      {t.publishedAt && (
-                        <Button variant="ghost" onClick={() => void exportTrips(t)}>
-                          Exportar
+                      <Button onClick={() => setEditing(trip.plan)}>{t.edit}</Button>
+                      {trip.publishedAt && (
+                        <Button variant="ghost" onClick={() => void exportTrips(trip)}>
+                          {t.export}
                         </Button>
                       )}
-                      <Button variant="ghost" onClick={() => setDeleting(t)}>
-                        Borrar
+                      <Button variant="ghost" onClick={() => setDeleting(trip)}>
+                        {t.delete}
                       </Button>
                     </div>
                   </Card>
@@ -156,7 +244,7 @@ export function TripsPage() {
         onClose={() => setEditing(null)}
         onSave={async (p) => {
           await savePlan(p);
-          toast(`${p.name} guardado`);
+          toast(t.saved(p.name));
           setEditing(null);
           load();
         }}
@@ -164,20 +252,21 @@ export function TripsPage() {
 
       <Dialog
         open={deleting !== null}
-        title={deleting ? `¿Borrar ${deleting.plan.name}?` : ""}
-        confirmLabel={busy ? "Borrando…" : "Borrar viaje"}
+        title={deleting ? t.deleteQ(deleting.plan.name) : ""}
+        confirmLabel={busy ? t.deleting : t.deleteTrip}
         tone="warning"
         busy={busy}
         onConfirm={() => void remove()}
         onClose={() => setDeleting(null)}
       >
-        Se borran aquí sus {deleting?.proposals ?? 0} propuestas y, en el sitio, sus destinos, votos, comentarios e ideas. No se puede deshacer.
+        {t.deleteText(deleting?.proposals ?? 0)}
       </Dialog>
     </PanelShell>
   );
 }
 
 function EditTripDialog({ plan, min, onClose, onSave }: { plan: Plan | null; min: string; onClose: () => void; onSave: (p: Plan) => Promise<void> }) {
+  const t = useCopy(COPY);
   const [name, setName] = useState("");
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [flex, setFlex] = useState<FlexDays>(0);
@@ -195,8 +284,8 @@ function EditTripDialog({ plan, min, onClose, onSave }: { plan: Plan | null; min
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!plan) return;
-    if (!name.trim()) return setError("Ponle un nombre");
-    if (!range.start || !range.end) return setError("Elige en el calendario el día de salida y el de vuelta");
+    if (!name.trim()) return setError(t.needName);
+    if (!range.start || !range.end) return setError(t.pickDates);
     setBusy(true);
     try {
       await onSave({ ...plan, name: name.trim(), dateFrom: range.start, dateTo: range.end, nights: nightsBetween(range.start, range.end), flexDays: flex });
@@ -211,23 +300,23 @@ function EditTripDialog({ plan, min, onClose, onSave }: { plan: Plan | null; min
     <Dialog
       open={plan !== null}
       wide
-      title={plan ? `Editar ${plan.name}` : ""}
+      title={plan ? t.editTitle(plan.name) : ""}
       onClose={onClose}
       actions={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t.cancel}</Button>
           <Button variant="primary" type="submit" form="editar-viaje" disabled={busy}>
-            {busy ? "Guardando…" : "Guardar"}
+            {busy ? t.saving : t.save}
           </Button>
         </>
       }
     >
       <form id="editar-viaje" onSubmit={submit} className="flex flex-col gap-4">
-        <Field label="Nombre">
+        <Field label={t.name}>
           {({ inputId }) => <TextInput id={inputId} required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} />}
         </Field>
         {plan && <TripDates value={range} onChange={setRange} flexDays={flex} onFlexChange={setFlex} min={range.start && range.start < min ? range.start : min} />}
-        <span className="text-[13px] text-muted">Quién va y el presupuesto se cambian en Personas y en Generar. Publica de nuevo para que la cuadrilla vea los cambios.</span>
+        <span className="text-[13px] text-muted">{t.editNote}</span>
         {error && <Notice role="alert">{error}</Notice>}
       </form>
     </Dialog>

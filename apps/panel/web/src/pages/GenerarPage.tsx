@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { addDaysIso, type SuggestionView } from "@wanderlot/core";
-import { Badge, Button, Heading, Notice, nightsBetween, useToast } from "@wanderlot/ui";
+import { addDaysIso, copy, type SuggestionView } from "@wanderlot/core";
+import { Badge, Button, Heading, Notice, nightsBetween, useCopy, useToast } from "@wanderlot/ui";
 import { IdeasCard } from "../components/IdeasCard.tsx";
 import { JobCard } from "../components/JobCard.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
@@ -10,10 +10,89 @@ import { ProposalRow } from "../components/ProposalRow.tsx";
 import { SearchForm, originCode, rangeSummary, searchFromPlan, type SearchValues } from "../components/SearchForm.tsx";
 import { usePanel, usePlan } from "../data/store.tsx";
 
-const STOPS_LABEL = { direct: "solo directos", one: "máximo 1 escala", any: "con o sin escalas" };
+const COPY = copy({
+  es: {
+    stops: { direct: "solo directos", one: "máximo 1 escala", any: "con o sin escalas" },
+    researching: (place: string, name: string) => `Investigando ${place}, la idea de ${name}`,
+    failed: (msg: string) => `No se pudo: ${msg}`,
+    pickDates: "Elige en el calendario el día de salida y el de vuelta",
+    writePlace: "Escribe adónde quieres ir",
+    saveFailed: (msg: string) => `No se pudo guardar el plan: ${msg}`,
+    settings: "Ajustes",
+    review: "Revisar",
+    needsKey: (settings: ReactNode, review: ReactNode) => (
+      <>
+        Para buscar desde aquí, el sitio necesita una clave de Claude (API de Anthropic) u OpenAI: mira en {settings} cómo añadirla. Mientras, busca desde el panel de tu ordenador, o añade un destino a mano en {review}.
+      </>
+    ),
+    title: "Propuestas generadas",
+    people: (n: number) => `${n} personas`,
+    newOnes: (n: number): string => `${n} ${n === 1 ? "propuesta nueva" : "propuestas nuevas"}`,
+    stopped: "Búsqueda detenida",
+    finished: "Búsqueda terminada",
+    couldNotSearch: "No se pudo buscar",
+    cutAfter: (n: number): string => `La búsqueda se cortó tras ${n} ${n === 1 ? "propuesta" : "propuestas"}`,
+    nothingFor: (idea: string) => `No se encontró nada para ${idea}.`,
+    nothingNew: "La búsqueda terminó sin propuestas nuevas.",
+    tryOther: "Prueba con otras fechas, más presupuesto o escalas.",
+    noAi: (settings: ReactNode, review: ReactNode) => (
+      <>
+        No hay ninguna IA configurada en este ordenador. Mira en {settings} cómo añadir una, o añade destinos a mano en {review}.
+      </>
+    ),
+    noWeb: (name: string) => `${name} no busca en la web: sus precios y horarios salen de lo que sabe y llegan al sitio como «Estimado por ${name}». Compruébalos antes de publicar.`,
+    empty: (name: string) => `Todavía no hay propuestas para ${name}.`,
+    emptyHosted: "Búscalas desde el panel de tu ordenador.",
+    emptyLocal: "Ajusta la búsqueda y pulsa «Generar».",
+    verified: (city: string) => `${city}: verificado con la API`,
+    notVerified: "no se pudo verificar",
+    onlyYou: (publish: ReactNode) => <>Solo tú ves esto: la cuadrilla no ve nada hasta que pulses {publish} en Revisar.</>,
+    publish: "Publicar",
+  },
+  en: {
+    stops: { direct: "direct only", one: "1 stop at most", any: "with or without stops" },
+    researching: (place: string, name: string) => `Researching ${place}, ${name}'s idea`,
+    failed: (msg: string) => `Couldn't do it: ${msg}`,
+    pickDates: "Pick the departure and return days on the calendar",
+    writePlace: "Write where you want to go",
+    saveFailed: (msg: string) => `Couldn't save the plan: ${msg}`,
+    settings: "Settings",
+    review: "Review",
+    needsKey: (settings: ReactNode, review: ReactNode) => (
+      <>
+        To search from here, the site needs a Claude (Anthropic API) or OpenAI key: see {settings} for how to add one. Meanwhile, search from the panel on your computer, or add a destination by hand in {review}.
+      </>
+    ),
+    title: "Generated proposals",
+    people: (n: number) => `${n} people`,
+    newOnes: (n: number): string => `${n} ${n === 1 ? "new proposal" : "new proposals"}`,
+    stopped: "Search stopped",
+    finished: "Search finished",
+    couldNotSearch: "Couldn't search",
+    cutAfter: (n: number): string => `The search stopped after ${n} ${n === 1 ? "proposal" : "proposals"}`,
+    nothingFor: (idea: string) => `Nothing found for ${idea}.`,
+    nothingNew: "The search finished with no new proposals.",
+    tryOther: "Try other dates, a bigger budget or stops.",
+    noAi: (settings: ReactNode, review: ReactNode) => (
+      <>
+        There's no AI set up on this computer. See {settings} for how to add one, or add destinations by hand in {review}.
+      </>
+    ),
+    noWeb: (name: string) => `${name} doesn't search the web: its prices and times come from what it knows and reach the site as "Estimated by ${name}". Check them before publishing.`,
+    empty: (name: string) => `No proposals for ${name} yet.`,
+    emptyHosted: "Search for them from the panel on your computer.",
+    emptyLocal: "Adjust the search and press \"Generate\".",
+    verified: (city: string) => `${city}: verified with the API`,
+    notVerified: "couldn't verify",
+    onlyYou: (publish: ReactNode) => <>Only you see this: the group sees nothing until you press {publish} in Review.</>,
+    publish: "Publish",
+  },
+});
+
 const COUNT = 12;
 
 export function GenerarPage() {
+  const t = useCopy(COPY);
   const { state, now, startGeneration, stopGeneration, verify, savePlan, suggestions, dismissSuggestion, clearJob } = usePanel();
   const plan = usePlan();
   const toast = useToast();
@@ -54,19 +133,19 @@ export function GenerarPage() {
       suggestionId: idea.id,
       idea: idea.place,
     });
-    toast(`Investigando ${idea.place}, la idea de ${idea.member.name}`);
+    toast(t.researching(idea.place, idea.member.name));
   };
   const dismiss = async (idea: SuggestionView) => {
     try {
       setIdeas(await dismissSuggestion(idea.id));
     } catch (e) {
-      toast(`No se pudo: ${(e as Error).message}`);
+      toast(t.failed((e as Error).message));
     }
   };
 
   const onSubmit = async (v: SearchValues) => {
-    if (!v.start || !v.end) return toast("Elige en el calendario el día de salida y el de vuelta");
-    if (v.scope === "place" && !v.place.trim()) return toast("Escribe adónde quieres ir");
+    if (!v.start || !v.end) return toast(t.pickDates);
+    if (v.scope === "place" && !v.place.trim()) return toast(t.writePlace);
     // Dates, people, budget and origin belong to the plan: save them first.
     try {
       await savePlan({
@@ -80,7 +159,7 @@ export function GenerarPage() {
         maxPriceCents: v.maxPrice === null ? null : v.maxPrice * 100,
       });
     } catch (e) {
-      return toast(`No se pudo guardar el plan: ${(e as Error).message}`);
+      return toast(t.saveFailed((e as Error).message));
     }
     setStops(v.stops);
     // A specific destination is one proposal, researched by name.
@@ -103,8 +182,7 @@ export function GenerarPage() {
         <div className="shrink-0 border-line-soft p-4 sm:p-7 lg:w-[500px] lg:border-r">
           {status?.hosted && !status.ai?.background ? (
             <Notice tone="neutral">
-              Para buscar desde aquí, el sitio necesita una clave de Claude (API de Anthropic) u OpenAI: mira en <Link to="/ajustes">Ajustes</Link> cómo añadirla. Mientras,
-              busca desde el panel de tu ordenador, o añade un destino a mano en <Link to="/revisar">Revisar</Link>.
+              {t.needsKey(<Link to="/ajustes">{t.settings}</Link>, <Link to="/revisar">{t.review}</Link>)}
             </Notice>
           ) : (
             // Keyed so switching plans resets the form to the new plan.
@@ -116,19 +194,19 @@ export function GenerarPage() {
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="flex flex-col gap-[5px]">
               <Heading id="resultados" size="headline" className="sm:text-[28px]">
-                Propuestas generadas
+                {t.title}
               </Heading>
               <span className="text-sm text-muted">
-                {plan.name} · {rangeSummary(initial)} · {plan.partySize} personas · {STOPS_LABEL[stops]}
+                {plan.name} · {rangeSummary(initial)} · {t.people(plan.partySize)} · {t.stops[stops]}
               </span>
             </div>
             {generation && !running && !generation.error && (
               <div className="flex items-center gap-3">
                 <span className="text-sm font-bold text-muted tabular-nums">
-                  {generation.received} {generation.received === 1 ? "propuesta nueva" : "propuestas nuevas"}
+                  {t.newOnes(generation.received)}
                 </span>
                 <Badge tone={generation.stopped ? "neutral" : "accent"} size="md">
-                  {generation.stopped ? "Búsqueda detenida" : "Búsqueda terminada"}
+                  {generation.stopped ? t.stopped : t.finished}
                 </Badge>
               </div>
             )}
@@ -136,37 +214,35 @@ export function GenerarPage() {
 
           {generation && running && <GenerationProgress generation={generation} onStop={stopGeneration} aiName={status?.ai?.name ?? "Claude"} />}
 
-          {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(`No se pudo: ${e.message}`))} />}
+          {job && <JobCard job={job} onClear={() => void clearJob().catch((e: Error) => toast(t.failed(e.message)))} />}
 
           <IdeasCard ideas={ideas} now={now} busy={running} onResearch={research} onDismiss={(i) => void dismiss(i)} />
 
           {generation?.error && (
             <Notice role="alert">
-              {generation.received === 0 ? "No se pudo buscar" : `La búsqueda se cortó tras ${generation.received} ${generation.received === 1 ? "propuesta" : "propuestas"}`}: {generation.error}
+              {generation.received === 0 ? t.couldNotSearch : t.cutAfter(generation.received)}: {generation.error}
             </Notice>
           )}
           {generation && !running && !generation.error && !generation.stopped && generation.received === 0 && (
             <Notice tone="neutral">
-              {generation.idea ? `No se encontró nada para ${generation.idea}.` : "La búsqueda terminó sin propuestas nuevas."} Prueba con otras fechas, más presupuesto o escalas.
+              {generation.idea ? t.nothingFor(generation.idea) : t.nothingNew} {t.tryOther}
             </Notice>
           )}
           {status?.research === "none" && !status.hosted && (
             <Notice tone="neutral">
-              No hay ninguna IA configurada en este ordenador. Mira en <Link to="/ajustes">Ajustes</Link> cómo añadir una, o añade destinos a mano en{" "}
-              <Link to="/revisar">Revisar</Link>.
+              {t.noAi(<Link to="/ajustes">{t.settings}</Link>, <Link to="/revisar">{t.review}</Link>)}
             </Notice>
           )}
           {status?.ai?.search === false && !status.hosted && (
             <Notice tone="neutral">
-              {status.ai.name} no busca en la web: sus precios y horarios salen de lo que sabe y llegan al sitio como «Estimado por {status.ai.name}». Compruébalos antes de
-              publicar.
+              {t.noWeb(status.ai.name)}
             </Notice>
           )}
 
           <div className="flex flex-col gap-2.5" aria-live="polite">
             {proposals.length === 0 && !running && (
               <p className="m-0 rounded-2xl border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
-                Todavía no hay propuestas para {plan.name}. {status?.hosted ? "Búscalas desde el panel de tu ordenador." : "Ajusta la búsqueda y pulsa «Generar»."}
+                {t.empty(plan.name)} {status?.hosted ? t.emptyHosted : t.emptyLocal}
               </p>
             )}
             {proposals.map((p) => (
@@ -178,14 +254,14 @@ export function GenerarPage() {
                 verifying={state.verifying.includes(p.id)}
                 canVerify={status?.flights !== "none"}
                 onVerify={() =>
-                  verify(p.id).then((r) => toast(r.verified ? `${p.place.city}: verificado con la API` : `${p.place.city}: ${r.reason ?? "no se pudo verificar"}`))
+                  verify(p.id).then((r) => toast(r.verified ? t.verified(p.place.city) : `${p.place.city}: ${r.reason ?? t.notVerified}`))
                 }
               />
             ))}
           </div>
 
           <p className="m-0 text-[13px] text-muted">
-            Solo tú ves esto: la cuadrilla no ve nada hasta que pulses <strong className="font-bold text-ink">Publicar</strong> en Revisar.
+            {t.onlyYou(<strong className="font-bold text-ink">{t.publish}</strong>)}
           </p>
         </section>
       </div>

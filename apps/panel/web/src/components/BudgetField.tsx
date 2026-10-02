@@ -1,4 +1,20 @@
-import { Checkbox, Field, Range } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { Checkbox, Field, Range, useCopy } from "@wanderlot/ui";
+
+const COPY = copy({
+  es: {
+    label: "Tope por persona",
+    unlimited: "Sin límite",
+    amount: (n: number) => `${n} €`,
+    noLimit: "Sin límite de precio",
+  },
+  en: {
+    label: "Limit per person",
+    unlimited: "No limit",
+    amount: (n: number) => `€${n}`,
+    noLimit: "No price limit",
+  },
+});
 
 export interface BudgetFieldProps {
   // Euros per person; null means no limit.
@@ -9,9 +25,10 @@ export interface BudgetFieldProps {
 
 // The most each person should pay, flights and stay, or no limit at all.
 export function BudgetField({ value, onChange, max }: BudgetFieldProps) {
+  const t = useCopy(COPY);
   const unlimited = value === null;
   return (
-    <Field label="Tope por persona" aside={unlimited ? "Sin límite" : `${value} €`}>
+    <Field label={t.label} aside={value === null ? t.unlimited : t.amount(value)}>
       {({ inputId }) => (
         <div className="flex flex-col gap-2.5">
           <Range
@@ -25,7 +42,7 @@ export function BudgetField({ value, onChange, max }: BudgetFieldProps) {
             onChange={(e) => onChange(Number(e.target.value))}
             className={unlimited ? "opacity-40" : undefined}
           />
-          <Checkbox label="Sin límite de precio" checked={unlimited} onChange={(e) => onChange(e.target.checked ? null : Math.min(400, max))} />
+          <Checkbox label={t.noLimit} checked={unlimited} onChange={(e) => onChange(e.target.checked ? null : Math.min(400, max))} />
         </div>
       )}
     </Field>

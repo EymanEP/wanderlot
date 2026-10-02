@@ -9,6 +9,7 @@ import { mockBackend } from "./data/mockBackend.ts";
 import { PanelProvider } from "./data/store.tsx";
 import { Preview } from "./Preview.tsx";
 import { HostedGate } from "./components/HostedGate.tsx";
+import { PanelLocale } from "./data/locale.tsx";
 import "./index.css";
 
 // The real panel talks to its local server; VITE_DATA=mock uses the mocks.
@@ -24,12 +25,14 @@ const panel = (
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {import.meta.env.VITE_PREVIEW === "1" ? (
-      <Preview />
-    ) : (
-      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || "/"}>
-        <ToastProvider>{hosted ? <HostedGate>{panel}</HostedGate> : panel}</ToastProvider>
-      </BrowserRouter>
-    )}
+    <PanelLocale>
+      {import.meta.env.VITE_PREVIEW === "1" ? (
+        <Preview />
+      ) : (
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || "/"}>
+          <ToastProvider>{hosted ? <HostedGate>{panel}</HostedGate> : panel}</ToastProvider>
+        </BrowserRouter>
+      )}
+    </PanelLocale>
   </StrictMode>,
 );

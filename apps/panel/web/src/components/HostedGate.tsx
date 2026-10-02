@@ -1,5 +1,30 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Brand, Button, Card, Field, Heading, Notice, Page, Skeleton, Text, TextInput } from "@wanderlot/ui";
+import { copy } from "@wanderlot/core";
+import { Brand, Button, Card, Field, Heading, Notice, Page, Skeleton, Text, TextInput, useCopy } from "@wanderlot/ui";
+import { localeHeaders } from "../data/locale.tsx";
+
+const COPY = copy({
+  es: {
+    notOn: "El panel en el sitio no está activado",
+    howOn: "Actívalo desde el panel de tu ordenador: en Personas, «Panel en el móvil», elige una contraseña.",
+    noConnect: (error: string) => `No se pudo conectar con el sitio: ${error}`,
+    signIn: "Entrar al panel",
+    intro: "Gestiona los viajes y la cuadrilla desde aquí. Buscar destinos con Claude sigue en tu ordenador.",
+    password: "Contraseña del panel",
+    entering: "Entrando…",
+    enter: "Entrar",
+  },
+  en: {
+    notOn: "The panel on the site isn't turned on",
+    howOn: "Turn it on from the panel on your computer: in People, \"Panel on your phone\", choose a password.",
+    noConnect: (error: string) => `Couldn't connect to the site: ${error}`,
+    signIn: "Sign in to the panel",
+    intro: "Manage the trips and the group from here. Searching for destinations with Claude stays on your computer.",
+    password: "Panel password",
+    entering: "Signing in…",
+    enter: "Sign in",
+  },
+});
 
 // "/admin" in the panel the site serves.
 const ROOT = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -9,6 +34,7 @@ type Gate = "loading" | "off" | "out" | "in" | { error: string };
 // The panel the site serves at /admin (ROADMAP 3.1) is for the organiser
 // only: it asks for the password set from the laptop's panel.
 export function HostedGate({ children }: { children: ReactNode }) {
+  const t = useCopy(COPY);
   const [gate, setGate] = useState<Gate>("loading");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +55,7 @@ export function HostedGate({ children }: { children: ReactNode }) {
       const res = await fetch(`${ROOT}/api/session`, {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...localeHeaders() },
         body: JSON.stringify({ password }),
       });
       if (res.ok) return setGate("in");
@@ -52,28 +78,28 @@ export function HostedGate({ children }: { children: ReactNode }) {
         ) : gate === "off" ? (
           <Card variant="raised" className="flex flex-col gap-3">
             <Heading as="h1" size="subheading">
-              El panel en el sitio no está activado
+              {t.notOn}
             </Heading>
-            <Text tone="muted">Actívalo desde el panel de tu ordenador: en Personas, «Panel en el móvil», elige una contraseña.</Text>
+            <Text tone="muted">{t.howOn}</Text>
           </Card>
         ) : typeof gate === "object" ? (
-          <Notice role="alert">No se pudo conectar con el sitio: {gate.error}</Notice>
+          <Notice role="alert">{t.noConnect(gate.error)}</Notice>
         ) : (
-          <Card as="form" variant="raised" className="flex flex-col gap-4" onSubmit={submit} aria-label="Entrar al panel">
+          <Card as="form" variant="raised" className="flex flex-col gap-4" onSubmit={submit} aria-label={t.signIn}>
             <div className="flex flex-col gap-1">
               <Heading as="h1" size="subheading">
-                Entrar al panel
+                {t.signIn}
               </Heading>
-              <Text tone="muted">Gestiona los viajes y la cuadrilla desde aquí. Buscar destinos con Claude sigue en tu ordenador.</Text>
+              <Text tone="muted">{t.intro}</Text>
             </div>
-            <Field label="Contraseña del panel">
+            <Field label={t.password}>
               {({ inputId }) => (
                 <TextInput id={inputId} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
               )}
             </Field>
             {error && <Notice role="alert">{error}</Notice>}
             <Button variant="primary" type="submit" disabled={busy || !password}>
-              {busy ? "Entrando…" : "Entrar"}
+              {busy ? t.entering : t.enter}
             </Button>
           </Card>
         )}
