@@ -131,6 +131,14 @@ describe("claude research provider", () => {
     expect(prompt).toContain("Sal siempre de MAD");
   });
 
+  it("asks for the group's language: Spanish unless it chose another", () => {
+    expect(buildPrompt(req)).toContain("Todo el texto que verá el grupo, en español de España.");
+    const english = buildPrompt({ ...req, locale: "en" });
+    expect(english).toContain("en inglés británico (British English)");
+    expect(english).toContain("los nombres de ciudades y países");
+    expect(english).not.toContain("español de España");
+  });
+
   it("researches one place the organiser typed, without calling it anyone's idea", () => {
     const typed = buildPrompt({ ...req, scope: { kind: "named", name: "Oporto" }, count: 1 });
     expect(typed).toContain("Busca una propuesta de viaje de grupo saliendo de MAD hacia «Oporto».");

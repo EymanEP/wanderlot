@@ -847,10 +847,15 @@ never chooses sees nothing change.
   showing: the site sends it in the `x-wanderlot-locale` header, and Spanish
   is used without one. Errors meant for code ("expected {pin}") stay in
   English.
-- **Not yet in English:** the panel, the WhatsApp messages, the research
-  prompts and the trip guide (ROADMAP 4). Content the organiser or the AI
-  wrote (destinations, pros and cons, the guide) stays in the language it was
-  written in.
+- **What the AI writes** is in the group's language: research (places,
+  pros and cons, things to do and see, the weather line), the trip guide, and
+  the stay's description read from a screenshot. The instructions stay in
+  Spanish and end with the language to write in, place names included.
+  Nothing is translated afterwards: what was already written stays in the
+  language it was written in, and a person who switches the site to another
+  language still reads it in the group's.
+- **The messages for the group chat** (§7) are in the group's language.
+- **Not yet in English:** the panel itself (ROADMAP 4).
 
 ---
 

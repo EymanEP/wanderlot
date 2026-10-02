@@ -84,7 +84,7 @@ function LanguageCard() {
         Idioma del grupo
       </Heading>
       <Text tone="muted" size="sm">
-        El sitio de tus amigos sale en este idioma; cada uno puede cambiarlo para sí en su menú de cuenta. Si no cambia, actualiza el sitio con npm run deploy:site.
+        El sitio de tus amigos sale en este idioma, y en él escribe la IA los destinos y la guía, y el panel los mensajes para el grupo. Cada uno puede cambiar el sitio para sí en su menú de cuenta. Lo ya escrito se queda como está. Si el sitio no cambia, actualízalo con npm run deploy:site.
       </Text>
       <div role="radiogroup" aria-label="Idioma del grupo" className="flex flex-col gap-2">
         {LOCALES.map((l) => (

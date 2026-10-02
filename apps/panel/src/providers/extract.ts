@@ -3,7 +3,8 @@
 // `claude` command and the Anthropic API; the organiser reviews the result
 // before anything is saved.
 import { z } from "zod";
-import { FlightLeg } from "@wanderlot/core";
+import { FlightLeg, type Locale } from "@wanderlot/core";
+import { languageLine } from "./language.ts";
 
 export type ExtractKind = "flight" | "stay";
 
@@ -18,6 +19,8 @@ export interface ExtractRequest {
   images: ExtractImage[];
   // The trip, to fill in what a screenshot leaves out (the year, the airports).
   context: { origin: string; city: string; iata: string; dateFrom: string; dateTo: string; nights: number; partySize: number };
+  // The group's language, for the stay's description. Absent: Spanish.
+  locale?: Locale;
 }
 
 const Leg = FlightLeg.omit({ priceCents: true });
@@ -70,6 +73,7 @@ export function extractPrompt(req: ExtractRequest, files?: string[]): string {
     trip,
     "Extrae el nombre del alojamiento tal como aparece, una descripción corta (tipo, habitaciones, barrio) de menos de 200 caracteres, el precio total de la estancia en euros (todas las noches, con limpieza y tasas si aparecen) y el número de noches.",
     common,
+    `${languageLine(req.locale)} El nombre del alojamiento, tal como aparece.`,
   ].join("\n");
 }
 

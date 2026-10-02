@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { Category, FlightLeg, Place, Source, Stay, Thing } from "@wanderlot/core";
 import type { ResearchResult, SearchRequest } from "./types.ts";
+import { languageLine } from "./language.ts";
 
 const ResearchProposal = z.object({
   place: Place,
@@ -35,12 +36,12 @@ export interface Researcher {
 
 export const SYSTEM =
   "Planificas viajes para un grupo de amigos. Buscas en la web vuelos, alojamientos y precios reales y citas las páginas de donde salen. " +
-  "Respondes en español de España.";
+  "Escribes en el idioma que te pida cada encargo.";
 
 // For an AI that can't search the web (ROADMAP 3.3).
 export const SYSTEM_ESTIMATE =
   "Planificas viajes para un grupo de amigos. No puedes buscar en la web: estimas vuelos, alojamientos y precios realistas con lo que sabes, sin inventar rutas que no existan. " +
-  "Respondes en español de España.";
+  "Escribes en el idioma que te pida cada encargo.";
 
 // Draft-07: the `claude` command validates --json-schema with a validator
 // that doesn't know draft 2020-12, zod's default, and refuses to start.
@@ -84,6 +85,7 @@ export function buildPrompt(req: SearchRequest, who: Researcher = {}): string {
     who.estimate
       ? "No puedes buscar en la web: da precios y horarios realistas según lo que sabes, solo en rutas que alguna aerolínea opere de verdad, y deja sources vacío. Se marcarán como estimados."
       : "Cada propuesta debe citar las páginas de donde salen los números en sources. No inventes vuelos: si no encuentras uno real, omite la propuesta.",
+    languageLine(req.locale),
   ].join("\n");
 }
 
