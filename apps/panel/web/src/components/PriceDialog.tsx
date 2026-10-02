@@ -1,8 +1,151 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
-import { airbnbUrl, baseStay, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
-import { Button, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn } from "@wanderlot/ui";
+import { airbnbUrl, baseStay, copy, currentLocale, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
+import { Button, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
+
+const COPY = copy({
+  es: {
+    badType: "Sube capturas en PNG, JPG, WebP o GIF",
+    tooBig: "Cada captura tiene que pesar menos de 5 MB",
+    unreadableFile: "No se pudo leer el archivo",
+    noImage: "No hay ninguna imagen copiada",
+    paste: "Pegar captura",
+    reading: "Leyendo…",
+    upload: "Subir captura",
+    looking: (host: string) => `Mirando ${host}…`,
+    searching: (query: string) => `Buscando «${query}»…`,
+    unreadablePage: "No se pudo leer la página",
+    noFlightsSeen: "No vi vuelos con precio en Google Flights: búscalo tú y escribe el precio.",
+    theScreenshot: "la captura",
+    noFlightPrice: "No vi el precio del vuelo por persona: escríbelo tú.",
+    noLegs: "No vi los dos vuelos, ida y vuelta, así que la cuadrilla verá solo el precio.",
+    noStayPrice: "No vi el precio total del alojamiento: escríbelo tú.",
+    nightsMismatch: (from: string, got: number, nights: number) => `${from[0]!.toUpperCase()}${from.slice(1)} es para ${got} noches y el viaje tiene ${nights}: revisa el precio.`,
+    badPrice: "Escribe cada precio en euros, por ejemplo 174 o 1044,50",
+    nameStay: "Ponle nombre al alojamiento",
+    badUrl: "El enlace del alojamiento tiene que empezar por https://",
+    title: (city: string) => `Precios de ${city}`,
+    nights: (n: number) => `${n} ${n === 1 ? "noche" : "noches"}`,
+    people: (n: number) => `${n} personas`,
+    cancel: "Cancelar",
+    saving: "Guardando…",
+    save: "Guardar como comprobados",
+    intro: "Lo que cuesta hoy: el vuelo de una persona y el alojamiento entero para el grupo. En el sitio se verá como «Comprobado a mano».",
+    canPaste: (ai: string) => ` Puedes pegar (Ctrl+V) una captura y ${ai} la lee.`,
+    needsAi: " Leer capturas necesita una IA: mira en Ajustes cómo añadir una.",
+    opening: "Abriendo Google Flights en el navegador…",
+    captcha: " Si sale un aviso de cookies o un CAPTCHA, resuélvelo en esa ventana.",
+    whichLabel: "¿De qué es la captura?",
+    whichText: "¿De qué es la captura que has pegado?",
+    ofFlight: "Del vuelo",
+    ofStay: "Del alojamiento",
+    flights: "Vuelos",
+    flight: "Vuelo",
+    returnPerPerson: "ida y vuelta, por persona",
+    lookingShort: "Mirando…",
+    lookGoogle: "Mirar en Google Flights",
+    readFlight: "Leer captura del vuelo",
+    uploadFlight: "Subir captura del vuelo",
+    found: "Vuelos encontrados",
+    out: (leg: string) => `Ida · ${leg}`,
+    back: (leg: string) => `Vuelta · ${leg}`,
+    bookedPrice: (bookWith: string | null | undefined, listed: string | null) => `Precio al reservar${bookWith ? ` con ${bookWith}` : ""}${listed ? ` (en la lista ponía ${listed})` : ""}`,
+    listPrice: "Precio de la lista: puede cambiar al reservar",
+    flightInput: "Vuelo, ida y vuelta · € por persona",
+    perPersonPrice: "Precio por persona",
+    openGoogle: "Abrir Google Flights",
+    removeTimes: "Quitar horarios",
+    noTimes: "Sin horarios, el grupo verá solo el precio.",
+    stay: "Alojamiento",
+    wholeGroup: (nights: string) => `Todo el grupo, ${nights}`,
+    seeAirbnb: "Ver en Airbnb",
+    searchAirbnb: "Buscar en Airbnb",
+    readStay: "Leer captura del alojamiento",
+    uploadStay: "Subir captura del alojamiento",
+    name: "Nombre",
+    stayName: "Nombre del alojamiento",
+    namePlaceholder: "Piso con terraza en el centro",
+    stayInput: "Alojamiento · € en total",
+    stayTotal: "Total de la estancia",
+    link: "Enlace (opcional)",
+    leaveEmpty: "Déjalo vacío si no hay alojamiento.",
+    onlyThis: " Al guardar, en el sitio solo se verá este; las otras opciones de la búsqueda se quitan.",
+    perPerson: "Por persona",
+    noStay: "Sin alojamiento",
+    totalPerPerson: "Total por persona",
+  },
+  en: {
+    badType: "Upload screenshots as PNG, JPG, WebP or GIF",
+    tooBig: "Each screenshot has to be under 5 MB",
+    unreadableFile: "Couldn't read the file",
+    noImage: "There's no image copied",
+    paste: "Paste screenshot",
+    reading: "Reading…",
+    upload: "Upload screenshot",
+    looking: (host: string) => `Looking at ${host}…`,
+    searching: (query: string) => `Searching for “${query}”…`,
+    unreadablePage: "Couldn't read the page",
+    noFlightsSeen: "I didn't see any priced flights on Google Flights: look it up yourself and type the price.",
+    theScreenshot: "the screenshot",
+    noFlightPrice: "I didn't see the flight price per person: type it in yourself.",
+    noLegs: "I didn't see both flights, there and back, so the group will only see the price.",
+    noStayPrice: "I didn't see the stay's total price: type it in yourself.",
+    nightsMismatch: (from: string, got: number, nights: number) => `${from[0]!.toUpperCase()}${from.slice(1)} is for ${got} nights and the trip has ${nights}: check the price.`,
+    badPrice: "Type each price in euros, for example 174 or 1044.50",
+    nameStay: "Give the stay a name",
+    badUrl: "The stay's link has to start with https://",
+    title: (city: string) => `Prices for ${city}`,
+    nights: (n: number) => `${n} ${n === 1 ? "night" : "nights"}`,
+    people: (n: number) => `${n} people`,
+    cancel: "Cancel",
+    saving: "Saving…",
+    save: "Save as checked",
+    intro: "What it costs today: one person's flight and the whole stay for the group. On the site it will show as “Checked by hand”.",
+    canPaste: (ai: string) => ` You can paste (Ctrl+V) a screenshot and ${ai} reads it.`,
+    needsAi: " Reading screenshots needs an AI: see Settings for how to add one.",
+    opening: "Opening Google Flights in the browser…",
+    captcha: " If a cookie notice or a CAPTCHA appears, deal with it in that window.",
+    whichLabel: "What is the screenshot of?",
+    whichText: "What is the screenshot you pasted of?",
+    ofFlight: "The flight",
+    ofStay: "The stay",
+    flights: "Flights",
+    flight: "Flight",
+    returnPerPerson: "return, per person",
+    lookingShort: "Looking…",
+    lookGoogle: "Look on Google Flights",
+    readFlight: "Read flight screenshot",
+    uploadFlight: "Upload flight screenshot",
+    found: "Flights found",
+    out: (leg: string) => `Out · ${leg}`,
+    back: (leg: string) => `Back · ${leg}`,
+    bookedPrice: (bookWith: string | null | undefined, listed: string | null) => `Price when booking${bookWith ? ` with ${bookWith}` : ""}${listed ? ` (the list said ${listed})` : ""}`,
+    listPrice: "Price from the list: it may change when booking",
+    flightInput: "Flight, return · € per person",
+    perPersonPrice: "Price per person",
+    openGoogle: "Open Google Flights",
+    removeTimes: "Remove times",
+    noTimes: "Without times, the group will only see the price.",
+    stay: "Stay",
+    wholeGroup: (nights: string) => `The whole group, ${nights}`,
+    seeAirbnb: "See on Airbnb",
+    searchAirbnb: "Search Airbnb",
+    readStay: "Read stay screenshot",
+    uploadStay: "Upload stay screenshot",
+    name: "Name",
+    stayName: "Name of the stay",
+    namePlaceholder: "Flat with a terrace in the centre",
+    stayInput: "Stay · € in total",
+    stayTotal: "Total for the stay",
+    link: "Link (optional)",
+    leaveEmpty: "Leave it empty if there's no stay.",
+    onlyThis: " Once saved, the site will only show this one; the other options from the search are removed.",
+    perPerson: "Per person",
+    noStay: "No stay",
+    totalPerPerson: "Total per person",
+  },
+});
 
 export interface PriceDialogProps {
   proposal: Proposal | undefined;
@@ -21,12 +164,16 @@ export interface PriceDialogProps {
   browse?: { tasks: Task[]; start: () => void; take: (id: string) => void };
 }
 
-const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", ",");
-// "1044", "1044,50", "1.044,50" or "1044.5" → cents; null if it isn't a price.
+// The decimal comma in Spanish, the point in English.
+const toEuros = (cents: number) => String(Math.round(cents) / 100).replace(".", currentLocale() === "en" ? "." : ",");
+// "1044", "1044,50", "1.044,50", "1044.5" or, in English, "1,044.50" →
+// cents; null if it isn't a price.
 export const toCents = (text: string): number | null => {
   let t = text.trim().replace(/\s|€/g, "");
-  // "1.044,50": the dot groups thousands.
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  // Both: whichever comes last is the decimal mark ("1.044,50", "1,044.50").
+  if (t.includes(",") && t.includes(".")) t = t.lastIndexOf(",") > t.lastIndexOf(".") ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+  // A comma alone: decimals in Spanish; in English "1,044" groups thousands.
+  else if (t.includes(",")) t = currentLocale() === "en" && /^\d{1,3}(,\d{3})+$/.test(t) ? t.replace(/,/g, "") : t.replace(",", ".");
   else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
   const n = Number(t);
   return t !== "" && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
@@ -38,8 +185,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 function readImages(files: File[]): Promise<ScreenshotImage[]> {
   const list = files.slice(0, 4);
   for (const f of list) {
-    if (!TYPES.includes(f.type as (typeof TYPES)[number])) return Promise.reject(new Error("Sube capturas en PNG, JPG, WebP o GIF"));
-    if (f.size > MAX_BYTES) return Promise.reject(new Error("Cada captura tiene que pesar menos de 5 MB"));
+    if (!TYPES.includes(f.type as (typeof TYPES)[number])) return Promise.reject(new Error(pick(COPY).badType));
+    if (f.size > MAX_BYTES) return Promise.reject(new Error(pick(COPY).tooBig));
   }
   return Promise.all(
     list.map(
@@ -47,7 +194,7 @@ function readImages(files: File[]): Promise<ScreenshotImage[]> {
         new Promise<ScreenshotImage>((resolve, reject) => {
           const r = new FileReader();
           r.onload = () => resolve({ mediaType: f.type as ScreenshotImage["mediaType"], data: String(r.result).split(",")[1] ?? "" });
-          r.onerror = () => reject(new Error("No se pudo leer el archivo"));
+          r.onerror = () => reject(new Error(pick(COPY).unreadableFile));
           r.readAsDataURL(f);
         }),
     ),
@@ -69,13 +216,14 @@ async function clipboardImages(): Promise<File[]> {
     const type = item.types.find((t) => t.startsWith("image/"));
     if (type) files.push(new File([await item.getType(type)], "captura", { type }));
   }
-  if (!files.length) throw new Error("No hay ninguna imagen copiada");
+  if (!files.length) throw new Error(pick(COPY).noImage);
   return files;
 }
 
 // "Leer captura": a button that opens the file picker and hands the images
 // over, and "Pegar captura" beside it for one copied to the clipboard.
-function ScreenshotButton({ label, busy, onImages }: { label: string; busy: boolean; onImages: (files: File[]) => void }) {
+function ScreenshotButton({ label, uploadLabel, busy, onImages }: { label: string; uploadLabel: string; busy: boolean; onImages: (files: File[]) => void }) {
+  const t = useCopy(COPY);
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -93,11 +241,11 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
       />
       {canReadClipboard && !busy && (
         <Button size="sm" variant="ghost" onClick={() => void clipboardImages().then(onImages, (e: Error) => onImages(Object.assign([], { error: e.message })))}>
-          Pegar captura
+          {t.paste}
         </Button>
       )}
-      <Button size="sm" variant="ghost" aria-label={label.replace(/^Leer/, "Subir")} disabled={busy} onClick={() => input.current?.click()}>
-        {busy ? "Leyendo…" : "Subir captura"}
+      <Button size="sm" variant="ghost" aria-label={uploadLabel} disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? t.reading : t.upload}
       </Button>
     </>
   );
@@ -112,9 +260,10 @@ function ScreenshotButton({ label, busy, onImages }: { label: string; busy: bool
 const SITE = { flight: { name: "Google Flights", id: "google-flights" }, stay: { name: "Airbnb", id: "airbnb" } } as const;
 
 // What the browser is doing, in a line.
-const stepLine = (s: SearchStep) => (s.kind === "read" ? `Mirando ${s.host}…` : s.kind === "search" ? `Buscando «${s.query}»…` : s.text);
+const stepLine = (s: SearchStep) => (s.kind === "read" ? pick(COPY).looking(s.host) : s.kind === "search" ? pick(COPY).searching(s.query) : s.text);
 
 export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, browse, aiName = "Claude" }: PriceDialogProps) {
+  const t = useCopy(COPY);
   const stay = p ? baseStay(p.stays) : undefined;
   const people = plan.partySize;
   const [flights, setFlights] = useState("");
@@ -166,7 +315,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     setPasted(null);
     setError(null);
     try {
-      fill(await onExtract!(kind, await readImages(files)), "la captura");
+      fill(await onExtract!(kind, await readImages(files)), t.theScreenshot);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -183,20 +332,20 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const finished = browse?.tasks.filter((t) => t.status !== "running") ?? [];
   useEffect(() => {
     if (!p || !finished.length) return;
-    for (const t of finished) {
-      if (t.status === "failed") setError(t.error ?? "No se pudo leer la página");
-      else if (t.result && "kind" in t.result) {
-        const got = t.result as Browsed;
+    for (const task of finished) {
+      if (task.status === "failed") setError(task.error ?? t.unreadablePage);
+      else if (task.result && "kind" in task.result) {
+        const got = task.result as Browsed;
         // What got in the way, in Claude's words, when it couldn't read it.
         const why = got.problem ? [`Google Flights: ${got.problem}`] : [];
         if (got.options.length) {
           setFlightOptions(got.options);
           pickFlight(got.options, 0);
           setNotes(why);
-        } else setNotes([...why, "No vi vuelos con precio en Google Flights: búscalo tú y escribe el precio."]);
+        } else setNotes([...why, t.noFlightsSeen]);
         setSeen((s) => ({ ...s, flight: got.options[0]?.bookingUrl || got.pageUrl || "" }));
       }
-      browse!.take(t.id);
+      browse!.take(task.id);
     }
     // Once per finished reading, while this proposal's dialog is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -220,15 +369,15 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     const missing: string[] = [];
     if (got.kind === "flight") {
       if (got.flightCents !== null) setFlights(toEuros(got.flightCents));
-      else missing.push("No vi el precio del vuelo por persona: escríbelo tú.");
+      else missing.push(t.noFlightPrice);
       if (got.outbound && got.inbound) setLegs({ outbound: got.outbound, inbound: got.inbound });
-      else missing.push("No vi los dos vuelos, ida y vuelta, así que la cuadrilla verá solo el precio.");
+      else missing.push(t.noLegs);
     } else {
       if (got.name) setStayName(got.name);
       setStayDescription(got.description ?? undefined);
       if (got.stayCents !== null) setStayTotal(toEuros(got.stayCents));
-      else missing.push("No vi el precio total del alojamiento: escríbelo tú.");
-      if (got.nights !== null && got.nights !== plan.nights) missing.push(`${from[0]!.toUpperCase()}${from.slice(1)} es para ${got.nights} noches y el viaje tiene ${plan.nights}: revisa el precio.`);
+      else missing.push(t.noStayPrice);
+      if (got.nights !== null && got.nights !== plan.nights) missing.push(t.nightsMismatch(from, got.nights, plan.nights));
     }
     setNotes(missing);
   };
@@ -244,10 +393,10 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (flightCents === null || stayCents === null) return setError("Escribe cada precio en euros, por ejemplo 174 o 1044,50");
-    if (hasStay && !stayName.trim()) return setError("Ponle nombre al alojamiento");
+    if (flightCents === null || stayCents === null) return setError(t.badPrice);
+    if (hasStay && !stayName.trim()) return setError(t.nameStay);
     const url = stayUrl.trim();
-    if (url && !/^https:\/\/\S+$/.test(url)) return setError("El enlace del alojamiento tiene que empezar por https://");
+    if (url && !/^https:\/\/\S+$/.test(url)) return setError(t.badUrl);
     setBusy(true);
     try {
       const kinds = (["flight", "stay"] as const).filter((k) => seen[k] !== undefined);
@@ -294,56 +443,57 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     <Dialog
       open={p !== undefined}
       wide
-      title={p ? `Precios de ${p.place.city}` : ""}
-      subtitle={`${shortDate(plan.dateFrom)} – ${shortDate(plan.dateTo)} · ${plan.nights} ${plan.nights === 1 ? "noche" : "noches"} · ${people} personas`}
+      title={p ? t.title(p.place.city) : ""}
+      subtitle={`${shortDate(plan.dateFrom)} – ${shortDate(plan.dateTo)} · ${t.nights(plan.nights)} · ${t.people(people)}`}
       onClose={onClose}
       actions={
         <>
-          <Button onClick={onClose}>Cancelar</Button>
+          <Button onClick={onClose}>{t.cancel}</Button>
           <Button variant="primary" type="submit" form="precios" disabled={busy || reading !== null || browsing !== null}>
-            {busy ? "Guardando…" : "Guardar como comprobados"}
+            {busy ? t.saving : t.save}
           </Button>
         </>
       }
     >
       <form id="precios" onSubmit={submit} onPaste={onPaste} className="flex flex-col gap-4">
         <span className="text-sm text-ink-2">
-          Lo que cuesta hoy: el vuelo de una persona y el alojamiento entero para el grupo. En el sitio se verá como «Comprobado a mano».
-          {onExtract ? ` Puedes pegar (Ctrl+V) una captura y ${aiName} la lee.` : " Leer capturas necesita una IA: mira en Ajustes cómo añadir una."}
+          {t.intro}
+          {onExtract ? t.canPaste(aiName) : t.needsAi}
         </span>
 
         {browsing && (
           <div role="status" className="flex items-center gap-3 rounded-xl bg-accent-soft px-3.5 py-3 text-sm text-accent-strong">
             <span aria-hidden className="size-3.5 shrink-0 rounded-full border-2 border-accent border-t-transparent motion-safe:animate-spin" />
             <span>
-              {step ?? "Abriendo Google Flights en el navegador…"} Si sale un aviso de cookies o un CAPTCHA, resuélvelo en esa ventana.
+              {step ?? t.opening}
+              {t.captcha}
             </span>
           </div>
         )}
 
         {pasted && (
-          <div role="group" aria-label="¿De qué es la captura?" className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
-            <span className="mr-auto">¿De qué es la captura que has pegado?</span>
+          <div role="group" aria-label={t.whichLabel} className="flex flex-wrap items-center gap-2 rounded-xl bg-surface-2 px-3.5 py-3 text-sm">
+            <span className="mr-auto">{t.whichText}</span>
             <Button size="sm" onClick={() => void read("flight", pasted)}>
-              Del vuelo
+              {t.ofFlight}
             </Button>
             <Button size="sm" onClick={() => void read("stay", pasted)}>
-              Del alojamiento
+              {t.ofStay}
             </Button>
           </div>
         )}
 
-        <section aria-label="Vuelos" className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("flight")}>
+        <section aria-label={t.flights} className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("flight")}>
           <header className="flex flex-wrap items-start justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-ink-2">
                 <PlaneIcon size={18} />
               </span>
               <div className="flex flex-col">
-                <strong className="text-[15px]">Vuelo</strong>
+                <strong className="text-[15px]">{t.flight}</strong>
                 {p && (
                   <span className="text-[13px] text-muted">
-                    {p.outbound.from} ⇄ {p.outbound.to} · ida y vuelta, por persona
+                    {p.outbound.from} ⇄ {p.outbound.to} · {t.returnPerPerson}
                   </span>
                 )}
               </div>
@@ -351,15 +501,15 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
             <div className="flex flex-wrap items-center gap-1">
               {browse && (
                 <Button size="sm" variant="secondary" disabled={browsing !== null || reading !== null} onClick={look}>
-                  {browsing ? "Mirando…" : "Mirar en Google Flights"}
+                  {browsing ? t.lookingShort : t.lookGoogle}
                 </Button>
               )}
-              {onExtract && <ScreenshotButton label="Leer captura del vuelo" busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
+              {onExtract && <ScreenshotButton label={t.readFlight} uploadLabel={t.uploadFlight} busy={reading === "flight"} onImages={(f) => void read("flight", f)} />}
             </div>
           </header>
 
           {flightOptions && (
-            <div role="radiogroup" aria-label="Vuelos encontrados" className="flex flex-col overflow-hidden rounded-xl border border-line-soft">
+            <div role="radiogroup" aria-label={t.found} className="flex flex-col overflow-hidden rounded-xl border border-line-soft">
               {flightOptions.map((o, i) => (
                 <label
                   key={i}
@@ -374,12 +524,12 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
                       <span className="text-[15px] font-bold tabular-nums">{euros(o.flightCents)}</span>
                       {o.note && <span className="text-sm font-semibold">{o.note}</span>}
                     </span>
-                    {o.outbound && <span className="text-[13px] text-ink-2">Ida · {legShort(o.outbound)}</span>}
-                    {o.inbound && <span className="text-[13px] text-ink-2">Vuelta · {legShort(o.inbound)}</span>}
+                    {o.outbound && <span className="text-[13px] text-ink-2">{t.out(legShort(o.outbound))}</span>}
+                    {o.inbound && <span className="text-[13px] text-ink-2">{t.back(legShort(o.inbound))}</span>}
                     <span className="text-xs text-muted">
                       {o.checkedToEnd
-                        ? `Precio al reservar${o.bookWith ? ` con ${o.bookWith}` : ""}${o.listedCents !== null && o.listedCents !== o.flightCents ? ` (en la lista ponía ${euros(o.listedCents)})` : ""}`
-                        : "Precio de la lista: puede cambiar al reservar"}
+                        ? t.bookedPrice(o.bookWith, o.listedCents !== null && o.listedCents !== o.flightCents ? euros(o.listedCents) : null)
+                        : t.listPrice}
                     </span>
                   </span>
                 </label>
@@ -388,38 +538,38 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
           )}
 
           <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-            <div className="w-full sm:w-[220px]">{euroInput("Vuelo, ida y vuelta · € por persona", "Precio por persona", flights, setFlights)}</div>
+            <div className="w-full sm:w-[220px]">{euroInput(t.flightInput, t.perPersonPrice, flights, setFlights)}</div>
             {p && (
               <a href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)} target="_blank" rel="noreferrer" className={cn(linkClass, "pb-3")}>
-                Abrir Google Flights <ExternalIcon size={13} />
+                {t.openGoogle} <ExternalIcon size={13} />
               </a>
             )}
           </div>
           {legs && !flightOptions ? (
             <div className="flex flex-wrap items-start justify-between gap-2 rounded-xl bg-surface-2 px-3.5 py-2.5 text-[13px]">
               <span className="flex flex-col gap-0.5">
-                <span>Ida · {legLine(legs.outbound)}</span>
-                <span>Vuelta · {legLine(legs.inbound)}</span>
+                <span>{t.out(legLine(legs.outbound))}</span>
+                <span>{t.back(legLine(legs.inbound))}</span>
               </span>
               <button type="button" onClick={() => setLegs(null)} className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-semibold text-accent underline">
-                Quitar horarios
+                {t.removeTimes}
               </button>
             </div>
           ) : (
-            !timesKnown && !legs && <span className="text-[13px] text-muted">Sin horarios, el grupo verá solo el precio.</span>
+            !timesKnown && !legs && <span className="text-[13px] text-muted">{t.noTimes}</span>
           )}
         </section>
 
-        <section aria-label="Alojamiento" className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("stay")}>
+        <section aria-label={t.stay} className="flex flex-col gap-3.5 rounded-card border border-line-soft p-3 sm:p-4" onFocus={() => setFocus("stay")}>
           <header className="flex flex-wrap items-start justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 text-ink-2">
                 <HouseIcon size={18} />
               </span>
               <div className="flex flex-col">
-                <strong className="text-[15px]">Alojamiento</strong>
+                <strong className="text-[15px]">{t.stay}</strong>
                 <span className="text-[13px] text-muted">
-                  Todo el grupo, {plan.nights} {plan.nights === 1 ? "noche" : "noches"}
+                  {t.wholeGroup(t.nights(plan.nights))}
                 </span>
               </div>
             </div>
@@ -431,23 +581,24 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
                   rel="noreferrer"
                   className={buttonClasses({ size: "sm", variant: "secondary" })}
                 >
-                  {stay?.url && /airbnb\./.test(stay.url) ? "Ver en Airbnb" : "Buscar en Airbnb"} <ExternalIcon size={13} />
+                  {stay?.url && /airbnb\./.test(stay.url) ? t.seeAirbnb : t.searchAirbnb} <ExternalIcon size={13} />
                 </a>
               )}
-              {onExtract && <ScreenshotButton label="Leer captura del alojamiento" busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
+              {onExtract && <ScreenshotButton label={t.readStay} uploadLabel={t.uploadStay} busy={reading === "stay"} onImages={(f) => void read("stay", f)} />}
             </div>
           </header>
           <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
-            <Field label="Nombre">
-              {({ inputId }) => <TextInput id={inputId} aria-label="Nombre del alojamiento" maxLength={120} placeholder="Piso con terraza en el centro" value={stayName} onChange={(e) => setStayName(e.target.value)} />}
+            <Field label={t.name}>
+              {({ inputId }) => <TextInput id={inputId} aria-label={t.stayName} maxLength={120} placeholder={t.namePlaceholder} value={stayName} onChange={(e) => setStayName(e.target.value)} />}
             </Field>
-            {euroInput("Alojamiento · € en total", "Total de la estancia", stayTotal, setStayTotal, false)}
+            {euroInput(t.stayInput, t.stayTotal, stayTotal, setStayTotal, false)}
           </div>
-          <Field label="Enlace (opcional)">
+          <Field label={t.link}>
             {({ inputId }) => <TextInput id={inputId} type="url" placeholder="https://www.airbnb.es/rooms/…" value={stayUrl} onChange={(e) => setStayUrl(e.target.value)} />}
           </Field>
           <span className="text-[13px] text-muted">
-            Déjalo vacío si no hay alojamiento.{stay ? " Al guardar, en el sitio solo se verá este; las otras opciones de la búsqueda se quitan." : ""}
+            {t.leaveEmpty}
+            {stay ? t.onlyThis : ""}
           </span>
         </section>
 
@@ -458,19 +609,19 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
         ))}
         {error && <Notice role="alert">{error}</Notice>}
 
-        <dl aria-label="Por persona" className="m-0 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-card bg-surface-2 px-4 py-3.5">
+        <dl aria-label={t.perPerson} className="m-0 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-card bg-surface-2 px-4 py-3.5">
           <div className="flex gap-6">
             <div className="flex flex-col">
-              <dt className="text-xs text-muted">Vuelo</dt>
+              <dt className="text-xs text-muted">{t.flight}</dt>
               <dd className="m-0 text-[15px] font-semibold tabular-nums">{flightCents === null ? "—" : euros(flightCents)}</dd>
             </div>
             <div className="flex flex-col">
-              <dt className="text-xs text-muted">Alojamiento</dt>
-              <dd className="m-0 text-[15px] font-semibold tabular-nums">{stayShare === null ? "—" : stayShare === undefined ? "Sin alojamiento" : euros(stayShare)}</dd>
+              <dt className="text-xs text-muted">{t.stay}</dt>
+              <dd className="m-0 text-[15px] font-semibold tabular-nums">{stayShare === null ? "—" : stayShare === undefined ? t.noStay : euros(stayShare)}</dd>
             </div>
           </div>
           <div className="flex flex-col items-end">
-            <dt className="text-xs font-semibold text-muted">Total por persona</dt>
+            <dt className="text-xs font-semibold text-muted">{t.totalPerPerson}</dt>
             <dd className="m-0 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{total === null ? "—" : euros(total)}</dd>
           </div>
         </dl>

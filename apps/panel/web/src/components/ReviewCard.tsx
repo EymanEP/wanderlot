@@ -1,9 +1,66 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { checkedLabel, euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
-import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn } from "@wanderlot/ui";
+import { checkedLabel, copy, euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
+import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
+
+const COPY = copy({
+  es: {
+    photoOf: (city: string) => `Foto de ${city}`,
+    photos: (n: number) => `Fotos · ${n}`,
+    pickPhotos: "Elegir fotos",
+    approved: "Aprobada",
+    ideaOf: (name: string) => `Idea de ${name}`,
+    discarded: "Descartada",
+    perPerson: "/ persona",
+    estimates: (by: string | undefined) => `Precio y horarios son estimaciones de ${by ?? "la IA"}, sin buscar en la web. Contrástalos antes de publicar.`,
+    webSearch: "Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar.",
+    otherDates: "Este precio se comprobó para otras fechas: el viaje ha cambiado de días. Vuelve a comprobarlo.",
+    stale: (ago: string) => `El precio se consultó ${ago}. Vuelve a comprobarlo antes de abrir la votación.`,
+    apiAnswer: (out: string, back: string, outPrice: string, backPrice: string) => `${out} y ${back} · ${outPrice} + ${backPrice} por persona · respuesta simulada`,
+    seeAnswer: "ver respuesta",
+    seeLinks: "ver enlaces",
+    checkFlights: "comprobar vuelos",
+    changePrices: "cambiar precios",
+    byHand: "ponerlos a mano",
+    realPrices: "poner precios reales",
+    searchGoogle: "buscar en Google Flights",
+    restore: "Recuperar",
+    discard: "Descartar",
+    verifying: "Verificando…",
+    verify: "Verificar con la API",
+    approveUnverified: "Aprobar sin verificar",
+    approve: "Aprobar",
+  },
+  en: {
+    photoOf: (city: string) => `Photo of ${city}`,
+    photos: (n: number) => `Photos · ${n}`,
+    pickPhotos: "Choose photos",
+    approved: "Approved",
+    ideaOf: (name: string) => `${name}'s idea`,
+    discarded: "Discarded",
+    perPerson: "/ person",
+    estimates: (by: string | undefined) => `Price and times are estimates by ${by ?? "the AI"}, without searching the web. Double-check them before publishing.`,
+    webSearch: "Price and times come from web searches, not the API. Double-check them before publishing.",
+    otherDates: "This price was checked for other dates: the trip's days have changed. Check it again.",
+    stale: (ago: string) => `The price was looked up ${ago}. Check it again before opening the vote.`,
+    apiAnswer: (out: string, back: string, outPrice: string, backPrice: string) => `${out} and ${back} · ${outPrice} + ${backPrice} per person · simulated response`,
+    seeAnswer: "see response",
+    seeLinks: "see links",
+    checkFlights: "check flights",
+    changePrices: "change prices",
+    byHand: "enter them by hand",
+    realPrices: "enter real prices",
+    searchGoogle: "search Google Flights",
+    restore: "Restore",
+    discard: "Discard",
+    verifying: "Verifying…",
+    verify: "Verify with the API",
+    approveUnverified: "Approve unverified",
+    approve: "Approve",
+  },
+});
 
 export interface ReviewCardProps {
   proposal: Proposal;
@@ -28,6 +85,7 @@ export interface ReviewCardProps {
 
 // A proposal as the organiser judges it: photo, provenance, facts, decision.
 export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVerify, canVerify, canBrowse, onCheckPrices, checking, photos, onPickPhotos, onEditPrices }: ReviewCardProps) {
+  const t = useCopy(COPY);
   const [showSources, setShowSources] = useState(false);
   const trust = trustOf(p, now);
   const approved = p.review === "approved";
@@ -45,13 +103,13 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
       className={`flex scroll-mt-28 flex-col overflow-hidden ${discarded ? "opacity-60" : ""}`}
     >
       <Photo
-        label={`Foto de ${p.place.city}`}
+        label={t.photoOf(p.place.city)}
         src={photos[0] ? standardImageUrl(photos[0].url) : undefined}
         alt={photos[0]?.alt}
         className="h-[180px] sm:h-[214px]"
         bottom={
           <button type="button" onClick={onPickPhotos} className={cn(buttonClasses({ variant: "secondary" }), "h-9 bg-surface px-3.5 text-[13px]")}>
-            {photos.length ? `Fotos · ${photos.length}` : "Elegir fotos"}
+            {photos.length ? t.photos(photos.length) : t.pickPhotos}
           </button>
         }
         top={
@@ -70,12 +128,12 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               {p.place.city}
             </Heading>
             <span className="text-sm text-muted">{p.place.country}</span>
-            {approved && <Badge tone="accent-solid">Aprobada</Badge>}
-            {p.suggestedBy && <Badge tone="neutral">Idea de {p.suggestedBy}</Badge>}
-            {discarded && <Badge tone="muted">Descartada</Badge>}
+            {approved && <Badge tone="accent-solid">{t.approved}</Badge>}
+            {p.suggestedBy && <Badge tone="neutral">{t.ideaOf(p.suggestedBy)}</Badge>}
+            {discarded && <Badge tone="muted">{t.discarded}</Badge>}
           </div>
           <span className="shrink-0 text-[15px]">
-            <strong className="text-xl font-bold tabular-nums">{euros(total(p, plan))}</strong> <span className="text-muted">/ persona</span>
+            <strong className="text-xl font-bold tabular-nums">{euros(total(p, plan))}</strong> <span className="text-muted">{t.perPerson}</span>
           </span>
         </div>
 
@@ -88,15 +146,15 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         {trust === "unverified" && (
           <Notice>
             {p.provenance.kind === "claude" && p.provenance.estimate
-              ? `Precio y horarios son estimaciones de ${p.provenance.by ?? "la IA"}, sin buscar en la web. Contrástalos antes de publicar.`
-              : "Precio y horarios salen de búsquedas web, no de la API. Contrástalos antes de publicar."}
+              ? t.estimates(p.provenance.by)
+              : t.webSearch}
           </Notice>
         )}
         {trust === "stale" &&
           (p.provenance.kind !== "claude" && p.provenance.forOtherDates ? (
-            <Notice tone="neutral">Este precio se comprobó para otras fechas: el viaje ha cambiado de días. Vuelve a comprobarlo.</Notice>
+            <Notice tone="neutral">{t.otherDates}</Notice>
           ) : (
-            <Notice tone="neutral">El precio se consultó {trustText(p, now).replace(/^(Verificado|Comprobado) /, "")}. Vuelve a comprobarlo antes de abrir la votación.</Notice>
+            <Notice tone="neutral">{t.stale(trustText(p, now).replace(/^(Verificado|Comprobado|Verified|Checked) /, ""))}</Notice>
           ))}
 
         {showSources && (
@@ -111,7 +169,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               ))
             ) : (
               <li className="text-ink-2">
-                {p.outbound.flightNumber} y {p.inbound.flightNumber} · {euros(p.outbound.priceCents)} + {euros(p.inbound.priceCents)} por persona · respuesta simulada
+                {t.apiAnswer(p.outbound.flightNumber, p.inbound.flightNumber, euros(p.outbound.priceCents), euros(p.inbound.priceCents))}
               </li>
             )}
           </ul>
@@ -130,7 +188,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
                   onClick={() => setShowSources((x) => !x)}
                   className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover"
                 >
-                  {p.provenance.kind === "api" ? "ver respuesta" : "ver enlaces"}
+                  {p.provenance.kind === "api" ? t.seeAnswer : t.seeLinks}
                 </button>{" "}
                 ·{" "}
               </>
@@ -143,14 +201,14 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
                   </span>
                 ) : (
                   <button type="button" onClick={onCheckPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
-                    comprobar vuelos
+                    {t.checkFlights}
                   </button>
                 )}{" "}
                 ·{" "}
               </>
             )}
             <button type="button" onClick={onEditPrices} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-accent hover:text-accent-hover">
-              {p.provenance.kind === "organiser" ? "cambiar precios" : canBrowse ? "ponerlos a mano" : "poner precios reales"}
+              {p.provenance.kind === "organiser" ? t.changePrices : canBrowse ? t.byHand : t.realPrices}
             </button>{" "}
             ·{" "}
             <a
@@ -159,28 +217,28 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               rel="noreferrer"
               className="font-semibold text-accent hover:text-accent-hover"
             >
-              buscar en Google Flights
+              {t.searchGoogle}
             </a>
           </span>
           <div className="flex shrink-0 gap-2">
             {discarded ? (
-              <Button onClick={() => onReview("pending")}>Recuperar</Button>
+              <Button onClick={() => onReview("pending")}>{t.restore}</Button>
             ) : (
               <>
-                <Button onClick={() => onReview("discarded")}>Descartar</Button>
+                <Button onClick={() => onReview("discarded")}>{t.discard}</Button>
                 {trust === "unverified" && !approved && canVerify && (
                   <Button variant="warning" onClick={onVerify} disabled={verifying}>
-                    {verifying ? "Verificando…" : "Verificar con la API"}
+                    {verifying ? t.verifying : t.verify}
                   </Button>
                 )}
                 {approved ? (
                   <Button variant="primary" icon={<CheckIcon size={16} />} aria-pressed onClick={() => onReview("pending")}>
-                    Aprobada
+                    {t.approved}
                   </Button>
                 ) : (
                   // Unverified ones can go out too, labelled (SPEC §3); publishing asks first.
                   <Button variant={trust === "unverified" && canVerify ? "secondary" : "soft"} onClick={() => onReview("approved")}>
-                    {trust === "unverified" ? "Aprobar sin verificar" : "Aprobar"}
+                    {trust === "unverified" ? t.approveUnverified : t.approve}
                   </Button>
                 )}
               </>
