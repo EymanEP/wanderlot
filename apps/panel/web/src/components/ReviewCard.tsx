@@ -3,7 +3,7 @@ import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
 import { checkedLabel, copy, euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
-import { CATEGORY_LABEL, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
+import { CATEGORY_LABEL, accessLine, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
 
 const COPY = copy({
   es: {
@@ -140,6 +140,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
         <div className="flex flex-col gap-[5px] text-sm text-ink-2">
           <span>{flightLine(p)}</span>
           {stayLine(p, plan) && <span>{stayLine(p, plan)}</span>}
+          {accessLine(p) && <span>{accessLine(p)}</span>}
           {p.todo.length + p.see.length > 0 && <span>{thingsLine(p)}</span>}
         </div>
 

@@ -61,6 +61,7 @@ One candidate the research produced. Never leaves the machine unless approved.
 | `stays` | 0–2 accommodation options (`name`, `kind`, `description?`, whole-group `nightlyCents`), one may be `recommended` |
 | `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver"), each `{ title, detail? }` |
 | `provenance` | §3 |
+| `access?` | getting from the group's home town to the departure airport and back (ROADMAP 2.3): `{ home, mode, title, detail?, minutes (one way) \| null, cents (per person, both ways), checked? }`. Research estimates it when the home town is known; the organiser can correct it with the prices (`checked`). Absent: not worked out |
 | `review` | `pending` \| `approved` \| `discarded` |
 | `sources` | list of `{label, url}` — required when provenance is `claude` |
 
@@ -77,7 +78,9 @@ the organiser's editorial additions from Comparativa:
 - `weather` — one line for the trip month
 - `photos` — §6, chosen by the organiser at approval
 - `inVote` — the Comparativa checkbox; only `inVote` destinations are ballot options
-- `totalPerPersonCents` — flights + recommended stay × nights ÷ party size
+- `totalPerPersonCents` — flights + recommended stay × nights ÷ party size,
+  + `access.cents` when getting to the airport was worked out (site API
+  version 15 shows it beside the flights)
 
 ### Member
 One of the six. `{ id, name, tokenHash }`. There are no accounts or passwords

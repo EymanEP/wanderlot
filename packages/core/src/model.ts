@@ -121,6 +121,28 @@ export const Photo = z.object({
 });
 export type Photo = z.infer<typeof Photo>;
 
+export const TransportMode = z.enum(["car", "bus", "train", "metro", "taxi", "shuttle", "walk", "other"]);
+export type TransportMode = z.infer<typeof TransportMode>;
+
+// Getting from home to the departure airport and back (ROADMAP 2.3, phase
+// 2): it goes into the per-person total, so flying from further away only
+// wins when it really is cheaper.
+export const Access = z.object({
+  // Where the group sets off from: "Logroño".
+  home: z.string().trim().min(1).max(60),
+  mode: TransportMode,
+  // "Coche hasta Bilbao, 2 coches"
+  title: z.string().trim().min(1).max(120),
+  detail: z.string().max(600).optional(),
+  // One way.
+  minutes: z.number().int().positive().nullable(),
+  // Per person, there and back: fuel, tolls and parking shared, or tickets.
+  cents,
+  // Typed or corrected by the organiser rather than estimated by research.
+  checked: z.boolean().optional(),
+});
+export type Access = z.infer<typeof Access>;
+
 // What research produces. Lives only in the panel.
 export const Proposal = z.object({
   id,
@@ -135,6 +157,8 @@ export const Proposal = z.object({
   provenance: Provenance,
   // The friend whose idea it was, when researched from a suggestion.
   suggestedBy: z.string().min(1).max(60).optional(),
+  // Absent: not worked out (no home town known when it was researched).
+  access: Access.optional(),
   review: z.enum(["pending", "approved", "discarded"]),
 });
 export type Proposal = z.infer<typeof Proposal>;
@@ -176,8 +200,6 @@ export type Plan = z.infer<typeof Plan>;
 // One way to cover a stretch: home → departure airport, or arrival airport →
 // the stay. Prices per person, estimated by research unless the organiser
 // changes them.
-export const TransportMode = z.enum(["car", "bus", "train", "metro", "taxi", "shuttle", "walk", "other"]);
-export type TransportMode = z.infer<typeof TransportMode>;
 
 export const TransportOption = z.object({
   mode: TransportMode,
@@ -338,5 +360,6 @@ export interface SuggestionView {
 // the panel at /admin. 11: research by other AIs, including estimates
 // without sources. 12: searching from /admin in the background. 13: days off,
 // and settling the dates on the site without publishing. 14: the group's
-// language, and the site in English.
-export const SITE_API_VERSION = 14;
+// language, and the site in English. 15: getting to the departure airport
+// in each destination's total.
+export const SITE_API_VERSION = 15;

@@ -332,6 +332,30 @@ describe("Generar", () => {
     expect(screen.getAllByRole("article")).toHaveLength(12);
   });
 
+  it("counts getting to the airport from where the group lives", async () => {
+    const user = userEvent.setup();
+    renderAt("/generar");
+    await screen.findByRole("heading", { name: "Nueva búsqueda" });
+    await user.type(screen.getByLabelText("Vivimos en"), "Logroño");
+    await user.click(screen.getByRole("button", { name: "Destino" }));
+    await user.click(screen.getByRole("option", { name: "Destino concreto…" }));
+    await user.type(screen.getByLabelText("¿Adónde?"), "Tallin");
+    await user.click(screen.getByRole("button", { name: "Investigar Tallin" }));
+    expect(await screen.findByText("Búsqueda terminada", undefined, { timeout: 5000 })).toBeTruthy();
+
+    await user.click(screen.getAllByRole("link", { name: /^Revisar/ })[0]!);
+    const card = await screen.findByRole("article", { name: "Tallin" });
+    expect(within(card).getByText(/^Llegar a MAD desde Logroño: ≈ 34 € ida y vuelta por persona · Coche hasta Madrid, 2 coches/)).toBeTruthy();
+    // The organiser can correct it; the total counts it.
+    await user.click(within(card).getByRole("button", { name: "poner precios reales" }));
+    const dialog = within(document.querySelector("dialog[open]") as HTMLElement);
+    const input = dialog.getByLabelText("Llegar al aeropuerto y volver, por persona, en euros") as HTMLInputElement;
+    expect(input.value).toBe("34");
+    expect(dialog.getByText(/Lo estimó la IA/)).toBeTruthy();
+    const totals = document.querySelector<HTMLElement>('dialog[open] dl[aria-label="Por persona"]')!;
+    expect(within(totals).getByText("Llegar al aeropuerto")).toBeTruthy();
+  });
+
   it("researches one specific destination once", async () => {
     const user = userEvent.setup();
     renderAt("/generar");

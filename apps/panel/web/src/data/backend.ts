@@ -124,6 +124,8 @@ export interface SearchOptions {
   estimateStays: boolean;
   suggestThings: boolean;
   nearbyAirports: boolean;
+  // Where the group lives ("" to leave getting to the airport out).
+  home?: string;
   count: number;
 }
 

@@ -22,6 +22,8 @@ const COPY = copy({
     newSearch: "Nueva búsqueda",
     intro: "Nada llega al sitio de la cuadrilla hasta que tú lo apruebes.",
     from: "Salimos desde",
+    home: "Vivimos en",
+    homeHint: "Para sumar lo que cuesta llegar a cada aeropuerto y volver. Déjalo vacío para no contarlo.",
     destination: "Destino",
     any: "Cualquiera",
     europe: "Solo Europa",
@@ -56,6 +58,8 @@ const COPY = copy({
     newSearch: "New search",
     intro: "Nothing reaches the group's site until you approve it.",
     from: "Flying from",
+    home: "We live in",
+    homeHint: "To add what getting to each airport and back costs. Leave it empty not to count it.",
     destination: "Destination",
     any: "Anywhere",
     europe: "Europe only",
@@ -107,6 +111,8 @@ export interface SearchValues {
   maxPrice: number | null;
   // Also look at airports within reach of the origin.
   nearbyAirports: boolean;
+  // Where the group lives: research prices getting to each airport. Empty: not.
+  home: string;
   stops: Stops;
   estimateStays: boolean;
   suggestThings: boolean;
@@ -116,7 +122,7 @@ export interface SearchValues {
 
 // The form starts from the plan; dates, people and budget are saved back to it.
 // Without a flight API, searches go through Claude.
-export function searchFromPlan(plan: Plan, flightsConnected = false): SearchValues {
+export function searchFromPlan(plan: Plan, flightsConnected = false, home = ""): SearchValues {
   return {
     origin: `${airportCity(plan.origin)} · ${plan.origin}`,
     scope: "any",
@@ -127,6 +133,7 @@ export function searchFromPlan(plan: Plan, flightsConnected = false): SearchValu
     people: plan.partySize,
     maxPrice: plan.maxPriceCents === null ? null : Math.round(plan.maxPriceCents / 100),
     nearbyAirports: false,
+    home,
     stops: "direct",
     estimateStays: true,
     suggestThings: true,
@@ -197,6 +204,16 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
           )}
         </Field>
       </div>
+      <Field label={t.home}>
+        {({ inputId }) => (
+          <div className="flex flex-col gap-1.5">
+            <TextInput id={inputId} maxLength={60} placeholder="Logroño" value={v.home} onChange={(e) => set("home", e.target.value)} aria-describedby={`${inputId}-hint`} />
+            <span id={`${inputId}-hint`} className="text-xs text-muted">
+              {t.homeHint}
+            </span>
+          </div>
+        )}
+      </Field>
       {v.scope === "place" && (
         <Field label={t.where}>
           {({ inputId }) => <TextInput id={inputId} maxLength={80} placeholder={t.placeHint} value={v.place} onChange={(e) => set("place", e.target.value)} />}

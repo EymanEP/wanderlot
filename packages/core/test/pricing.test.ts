@@ -73,3 +73,20 @@ describe("markForOtherDates", () => {
     expect(markForOtherDates(research)).toBe(research);
   });
 });
+
+describe("getting to the departure airport (ROADMAP 2.3)", () => {
+  const access = { home: "Logroño", mode: "car" as const, title: "Coche hasta Madrid, 2 coches", minutes: 210, cents: 3500 };
+
+  it("counts in the total when it's known, and only then", () => {
+    const base = totalPerPersonCents(lis, 7, 6);
+    expect(totalPerPersonCents({ ...lis, access }, 7, 6)).toBe(base + 3500);
+  });
+
+  it("is corrected along with the checked prices, and marked as checked", () => {
+    const p = applyCheckedPrices({ ...lis, access }, { flightCents: 25000, accessCents: 2800 }, 7);
+    expect(p.access).toEqual({ ...access, cents: 2800, checked: true });
+    expect(applyCheckedPrices({ ...lis, access }, { flightCents: 25000 }, 7).access).toEqual(access);
+    // Nothing to correct without research's estimate.
+    expect(applyCheckedPrices(lis, { flightCents: 25000, accessCents: 2800 }, 7)).not.toHaveProperty("access");
+  });
+});
