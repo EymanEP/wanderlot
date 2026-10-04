@@ -67,6 +67,8 @@ const PricesBody = z.object({
   stayCents: z.number().int().min(0).max(100_000_000).optional(),
   // Getting to the departure airport and back, per person, corrected.
   accessCents: z.number().int().min(0).max(10_000_000).optional(),
+  // Count another of research's ways there instead.
+  accessChoice: z.number().int().min(0).max(2).optional(),
   // Read from a screenshot and reviewed: the flights' real times, together.
   outbound: CheckedLeg.optional(),
   inbound: CheckedLeg.optional(),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { airbnbUrl, baseStay, copy, currentLocale, duration, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
-import { Button, CarIcon, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
+import { Button, CarIcon, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, RadioCard, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
 
@@ -78,6 +78,8 @@ const COPY = copy({
     accessInput: "Llegar al aeropuerto y volver, por persona, en euros",
     accessTotal: "Por persona, ida y vuelta",
     accessEstimate: "Lo estimó la IA: corrígelo si sabes lo que cuesta.",
+    accessOptions: "Cómo vamos al aeropuerto",
+    accessCounts: "La que elijas cuenta en el precio por persona.",
     totalPerPerson: "Total por persona",
   },
   en: {
@@ -153,6 +155,8 @@ const COPY = copy({
     accessInput: "Getting to the airport and back, per person, in euros",
     accessTotal: "Per person, there and back",
     accessEstimate: "The AI's estimate: correct it if you know what it costs.",
+    accessOptions: "How we get to the airport",
+    accessCounts: "The one you pick counts in the price per person.",
     totalPerPerson: "Total per person",
   },
 });
@@ -283,6 +287,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const [stayDescription, setStayDescription] = useState<string | undefined>(undefined);
   const [stayTotal, setStayTotal] = useState("");
   const [access, setAccess] = useState("");
+  // Which of the ways to the airport counts: 0 is the one counting now.
+  const [choice, setChoice] = useState(0);
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
   // Read in the browser: the best flights to pick from.
   const [flightOptions, setFlightOptions] = useState<FlightChoice[] | null>(null);
@@ -306,6 +312,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     setStayDescription(stay?.description);
     setStayTotal(stay ? toEuros(stayTotalCents(stay, plan.nights)) : "");
     setAccess(p.access ? toEuros(p.access.cents) : "");
+    setChoice(0);
     setNotes([]);
     setError(null);
     setFocus(null);
@@ -322,6 +329,12 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const stayShare = stayCents === null || stayCents === undefined ? stayCents : Math.round(stayCents / people);
   // Only when research worked it out: there's an estimate to correct.
   const accessCents = p?.access ? toCents(access) : undefined;
+  const ways = p?.access ? [p.access, ...(p.access.alternatives ?? [])] : [];
+  const way = ways[choice];
+  const chooseWay = (i: number) => {
+    setChoice(i);
+    setAccess(toEuros(ways[i]!.cents));
+  };
 
   const read = async (kind: "flight" | "stay", files: File[] & { error?: string }) => {
     if (files.error) return setError(files.error);
@@ -423,7 +436,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
               sources: kinds.flatMap((k) => (seen[k] && /^https:\/\//.test(seen[k]!) ? [{ label: SITE[k].name, url: seen[k]! }] : [])),
             }
           : {}),
-        ...(accessCents !== undefined && accessCents !== p?.access?.cents ? { accessCents } : {}),
+        ...(choice > 0 ? { accessChoice: choice - 1 } : {}),
+        ...(accessCents !== undefined && accessCents !== way?.cents ? { accessCents } : {}),
         ...(stayCents !== undefined
           ? { stayCents, stay: { name: stayName.trim(), ...(stayDescription ? { description: stayDescription } : {}), ...(url ? { url } : {}) } }
           : {}),
@@ -627,16 +641,24 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
                 <div className="flex min-w-0 flex-col">
                   <strong className="text-[15px]">{t.access}</strong>
                   <span className="text-[13px] text-muted">{t.accessFrom(p.access.home, p.outbound.from)}</span>
-                  <span className="text-[13px] text-ink-2">
-                    {p.access.title}
-                    {p.access.minutes ? ` · ${duration(p.access.minutes)}` : ""}
-                  </span>
+                  {ways.length > 1 && <span className="text-[13px] text-ink-2">{t.accessCounts}</span>}
                 </div>
               </div>
               {euroInput(t.accessInput, t.accessTotal, access, setAccess)}
             </div>
-            {p.access.detail && <span className="text-[13px] text-muted">{p.access.detail}</span>}
-            {!p.access.checked && <span className="text-[13px] text-muted">{t.accessEstimate}</span>}
+            <div role="radiogroup" aria-label={t.accessOptions} className="flex flex-col gap-2">
+              {ways.map((w, i) => (
+                <RadioCard
+                  key={`${i}:${w.title}`}
+                  name="llegar"
+                  title={`${w.title}${w.minutes ? ` · ${duration(w.minutes)}` : ""}`}
+                  description={`${w.checked ? "" : "≈ "}${euros(w.cents)}${w.detail ? ` · ${w.detail}` : ""}`}
+                  checked={choice === i}
+                  onChange={() => chooseWay(i)}
+                />
+              ))}
+            </div>
+            {!way?.checked && <span className="text-[13px] text-muted">{t.accessEstimate}</span>}
           </section>
         )}
 

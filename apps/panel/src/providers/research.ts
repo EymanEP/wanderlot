@@ -3,7 +3,7 @@
 // the Comparativa notes (pros, cons, weather) and what to photograph: Claude
 // names subjects, never image URLs (SPEC §6).
 import { z } from "zod";
-import { Category, FlightLeg, Place, Source, Stay, Thing, TransportMode, type Access } from "@wanderlot/core";
+import { Category, FlightLeg, Place, Source, Stay, Thing, TransportMode, type Access, type AccessOption } from "@wanderlot/core";
 import type { ResearchResult, SearchRequest } from "./types.ts";
 import { languageLine } from "./language.ts";
 
@@ -32,7 +32,8 @@ const ResearchProposal = z.object({
   cons: z.array(z.string()).max(4).default([]),
   weather: z.string().default(""),
   photoSubjects: z.array(z.string()).max(4).default([]),
-  access: ResearchAccess.nullable().default(null),
+  // Ways to get there, the one recommended for the group first.
+  access: z.array(ResearchAccess).max(4).default([]),
 });
 export const ResearchOutput = z.object({ proposals: z.array(ResearchProposal) });
 export type ResearchOutput = z.infer<typeof ResearchOutput>;
@@ -96,10 +97,10 @@ export function buildPrompt(req: SearchRequest, who: Researcher = {}): string {
     "Para comparar: hasta 3 pros y 2 contras breves pensando en este grupo y estas fechas, y el tiempo esperado en una línea (por ejemplo «17 °C · lluvioso»).",
     ...(req.home
       ? [
-          `El grupo vive en ${req.home}. En access, para cada propuesta: cómo ir desde ${req.home} hasta el aeropuerto de salida (outbound.from) y volver desde el de llegada de vuelta (inbound.to), la forma más razonable para ${req.partySize} personas con maletas. En coche: kilómetros, gasolina repartida entre los coches necesarios con un consumo medio y el precio actual del combustible, peajes y parking en el aeropuerto durante los días del viaje; si no, autobús o tren. mode es car, bus, train u other; title, una línea («Coche hasta Bilbao, 2 coches»); detail, el desglose; minutes, un trayecto; priceEuros, el total por persona de ida y vuelta.`,
-          `Ese coste cuenta en el precio por persona: tenlo en cuenta al elegir desde qué aeropuerto salir. Si ${req.home} tiene aeropuerto propio y se sale de ahí, access es lo que cuesta llegar a él.`,
+          `El grupo vive en ${req.home}. En access, para cada propuesta: de 2 a 4 formas de ir desde ${req.home} hasta el aeropuerto de salida (outbound.from) y volver desde el de llegada de vuelta (inbound.to), para ${req.partySize} personas con maletas. Las que existan de verdad entre coche con parking, autobús y tren (o un transfer si es lo habitual). En coche: kilómetros, gasolina repartida entre los coches necesarios con un consumo medio y el precio actual del combustible, peajes y parking en el aeropuerto durante los días del viaje. En autobús y tren: operador, horarios típicos esos días y dónde para respecto a la terminal. mode es car, bus, train u other; title, una línea («Coche hasta Bilbao, 2 coches»); detail, el desglose; minutes, un trayecto; priceEuros, el total por persona de ida y vuelta.`,
+          `Pon primero la que recomiendas para el grupo, teniendo en cuenta precio, tiempo y horarios: esa cuenta en el precio por persona, así que tenla en cuenta al elegir desde qué aeropuerto salir. Si ${req.home} tiene aeropuerto propio y se sale de ahí, access es cómo llegar a él.`,
         ]
-      : ["Deja access a null."]),
+      : ["Deja access vacío."]),
     "En photoSubjects, 3 cosas concretas del destino que valga la pena fotografiar, como términos de búsqueda (por ejemplo «Alfama Lisboa», «Torre de Belém»). No des URLs de imágenes.",
     who.estimate
       ? "No puedes buscar en la web: da precios y horarios realistas según lo que sabes, solo en rutas que alguna aerolínea opere de verdad, y deja sources vacío. Se marcarán como estimados."
@@ -112,7 +113,7 @@ export function buildPrompt(req: SearchRequest, who: Researcher = {}): string {
 export function toResults(req: SearchRequest, output: ResearchOutput | z.infer<typeof EstimateOutput>, who: Researcher = {}): ResearchResult[] {
   return output.proposals.map((p, i) => {
     const { sources, pros, cons, weather, photoSubjects, access, ...rest } = p;
-    const reach = req.home && access ? toAccess(req.home, access) : null;
+    const reach = req.home ? toAccess(req.home, access) : null;
     return {
       proposal: {
         ...rest,
@@ -126,13 +127,20 @@ export function toResults(req: SearchRequest, output: ResearchOutput | z.infer<t
   });
 }
 
-// Research's estimate → what a proposal keeps; nothing when it makes no sense.
-export function toAccess(home: string, a: z.infer<typeof ResearchAccess>): Access | null {
+// Research's ways there → what a proposal keeps: the first that makes sense
+// counts, the rest are alternatives; nothing when none does.
+export function toAccess(home: string, options: z.infer<typeof ResearchAccess>[]): Access | null {
+  const usable = options.map(toAccessOption).filter((o): o is AccessOption => o !== null);
+  const [first, ...rest] = usable;
+  if (!first) return null;
+  return { ...first, home: home.trim().slice(0, 60), ...(rest.length ? { alternatives: rest.slice(0, 3) } : {}) };
+}
+
+function toAccessOption(a: z.infer<typeof ResearchAccess>): AccessOption | null {
   const title = a.title.trim().slice(0, 120);
   if (!title || !Number.isFinite(a.priceEuros)) return null;
   const detail = a.detail.trim().slice(0, 600);
   return {
-    home: home.trim().slice(0, 60),
     mode: a.mode,
     title,
     ...(detail ? { detail } : {}),

@@ -298,6 +298,9 @@ describe("El viaje", () => {
     await user.click(within(todo).getByRole("button", { name: "Quitar Perderse por Spaccanapoli" }));
     await user.type(screen.getByLabelText("Dirección"), "Via Chiaia 12");
     await user.type(screen.getByLabelText("Enlace del Tricount (opcional)"), "https://tricount.com/xyz");
+    // The way to the airport the group takes: its price counts in each share.
+    const toAirport = screen.getByRole("list", { name: /^De Logroño al aeropuerto/ });
+    await user.click(within(within(toAirport).getAllByRole("listitem")[1]!).getByLabelText("Es el que cogemos"));
     // A row added and left empty doesn't go anywhere.
     await user.click(within(screen.getByRole("region", { name: "Sitios que ver" })).getByRole("button", { name: "Añadir" }));
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
@@ -309,7 +312,7 @@ describe("El viaje", () => {
     expect(await screen.findByText("Página del viaje publicada")).toBeTruthy();
     expect(screen.getByText("Publicada en el sitio")).toBeTruthy();
     const saved = await backend.trip("noviembre-2026");
-    expect(saved).toMatchObject({ published: true, trip: { home: "Logroño", tricountUrl: "https://tricount.com/xyz", stay: { address: "Via Chiaia 12" } } });
+    expect(saved).toMatchObject({ published: true, trip: { home: "Logroño", tricountUrl: "https://tricount.com/xyz", stay: { address: "Via Chiaia 12" }, toAirportChosen: 1 } });
     expect(screen.getByRole("button", { name: "Retirar del sitio" })).toBeTruthy();
   });
 });
@@ -354,6 +357,16 @@ describe("Generar", () => {
     expect(dialog.getByText(/Lo estimó la IA/)).toBeTruthy();
     const totals = document.querySelector<HTMLElement>('dialog[open] dl[aria-label="Por persona"]')!;
     expect(within(totals).getByText("Llegar al aeropuerto")).toBeTruthy();
+    expect(within(card).getByText(/· 2 opciones más$/)).toBeTruthy();
+
+    // Several ways there: picking the bus counts the bus.
+    const ways = dialog.getByRole("radiogroup", { name: "Cómo vamos al aeropuerto" });
+    expect(within(ways).getAllByRole("radio")).toHaveLength(3);
+    await user.click(within(ways).getByLabelText(/^Autobús a Madrid/));
+    expect(input.value).toBe("42");
+    expect(within(totals).getByText("42 €")).toBeTruthy();
+    await user.click(dialog.getByRole("button", { name: "Guardar como comprobados" }));
+    expect(await within(card).findByText(/^Llegar a MAD desde Logroño: ≈ 42 € ida y vuelta por persona · Autobús a Madrid/)).toBeTruthy();
   });
 
   it("researches one specific destination once", async () => {

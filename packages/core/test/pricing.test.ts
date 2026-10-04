@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCheckedPrices, flightDetailsKnown, markForOtherDates, stayGroupCents, stayShareCents, totalPerPersonCents } from "../src/index.ts";
+import { applyCheckedPrices, chooseAccess, flightDetailsKnown, markForOtherDates, stayGroupCents, stayShareCents, totalPerPersonCents } from "../src/index.ts";
 import { proposal } from "./fixtures.ts";
 
 // Lisbon: 98 € out + 102 € back per person; the flat is 204 € a night.
@@ -88,5 +88,23 @@ describe("getting to the departure airport (ROADMAP 2.3)", () => {
     expect(applyCheckedPrices({ ...lis, access }, { flightCents: 25000 }, 7).access).toEqual(access);
     // Nothing to correct without research's estimate.
     expect(applyCheckedPrices(lis, { flightCents: 25000, accessCents: 2800 }, 7)).not.toHaveProperty("access");
+  });
+});
+
+describe("choosing another way to the airport", () => {
+  const car = { mode: "car" as const, title: "Coche", minutes: 120, cents: 3400 };
+  const bus = { mode: "bus" as const, title: "Autobús", minutes: 190, cents: 4200 };
+  const train = { mode: "train" as const, title: "Tren", minutes: 170, cents: 5600 };
+  const access = { ...car, home: "Logroño", alternatives: [bus, train] };
+
+  it("swaps the one that counts with the alternative picked", () => {
+    expect(chooseAccess(access, 1)).toEqual({ ...train, home: "Logroño", alternatives: [bus, car] });
+    expect(chooseAccess(access, 7)).toBe(access);
+  });
+
+  it("goes with the checked prices, and can be corrected at the same time", () => {
+    const p = applyCheckedPrices({ ...lis, access }, { flightCents: 25000, accessChoice: 0, accessCents: 4000 }, 7);
+    expect(p.access).toEqual({ ...bus, cents: 4000, checked: true, home: "Logroño", alternatives: [car, train] });
+    expect(totalPerPersonCents(p, 7, 6)).toBe(25000 + stayShareCents(lis.stays, 7, 6)! + 4000);
   });
 });

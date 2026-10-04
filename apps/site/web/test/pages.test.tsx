@@ -245,7 +245,8 @@ describe("El viaje", () => {
 
     // Each person's share, and the group's Tricount.
     const money = screen.getByLabelText("Lo que pone cada uno");
-    expect(within(money).getByText(/^Vuelo \d+ € · alojamiento \d+ €$/)).toBeTruthy();
+    // Getting to the airport too, the way the organiser said they're going.
+    expect(within(money).getByText(/^Vuelo \d+ € · alojamiento \d+ € · llegar al aeropuerto 34 €$/)).toBeTruthy();
     expect(within(money).getByRole("link", { name: /Abrir el Tricount/ }).getAttribute("href")).toBe("https://tricount.com/es/grupo51-napoles");
     // The stay, with the details the organiser added.
     expect(screen.getByRole("link", { name: "Via Chiaia 12, Nápoles" }).getAttribute("href")).toContain("google.com/maps");
@@ -253,6 +254,8 @@ describe("El viaje", () => {
     const toAirport = screen.getByRole("list", { name: "De Logroño al aeropuerto (MAD)" });
     expect(within(toAirport).getByText("Coche hasta Barajas")).toBeTruthy();
     expect(within(toAirport).getByText("≈ 34 €")).toBeTruthy();
+    expect(within(within(toAirport).getAllByRole("listitem")[0]!).getByText("El que cogemos")).toBeTruthy();
+    expect(within(within(toAirport).getAllByRole("listitem")[1]!).queryByText("El que cogemos")).toBeNull();
     expect(within(screen.getByRole("list", { name: "Del aeropuerto (NAP) al alojamiento" })).getByText("Alibus")).toBeTruthy();
     // The guide, labelled as Claude's, with approximate prices.
     expect(screen.getByRole("heading", { name: "Qué hacer" })).toBeTruthy();
