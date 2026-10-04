@@ -293,7 +293,13 @@ leave it out). Research then estimates, for each destination, getting from
 home to its departure airport and back, per person, and weighs it when
 choosing which airport to fly from. It shows in Revisar and Comparativa, the
 prices dialog corrects it, and it's part of the per-person total the group
-votes on; the site shows it beside the flights.
+votes on; the site shows it beside the flights. Research gives 2–4 ways
+(car with parking, bus, train), its recommendation first; the organiser can
+switch to another in the prices dialog.
+
+For trips decided before that, El viaje's "Cómo llegar" lists the ways to
+the airport and the organiser marks the one the group takes
+(`toAirportChosen`): its price goes into what each person pays.
 
 ### 2.4 Money: link Tricount, don't rebuild it · S
 

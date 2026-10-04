@@ -35,6 +35,7 @@ const COPY = copy({
     sources: (n: number): string => `Claude · ${n} ${n === 1 ? "fuente" : "fuentes"}`,
     accessLine: (airport: string, home: string, approx: string, price: string, summary: string) => `Llegar a ${airport} desde ${home}: ${approx}${price} ida y vuelta por persona · ${summary}`,
     access: "Llegar al aeropuerto",
+    others: (n: number) => ` · ${n} ${n === 1 ? "opción más" : "opciones más"}`,
   },
   en: {
     category: { ciudad: "City", escapada: "Short break", playa: "Beach", naturaleza: "Nature" } as Record<Category, string>,
@@ -48,6 +49,7 @@ const COPY = copy({
     sources: (n: number): string => `Claude · ${n} ${n === 1 ? "source" : "sources"}`,
     accessLine: (airport: string, home: string, approx: string, price: string, summary: string) => `Getting to ${airport} from ${home}: ${approx}${price} return per person · ${summary}`,
     access: "Getting to the airport",
+    others: (n: number) => ` · ${n} more ${n === 1 ? "option" : "options"}`,
   },
 });
 
@@ -148,8 +150,10 @@ export function weatherTemp(weather: string): number | null {
 export function accessLine(p: Proposal): string | null {
   const a = p.access;
   if (!a) return null;
+  const t = pick(COPY);
   const summary = a.minutes ? `${a.title} · ${duration(a.minutes)}` : a.title;
-  return pick(COPY).accessLine(p.outbound.from, a.home, a.checked ? "" : "≈ ", euros(a.cents), summary);
+  const others = a.alternatives?.length ? t.others(a.alternatives.length) : "";
+  return t.accessLine(p.outbound.from, a.home, a.checked ? "" : "≈ ", euros(a.cents), summary) + others;
 }
 
 // "Llegar al aeropuerto", for a price's label.

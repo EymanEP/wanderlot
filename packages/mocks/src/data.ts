@@ -558,6 +558,7 @@ export const tripPage: TripPage = {
     },
     bus("Autobús de ALSA a Barajas", "Salidas a las 7:00 y 15:00; para en la T4", 285, 36),
   ],
+  toAirportChosen: 0,
   fromAirport: [
     bus("Alibus", "Al puerto y la estación central cada 20 minutos; el mejor con maletas", 25, 5),
     { mode: "taxi", title: "Taxi", detail: "Tarifa fija al centro: 25 € el coche, cabéis en dos", minutes: 20, priceCents: 850 },

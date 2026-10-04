@@ -1,4 +1,4 @@
-import type { FlightLeg, Proposal, Stay } from "./model.ts";
+import type { Access, FlightLeg, Proposal, Stay } from "./model.ts";
 
 // The stay a total is based on: the recommended one, else the cheapest.
 export function baseStay(stays: readonly Stay[]): Stay | undefined {
@@ -31,8 +31,11 @@ export interface CheckedPrices {
   outbound?: Omit<FlightLeg, "priceCents">;
   inbound?: Omit<FlightLeg, "priceCents">;
   stay?: { name: string; description?: string; url?: string };
-  // Getting to the departure airport and back, per person, as the organiser
-  // corrected it. Only when the proposal has an estimate to correct.
+  // Getting to the departure airport and back: another of research's
+  // options to count instead (by position among the alternatives), and its
+  // price per person as the organiser corrected it. Only when the proposal
+  // has them.
+  accessChoice?: number;
   accessCents?: number;
 }
 
@@ -61,8 +64,23 @@ export function applyCheckedPrices<P extends Pick<Proposal, "outbound" | "inboun
     outbound: { ...p.outbound, ...prices.outbound, priceCents: outbound },
     inbound: { ...p.inbound, ...prices.inbound, priceCents: prices.flightCents - outbound },
     stays,
-    ...(p.access && prices.accessCents !== undefined ? { access: { ...p.access, cents: prices.accessCents, checked: true } } : {}),
+    ...accessAfter(p.access, prices),
   };
+}
+
+function accessAfter(access: Access | undefined, prices: CheckedPrices): { access?: Access } {
+  if (!access) return {};
+  const chosen = prices.accessChoice === undefined ? access : chooseAccess(access, prices.accessChoice);
+  return { access: prices.accessCents === undefined ? chosen : { ...chosen, cents: prices.accessCents, checked: true } };
+}
+
+// Switches the option that counts to one of the alternatives (by position);
+// the one counted until now becomes an alternative.
+export function chooseAccess(a: Access, index: number): Access {
+  const next = a.alternatives?.[index];
+  if (!next) return a;
+  const { home, alternatives = [], ...current } = a;
+  return { ...next, home, alternatives: alternatives.map((o, i) => (i === index ? current : o)) };
 }
 
 // The trip's dates changed: every price checked for the old ones (by hand or

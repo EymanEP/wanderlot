@@ -107,6 +107,8 @@ export function toTripPage(destinationId: string, home: string, out: z.infer<typ
     beforeYouGo: titled(out.beforeYouGo, 15).map((b) => ({ title: fit(b.title, 120), detail: fit(b.detail, 600) })),
     home,
     toAirport: home ? titled(out.toAirport, 6).map(transport) : [],
+    // New options: which one the group takes is chosen again.
+    toAirportChosen: null,
     fromAirport: titled(out.fromAirport, 6).map(transport),
     stay: keep?.stay ?? { address: "", checkIn: "", checkOut: "" },
     tricountUrl: keep?.tricountUrl ?? null,

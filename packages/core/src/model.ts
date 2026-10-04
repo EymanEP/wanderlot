@@ -124,12 +124,9 @@ export type Photo = z.infer<typeof Photo>;
 export const TransportMode = z.enum(["car", "bus", "train", "metro", "taxi", "shuttle", "walk", "other"]);
 export type TransportMode = z.infer<typeof TransportMode>;
 
-// Getting from home to the departure airport and back (ROADMAP 2.3, phase
-// 2): it goes into the per-person total, so flying from further away only
-// wins when it really is cheaper.
-export const Access = z.object({
-  // Where the group sets off from: "Logroño".
-  home: z.string().trim().min(1).max(60),
+// One way of getting from home to the departure airport and back: by car
+// with parking, by bus, by train…
+export const AccessOption = z.object({
   mode: TransportMode,
   // "Coche hasta Bilbao, 2 coches"
   title: z.string().trim().min(1).max(120),
@@ -140,6 +137,17 @@ export const Access = z.object({
   cents,
   // Typed or corrected by the organiser rather than estimated by research.
   checked: z.boolean().optional(),
+});
+export type AccessOption = z.infer<typeof AccessOption>;
+
+// Getting from home to the departure airport and back (ROADMAP 2.3, phase
+// 2): the option the group would take goes into the per-person total, so
+// flying from further away only wins when it really is cheaper. The others
+// research found stay alongside, to switch to.
+export const Access = AccessOption.extend({
+  // Where the group sets off from: "Logroño".
+  home: z.string().trim().min(1).max(60),
+  alternatives: z.array(AccessOption).max(3).optional(),
 });
 export type Access = z.infer<typeof Access>;
 
@@ -235,6 +243,9 @@ export const TripPage = z.object({
   // destination's airport to the stay.
   home: z.string().max(60).default(""),
   toAirport: z.array(TransportOption).max(6).default([]),
+  // The one the group is taking, by position: its price goes into what each
+  // person pays. null: not chosen.
+  toAirportChosen: z.number().int().min(0).max(5).nullable().default(null),
   fromAirport: z.array(TransportOption).max(6).default([]),
   stay: z
     .object({ address: z.string().max(200).default(""), checkIn: z.string().max(60).default(""), checkOut: z.string().max(60).default("") })

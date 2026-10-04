@@ -75,6 +75,7 @@ const COPY = copy({
     flight: (price: string) => `Vuelo ${price}`,
     stayShare: (price: string) => ` · alojamiento ${price}`,
     accessShare: (price: string) => ` · llegar al aeropuerto ${price}`,
+    weTake: "El que cogemos",
     tricount: "Abrir el Tricount",
     where: (place: string) => `Dónde: ${place}`,
   },
@@ -112,6 +113,7 @@ const COPY = copy({
     flight: (price: string) => `Flight ${price}`,
     stayShare: (price: string) => ` · stay ${price}`,
     accessShare: (price: string) => ` · getting to the airport ${price}`,
+    weTake: "The one we take",
     tricount: "Open the Tricount",
     where: (place: string) => `Where: ${place}`,
   },
@@ -169,7 +171,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
             </span>
           )}
         </div>
-        <Money flight={flight} stayShare={stayShare} access={d.access?.cents ?? null} tricountUrl={trip.tricountUrl} />
+        <Money flight={flight} stayShare={stayShare} access={d.access?.cents ?? (trip.toAirportChosen === null ? null : (trip.toAirport[trip.toAirportChosen]?.priceCents ?? null))} tricountUrl={trip.tricountUrl} />
       </section>
 
       <LeaveCard />
@@ -229,7 +231,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
           {(trip.toAirport.length > 0 || trip.fromAirport.length > 0) && (
             <section aria-labelledby="como-llegar" className="flex flex-col gap-4">
               <SectionHeader id="como-llegar" title={t.getting} aside={t.approx} />
-              {trip.toAirport.length > 0 && <Transport title={t.toAirport(trip.home, d.outbound.from)} options={trip.toAirport} />}
+              {trip.toAirport.length > 0 && <Transport title={t.toAirport(trip.home, d.outbound.from)} options={trip.toAirport} chosen={trip.toAirportChosen} />}
               {trip.fromAirport.length > 0 && <Transport title={t.fromAirport(d.place.iata)} options={trip.fromAirport} />}
             </section>
           )}
@@ -318,7 +320,7 @@ function Money({ flight, stayShare, access, tricountUrl }: { flight: number; sta
   );
 }
 
-function Transport({ title, options }: { title: string; options: TransportOption[] }) {
+function Transport({ title, options, chosen = null }: { title: string; options: TransportOption[]; chosen?: number | null }) {
   const t = useCopy(COPY);
   return (
     <div className="flex flex-col gap-2">
@@ -326,9 +328,10 @@ function Transport({ title, options }: { title: string; options: TransportOption
         {title}
       </Heading>
       <ul aria-label={title} className="m-0 flex list-none flex-col gap-2 p-0">
-        {options.map((o) => (
-          <li key={o.title} className="flex flex-wrap items-center gap-x-[18px] gap-y-1.5 rounded-tile border border-line-soft px-[18px] py-3.5">
+        {options.map((o, i) => (
+          <li key={o.title} className={cn("flex flex-wrap items-center gap-x-[18px] gap-y-1.5 rounded-tile px-[18px] py-3.5", i === chosen ? "ring-2 ring-accent" : "border border-line-soft")}>
             <Badge tone="neutral">{t.modes[o.mode]}</Badge>
+            {i === chosen && <Badge tone="accent-solid">{t.weTake}</Badge>}
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-[15px] font-bold">{o.title}</span>
               {o.detail && <span className="text-[13px] text-ink-2">{o.detail}</span>}

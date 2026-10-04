@@ -379,7 +379,23 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       const home = (opts.home ?? settings.homeTown ?? "").trim();
       if (opts.home) settings = { ...settings, homeTown: opts.home };
       const reach = (p: Proposal): Proposal =>
-        home ? { ...p, access: { home, mode: "car", title: `Coche hasta ${airportCity(p.outbound.from)}, 2 coches`, detail: "Gasolina, peajes y parking 8 días, repartido entre 6.", minutes: 125, cents: 3400 } } : p;
+        home
+          ? {
+              ...p,
+              access: {
+                home,
+                mode: "car",
+                title: `Coche hasta ${airportCity(p.outbound.from)}, 2 coches`,
+                detail: "Gasolina, peajes y parking 8 días, repartido entre 6.",
+                minutes: 125,
+                cents: 3400,
+                alternatives: [
+                  { mode: "bus", title: `Autobús a ${airportCity(p.outbound.from)}`, detail: "Salidas a las 7:00 y 15:00; para en la terminal.", minutes: 190, cents: 4200 },
+                  { mode: "train", title: `Tren a ${airportCity(p.outbound.from)} y Cercanías`, detail: "Un transbordo; hay que salir el día antes para el vuelo de las 9:00.", minutes: 170, cents: 5600 },
+                ],
+              },
+            }
+          : p;
       // One named place, typed by the organiser or a friend's idea (credited
       // to them): one proposal for it.
       const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;

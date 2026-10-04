@@ -30,6 +30,7 @@ const COPY = copy({
     toAirport: (airport: string) => `Hasta ${airport}`,
     fromHome: (home: string) => `Desde ${home}, ida y vuelta`,
     estimate: "aproximado",
+    also: "También",
   },
   en: {
     photo: "Photo:",
@@ -56,6 +57,7 @@ const COPY = copy({
     toAirport: (airport: string) => `To ${airport}`,
     fromHome: (home: string) => `From ${home}, there and back`,
     estimate: "rough",
+    also: "Also",
   },
 });
 
@@ -201,6 +203,12 @@ export function AccessRow({ access, airport }: { access: Access; airport: string
           {access.minutes ? ` · ${duration(access.minutes)}` : ""}
         </span>
         <span className="text-[13px] text-ink-2">{t.fromHome(access.home)}</span>
+        {access.alternatives?.length ? (
+          <span className="text-[13px] text-muted">
+            {t.also}:{" "}
+            {access.alternatives.map((o) => `${o.title}${o.minutes ? ` · ${duration(o.minutes)}` : ""} · ${o.checked ? "" : "≈ "}${euros(o.cents)}`).join("; ")}
+          </span>
+        ) : null}
       </span>
       <span className="ml-auto flex shrink-0 flex-col items-end">
         <span className="text-base font-bold tabular-nums">

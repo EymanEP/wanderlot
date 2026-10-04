@@ -61,7 +61,7 @@ One candidate the research produced. Never leaves the machine unless approved.
 | `stays` | 0–2 accommodation options (`name`, `kind`, `description?`, whole-group `nightlyCents`), one may be `recommended` |
 | `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver"), each `{ title, detail? }` |
 | `provenance` | §3 |
-| `access?` | getting from the group's home town to the departure airport and back (ROADMAP 2.3): `{ home, mode, title, detail?, minutes (one way) \| null, cents (per person, both ways), checked? }`. Research estimates it when the home town is known; the organiser can correct it with the prices (`checked`). Absent: not worked out |
+| `access?` | getting from the group's home town to the departure airport and back (ROADMAP 2.3): the way that counts, `{ home, mode, title, detail?, minutes (one way) \| null, cents (per person, both ways), checked? }`, and up to 3 `alternatives` with the same fields. Research proposes 2–4 ways (car with parking, bus, train), the one it recommends first; the organiser can switch to another and correct its price with the prices (`checked`). Absent: not worked out |
 | `review` | `pending` \| `approved` \| `discarded` |
 | `sources` | list of `{label, url}` — required when provenance is `claude` |
 
@@ -100,7 +100,9 @@ toAirport, fromAirport, stay: { address, checkIn, checkOut }, tricountUrl,
 sources, preparedAt }`. Guide items are `{ title, detail, priceCents?,
 where? }`; ways to get there are `{ mode: car | bus | train | metro | taxi |
 shuttle | walk | other, title, detail, minutes, priceCents }`, per person.
-Its `destinationId` must be one of the published destinations. Research
+`toAirportChosen` (a position in `toAirport`, or null) is the way the group
+takes: its price goes into what each person pays, unless the destination
+has its own `access`. Its `destinationId` must be one of the published destinations. Research
 drafts the guide and the transport; the organiser edits it and adds the
 stay's details and the Tricount link. Flights and stay show the destination's
 own (checked) prices; everything the guide says is labelled as Claude's and

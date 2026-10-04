@@ -108,19 +108,33 @@ describe("claude research provider", () => {
   });
 
   it("works out getting to each airport when the group's home town is known", async () => {
-    const access = { mode: "car", title: "Coche hasta Bilbao, 2 coches", detail: "Gasolina, peajes y parking", minutes: 112.4, priceEuros: 31.5 };
+    const access = [
+      { mode: "car", title: "Coche hasta Bilbao, 2 coches", detail: "Gasolina, peajes y parking", minutes: 112.4, priceEuros: 31.5 },
+      { mode: "bus", title: "Autobús a Bilbao", detail: "", minutes: 150, priceEuros: 38 },
+      { mode: "other", title: "  ", detail: "", minutes: null, priceEuros: 10 },
+    ];
     const run = async (r: SearchRequest) => {
       const provider = claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources, access }] })));
       const out = [];
       for await (const p of provider.research(r)) out.push(p);
       return out[0]!.proposal;
     };
-    expect((await run({ ...req, home: "Logroño" })).access).toEqual({ home: "Logroño", mode: "car", title: "Coche hasta Bilbao, 2 coches", detail: "Gasolina, peajes y parking", minutes: 112, cents: 3150 });
+    // The first counts; the rest are there to switch to; an empty one is left out.
+    expect((await run({ ...req, home: "Logroño" })).access).toEqual({
+      home: "Logroño",
+      mode: "car",
+      title: "Coche hasta Bilbao, 2 coches",
+      detail: "Gasolina, peajes y parking",
+      minutes: 112,
+      cents: 3150,
+      alternatives: [{ mode: "bus", title: "Autobús a Bilbao", minutes: 150, cents: 3800 }],
+    });
     // Without a home town there's nothing to keep, whatever came back.
     expect(await run(req)).not.toHaveProperty("access");
     expect(buildPrompt({ ...req, home: "Logroño" })).toContain("El grupo vive en Logroño.");
-    expect(buildPrompt({ ...req, home: "Logroño" })).toContain("tenlo en cuenta al elegir desde qué aeropuerto salir");
-    expect(buildPrompt(req)).toContain("Deja access a null.");
+    expect(buildPrompt({ ...req, home: "Logroño" })).toContain("tenla en cuenta al elegir desde qué aeropuerto salir");
+    expect(buildPrompt({ ...req, home: "Logroño" })).toContain("de 2 a 4 formas de ir desde Logroño");
+    expect(buildPrompt(req)).toContain("Deja access vacío.");
   });
 
   it("passes Comparativa notes and photo subjects through", async () => {

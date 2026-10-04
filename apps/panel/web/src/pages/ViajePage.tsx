@@ -19,6 +19,7 @@ import {
   Button,
   Card,
   CheckIcon,
+  ChoiceChip,
   Dialog,
   EmptyState,
   Field,
@@ -155,6 +156,8 @@ const COPY = copy({
     nth: (label: string, n: number) => `${label} ${n}`,
     add: "Añadir",
     addOption: "Añadir una opción",
+    weTake: "Es el que cogemos",
+    weTakeHint: "Su precio se suma a lo que pone cada uno en la página del viaje.",
   },
   en: {
     modes: { car: "Car", bus: "Bus", train: "Train", metro: "Metro", taxi: "Taxi", shuttle: "Shuttle", walk: "On foot", other: "Other" },
@@ -266,6 +269,8 @@ const COPY = copy({
     nth: (label: string, n: number) => `${label} ${n}`,
     add: "Add",
     addOption: "Add an option",
+    weTake: "This is the one we take",
+    weTakeHint: "Its price goes into what each person pays on the trip page.",
   },
 });
 
@@ -279,6 +284,7 @@ const EMPTY: Omit<TripPage, "destinationId"> = {
   beforeYouGo: [],
   home: "",
   toAirport: [],
+  toAirportChosen: null,
   fromAirport: [],
   stay: { address: "", checkIn: "", checkOut: "" },
   tricountUrl: null,
@@ -303,6 +309,8 @@ function clean(t: TripPage): TripPage {
     sights: items(t.sights),
     beforeYouGo: items(t.beforeYouGo),
     toAirport: ways(t.toAirport),
+    // The chosen one keeps pointing at the same option once blanks go.
+    toAirportChosen: t.toAirportChosen === null || !t.toAirport[t.toAirportChosen]?.title.trim() ? null : ways(t.toAirport).indexOf(t.toAirport[t.toAirportChosen]!),
     fromAirport: ways(t.fromAirport),
   };
 }
@@ -837,7 +845,12 @@ function TripEditor({ trip, city, origin, iata, onChange }: { trip: TripPage; ci
         <Field label={t.leavingFrom}>
           {({ inputId }) => <TextInput id={inputId} maxLength={60} placeholder={t.homePlaceholder} value={trip.home} onChange={(e) => onChange({ home: e.target.value })} />}
         </Field>
-        <TransportList title={t.toAirportTitle(trip.home || t.home, origin)} options={trip.toAirport} onChange={(toAirport) => onChange({ toAirport })} />
+        <TransportList
+          title={t.toAirportTitle(trip.home || t.home, origin)}
+          options={trip.toAirport}
+          onChange={(toAirport, toAirportChosen) => onChange({ toAirport, toAirportChosen: toAirportChosen === undefined ? trip.toAirportChosen : toAirportChosen })}
+          chosen={trip.toAirportChosen}
+        />
         <TransportList title={t.fromAirportTitle(iata)} options={trip.fromAirport} onChange={(fromAirport) => onChange({ fromAirport })} />
       </Section>
 
@@ -922,10 +935,24 @@ function ItemList({ label, items, price, where, onChange }: { label: string; ite
   );
 }
 
-function TransportList({ title, options, onChange }: { title: string; options: TransportOption[]; onChange: (options: TransportOption[]) => void }) {
+// chosen: the option the group takes (to the airport), whose price counts in
+// what each person pays; absent where nothing is chosen (from the airport).
+function TransportList({
+  title,
+  options,
+  onChange,
+  chosen,
+}: {
+  title: string;
+  options: TransportOption[];
+  onChange: (options: TransportOption[], chosen?: number | null) => void;
+  chosen?: number | null;
+}) {
   const t = useCopy(COPY);
   const modes = MODES.map((value) => ({ value, label: t.modes[value] }));
   const set = (i: number, patch: Partial<TransportOption>) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  // Removing one: the chosen one stays chosen, or nothing is.
+  const remove = (i: number) => onChange(options.filter((_, j) => j !== i), chosen === undefined ? undefined : chosen === null || chosen === i ? null : chosen > i ? chosen - 1 : chosen);
   return (
     <div className="flex flex-col gap-2.5">
       <Heading as="h3" size="card">
@@ -959,8 +986,18 @@ function TransportList({ title, options, onChange }: { title: string; options: T
                 value={o.detail}
                 onChange={(e) => set(i, { detail: e.target.value })}
               />
+              {chosen !== undefined && (
+                <ChoiceChip
+                  type="checkbox"
+                  label={t.weTake}
+                  title={t.weTakeHint}
+                  checked={chosen === i}
+                  onChange={(e) => onChange(options, e.target.checked ? i : null)}
+                  className="w-fit sm:col-span-4"
+                />
+              )}
             </div>
-            <IconButton label={t.remove(o.title || t.nth(title, i + 1))} size="md" onClick={() => onChange(options.filter((_, j) => j !== i))}>
+            <IconButton label={t.remove(o.title || t.nth(title, i + 1))} size="md" onClick={() => remove(i)}>
               <TrashIcon size={16} />
             </IconButton>
           </li>
