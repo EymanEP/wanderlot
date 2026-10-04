@@ -3,7 +3,7 @@ import type { Plan, Proposal } from "@wanderlot/core";
 import { copy, euros, flightPriceCents, tripLabel } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 import { Button, Card, Checkbox, DataList, DataRow, Field, Heading, IataTile, ProsCons, TextArea, useCopy } from "@wanderlot/ui";
-import { CATEGORY_LABEL, total } from "../lib/view.ts";
+import { CATEGORY_LABEL, accessLabel, total } from "../lib/view.ts";
 
 const COPY = copy({
   es: {
@@ -49,7 +49,8 @@ export function CompareCard({ proposal: p, plan, editorial: e, monthLabel, onCha
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ pros: "", cons: "" });
   const sum = total(p, plan);
-  const stay = sum - flightPriceCents(p);
+  const access = p.access?.cents ?? 0;
+  const stay = sum - flightPriceCents(p) - access;
 
   const startEditing = () => {
     setDraft({ pros: e.pros.join("\n"), cons: e.cons.join("\n") });
@@ -77,6 +78,7 @@ export function CompareCard({ proposal: p, plan, editorial: e, monthLabel, onCha
       <DataList>
         <DataRow label={t.flight} value={euros(flightPriceCents(p))} />
         <DataRow label={t.nights(plan.nights)} value={euros(stay)} />
+        {p.access && <DataRow label={`${accessLabel()} · ${p.outbound.from}`} value={`${p.access.checked ? "" : "≈ "}${euros(access)}`} />}
         <DataRow variant={e.inVote ? "highlight" : "highlight-muted"} label={t.total} value={euros(sum)} />
         <DataRow label={t.trip} value={tripLabel(p.outbound)} />
         <DataRow label={monthLabel} value={e.weather} />

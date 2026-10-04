@@ -107,6 +107,22 @@ describe("claude research provider", () => {
     expect(out[0]!.notes).toEqual({ pros: [], cons: [], weather: "", photoSubjects: [] });
   });
 
+  it("works out getting to each airport when the group's home town is known", async () => {
+    const access = { mode: "car", title: "Coche hasta Bilbao, 2 coches", detail: "Gasolina, peajes y parking", minutes: 112.4, priceEuros: 31.5 };
+    const run = async (r: SearchRequest) => {
+      const provider = claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources, access }] })));
+      const out = [];
+      for await (const p of provider.research(r)) out.push(p);
+      return out[0]!.proposal;
+    };
+    expect((await run({ ...req, home: "Logroño" })).access).toEqual({ home: "Logroño", mode: "car", title: "Coche hasta Bilbao, 2 coches", detail: "Gasolina, peajes y parking", minutes: 112, cents: 3150 });
+    // Without a home town there's nothing to keep, whatever came back.
+    expect(await run(req)).not.toHaveProperty("access");
+    expect(buildPrompt({ ...req, home: "Logroño" })).toContain("El grupo vive en Logroño.");
+    expect(buildPrompt({ ...req, home: "Logroño" })).toContain("tenlo en cuenta al elegir desde qué aeropuerto salir");
+    expect(buildPrompt(req)).toContain("Deja access a null.");
+  });
+
   it("passes Comparativa notes and photo subjects through", async () => {
     const notes = { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C · lluvioso", photoSubjects: ["Alfama Lisboa"] };
     const provider = claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources, ...notes }] })));

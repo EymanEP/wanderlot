@@ -14,7 +14,7 @@ import {
   useCopy,
 } from "@wanderlot/ui";
 import { CommentComposer, CommentThread } from "../components/Comments.tsx";
-import { FlightLegRow, FlightTotalRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
+import { AccessRow, FlightLegRow, FlightTotalRow, PhotoMosaic, SourcesCard, StayOption, VoteStatusCard } from "../components/DestinationParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
 import { groupWord, memberOf, rankLabel, stayShareLabel, sourcesFor, trustOf } from "../lib/view.ts";
@@ -27,6 +27,7 @@ const COPY = copy({
     days: (from: number, to: number, month: string) => `del ${from} al ${to} de ${month}`,
     people: (n: number) => `${n} personas`,
     perPerson: "por persona · vuelo + alojamiento",
+    perPersonAccess: "por persona · vuelo, alojamiento y llegar al aeropuerto",
     count: "Ver el recuento",
     change: (rank: string) => `${rank} · cambiar`,
     give: "Darle mis puntos",
@@ -58,6 +59,7 @@ const COPY = copy({
     days: (from: number, to: number, month: string) => `${from}–${to} ${month}`,
     people: (n: number) => `${n} people`,
     perPerson: "per person · flight + stay",
+    perPersonAccess: "per person · flight, stay and getting to the airport",
     count: "See the count",
     change: (rank: string) => `${rank} · change`,
     give: "Give it my points",
@@ -131,7 +133,7 @@ export function DestinoPage() {
           <>
             <div className="flex flex-col gap-px lg:items-end">
               <span className="text-[30px] font-extrabold tracking-[-0.03em] tabular-nums">{euros(d.totalPerPersonCents)}</span>
-              <span className="text-[13px] text-muted">{t.perPerson}</span>
+              <span className="text-[13px] text-muted">{d.access ? t.perPersonAccess : t.perPerson}</span>
             </div>
             <Link to={`${base}/votacion`} className={buttonClasses({ variant: myPos >= 0 || closed ? "secondary" : "primary", size: "lg" })}>
               {closed ? t.count : myPos >= 0 ? t.change(rankLabel(myPos)) : t.give}
@@ -158,6 +160,7 @@ export function DestinoPage() {
           <section className="flex flex-col gap-2.5">
             <SectionHeader title={t.flights} />
             <div className="flex flex-col gap-2">
+              {d.access && <AccessRow access={d.access} airport={d.outbound.from} />}
               {/* Checked by hand: the round trip's price, and the times only
                   if they were checked too (from a screenshot). */}
               {flightDetailsKnown(d) && (

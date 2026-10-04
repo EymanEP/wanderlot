@@ -97,7 +97,7 @@ export function GenerarPage() {
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
-  const initial = searchFromPlan(plan, status?.flights !== "none");
+  const initial = searchFromPlan(plan, status?.flights !== "none", state.settings?.homeTown ?? "");
   // A search running in the background (from the panel at /admin) counts
   // as running too: one at a time per trip.
   const job = state.job?.kind === "research" ? state.job : null;
@@ -171,6 +171,7 @@ export function GenerarPage() {
       estimateStays: v.estimateStays,
       suggestThings: v.suggestThings,
       nearbyAirports: v.nearbyAirports,
+      home: v.home.trim(),
       count: place ? 1 : COUNT,
       ...(place ? { idea: place } : {}),
     });
@@ -186,7 +187,7 @@ export function GenerarPage() {
             </Notice>
           ) : (
             // Keyed so switching plans resets the form to the new plan.
-            <SearchForm key={plan.id} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} {...(status?.ai ? { ai: status.ai } : {})} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+            <SearchForm key={`${plan.id}:${state.settings?.homeTown ?? ""}`} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} {...(status?.ai ? { ai: status.ai } : {})} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
           )}
         </div>
 

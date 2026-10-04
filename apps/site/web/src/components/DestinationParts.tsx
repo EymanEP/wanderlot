@@ -1,7 +1,7 @@
 // The building blocks of a destination page.
 import { useState } from "react";
 import { Link } from "react-router";
-import { copy, euros, eurosGrouped, localTime, shortDate, standardImageUrl, stopsLabel, stayTotalCents, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
+import { copy, duration, euros, eurosGrouped, localTime, shortDate, standardImageUrl, stopsLabel, stayTotalCents, type Access, type FlightLeg, type Photo as PhotoData, type Stay } from "@wanderlot/core";
 import { Button, Card, Dialog, Heading, LockIcon, Photo, Text, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 
 const COPY = copy({
@@ -27,6 +27,9 @@ const COPY = copy({
     change: "Cambiar",
     give: "Dárselos",
     sources: "De dónde salen los números",
+    toAirport: (airport: string) => `Hasta ${airport}`,
+    fromHome: (home: string) => `Desde ${home}, ida y vuelta`,
+    estimate: "aproximado",
   },
   en: {
     photo: "Photo:",
@@ -50,6 +53,9 @@ const COPY = copy({
     change: "Change",
     give: "Give them",
     sources: "Where the numbers come from",
+    toAirport: (airport: string) => `To ${airport}`,
+    fromHome: (home: string) => `From ${home}, there and back`,
+    estimate: "rough",
   },
 });
 
@@ -176,6 +182,35 @@ export function FlightTotalRow({ from, to, cents }: { from: string; to: string; 
       <span className="ml-auto flex shrink-0 items-baseline gap-1.5">
         <span className="text-base font-bold tabular-nums">{euros(cents)}</span>
         <span className="text-xs text-muted">{t.perPerson}</span>
+      </span>
+    </div>
+  );
+}
+
+// "Hasta BIO  Coche hasta Bilbao, 2 coches · 1 h 50 m  ≈ 24 € por persona":
+// getting to the departure airport and back, counted in the total
+// (ROADMAP 2.3).
+export function AccessRow({ access, airport }: { access: Access; airport: string }) {
+  const t = useCopy(COPY);
+  return (
+    <div className="flex flex-wrap items-center gap-x-[18px] gap-y-1 rounded-tile border border-line-soft px-[18px] py-3.5">
+      <span className="w-14 shrink-0 text-[13px] font-bold text-muted">{t.toAirport(airport)}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[15px] font-bold">
+          {access.title}
+          {access.minutes ? ` · ${duration(access.minutes)}` : ""}
+        </span>
+        <span className="text-[13px] text-ink-2">{t.fromHome(access.home)}</span>
+      </span>
+      <span className="ml-auto flex shrink-0 flex-col items-end">
+        <span className="text-base font-bold tabular-nums">
+          {access.checked ? "" : "≈ "}
+          {euros(access.cents)}
+        </span>
+        <span className="text-xs text-muted">
+          {t.perPerson}
+          {access.checked ? "" : ` · ${t.estimate}`}
+        </span>
       </span>
     </div>
   );

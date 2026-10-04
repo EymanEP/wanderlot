@@ -288,6 +288,13 @@ specific to Logroño.
 **Phase 1 done**, as part of El viaje: "Salís desde" is asked when preparing
 and kept as the group's `homeTown` setting for next time.
 
+**Phase 2 done.** Generar asks "Vivimos en" (the same `homeTown`, empty to
+leave it out). Research then estimates, for each destination, getting from
+home to its departure airport and back, per person, and weighs it when
+choosing which airport to fly from. It shows in Revisar and Comparativa, the
+prices dialog corrects it, and it's part of the per-person total the group
+votes on; the site shows it beside the flights.
+
 ### 2.4 Money: link Tricount, don't rebuild it · S
 
 **Why not build it.** The group already splits costs in Tricount without
@@ -584,5 +591,5 @@ Not planned in detail yet. They wait until the flows above are in use.
    - ~~**3.3 (other AIs).**~~ Done: Ajustes, OpenAI and compatible
      endpoints, adding by hand, and searching from `/admin` in the
      background. Left: `codex` and `opencode` as local commands.
-5. **Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.
+5. ~~**Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.~~ Done.
 6. **Later:** currency (Spanish and English are done).

@@ -26,6 +26,9 @@ export interface SearchRequest {
   exclude?: string[];
   // The group's language, for what the AI writes. Absent: Spanish.
   locale?: Locale;
+  // Where the group lives: research works out getting to each departure
+  // airport and back (ROADMAP 2.3). Absent: it doesn't.
+  home?: string;
 }
 
 export interface Itinerary {

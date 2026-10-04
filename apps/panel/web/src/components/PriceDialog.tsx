@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
-import { airbnbUrl, baseStay, copy, currentLocale, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
-import { Button, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
+import { airbnbUrl, baseStay, copy, currentLocale, duration, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
+import { Button, CarIcon, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
 
@@ -73,6 +73,11 @@ const COPY = copy({
     onlyThis: " Al guardar, en el sitio solo se verá este; las otras opciones de la búsqueda se quitan.",
     perPerson: "Por persona",
     noStay: "Sin alojamiento",
+    access: "Llegar al aeropuerto",
+    accessFrom: (home: string, airport: string) => `Desde ${home} hasta ${airport} y vuelta, por persona`,
+    accessInput: "Llegar al aeropuerto y volver, por persona, en euros",
+    accessTotal: "Por persona, ida y vuelta",
+    accessEstimate: "Lo estimó la IA: corrígelo si sabes lo que cuesta.",
     totalPerPerson: "Total por persona",
   },
   en: {
@@ -143,6 +148,11 @@ const COPY = copy({
     onlyThis: " Once saved, the site will only show this one; the other options from the search are removed.",
     perPerson: "Per person",
     noStay: "No stay",
+    access: "Getting to the airport",
+    accessFrom: (home: string, airport: string) => `From ${home} to ${airport} and back, per person`,
+    accessInput: "Getting to the airport and back, per person, in euros",
+    accessTotal: "Per person, there and back",
+    accessEstimate: "The AI's estimate: correct it if you know what it costs.",
     totalPerPerson: "Total per person",
   },
 });
@@ -272,6 +282,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const [stayUrl, setStayUrl] = useState("");
   const [stayDescription, setStayDescription] = useState<string | undefined>(undefined);
   const [stayTotal, setStayTotal] = useState("");
+  const [access, setAccess] = useState("");
   const [reading, setReading] = useState<"flight" | "stay" | null>(null);
   // Read in the browser: the best flights to pick from.
   const [flightOptions, setFlightOptions] = useState<FlightChoice[] | null>(null);
@@ -294,6 +305,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
     setStayUrl(stay?.url ?? "");
     setStayDescription(stay?.description);
     setStayTotal(stay ? toEuros(stayTotalCents(stay, plan.nights)) : "");
+    setAccess(p.access ? toEuros(p.access.cents) : "");
     setNotes([]);
     setError(null);
     setFocus(null);
@@ -308,6 +320,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const hasStay = stayTotal.trim() !== "";
   const stayCents = hasStay ? toCents(stayTotal) : undefined;
   const stayShare = stayCents === null || stayCents === undefined ? stayCents : Math.round(stayCents / people);
+  // Only when research worked it out: there's an estimate to correct.
+  const accessCents = p?.access ? toCents(access) : undefined;
 
   const read = async (kind: "flight" | "stay", files: File[] & { error?: string }) => {
     if (files.error) return setError(files.error);
@@ -393,7 +407,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (flightCents === null || stayCents === null) return setError(t.badPrice);
+    if (flightCents === null || stayCents === null || accessCents === null) return setError(t.badPrice);
     if (hasStay && !stayName.trim()) return setError(t.nameStay);
     const url = stayUrl.trim();
     if (url && !/^https:\/\/\S+$/.test(url)) return setError(t.badUrl);
@@ -409,6 +423,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
               sources: kinds.flatMap((k) => (seen[k] && /^https:\/\//.test(seen[k]!) ? [{ label: SITE[k].name, url: seen[k]! }] : [])),
             }
           : {}),
+        ...(accessCents !== undefined && accessCents !== p?.access?.cents ? { accessCents } : {}),
         ...(stayCents !== undefined
           ? { stayCents, stay: { name: stayName.trim(), ...(stayDescription ? { description: stayDescription } : {}), ...(url ? { url } : {}) } }
           : {}),
@@ -437,7 +452,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
 
   const timesKnown = legs !== null || (p ? flightDetailsKnown(p) && p.provenance.kind !== "claude" : false);
   const linkClass = "inline-flex items-center gap-1 text-[13px] font-semibold text-accent no-underline hover:text-accent-hover";
-  const total = flightCents === null || stayShare === null ? null : flightCents + (stayShare ?? 0);
+  const total = flightCents === null || stayShare === null || accessCents === null ? null : flightCents + (stayShare ?? 0) + (accessCents ?? 0);
 
   return (
     <Dialog
@@ -602,6 +617,29 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
           </span>
         </section>
 
+        {p?.access && (
+          <section aria-label={t.access} className="flex flex-col gap-3 rounded-card border border-line-soft p-3 sm:p-4">
+            <div className="grid items-end gap-3 sm:grid-cols-[1fr_200px]">
+              <div className="flex items-center gap-2.5">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2">
+                  <CarIcon size={18} />
+                </span>
+                <div className="flex min-w-0 flex-col">
+                  <strong className="text-[15px]">{t.access}</strong>
+                  <span className="text-[13px] text-muted">{t.accessFrom(p.access.home, p.outbound.from)}</span>
+                  <span className="text-[13px] text-ink-2">
+                    {p.access.title}
+                    {p.access.minutes ? ` · ${duration(p.access.minutes)}` : ""}
+                  </span>
+                </div>
+              </div>
+              {euroInput(t.accessInput, t.accessTotal, access, setAccess)}
+            </div>
+            {p.access.detail && <span className="text-[13px] text-muted">{p.access.detail}</span>}
+            {!p.access.checked && <span className="text-[13px] text-muted">{t.accessEstimate}</span>}
+          </section>
+        )}
+
         {notes.map((n) => (
           <Notice key={n} tone="neutral">
             {n}
@@ -619,6 +657,12 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
               <dt className="text-xs text-muted">{t.stay}</dt>
               <dd className="m-0 text-[15px] font-semibold tabular-nums">{stayShare === null ? "—" : stayShare === undefined ? t.noStay : euros(stayShare)}</dd>
             </div>
+            {accessCents !== undefined && (
+              <div className="flex flex-col">
+                <dt className="text-xs text-muted">{t.access}</dt>
+                <dd className="m-0 text-[15px] font-semibold tabular-nums">{accessCents === null ? "—" : euros(accessCents)}</dd>
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end">
             <dt className="text-xs font-semibold text-muted">{t.totalPerPerson}</dt>

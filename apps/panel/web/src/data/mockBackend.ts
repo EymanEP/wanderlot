@@ -1,7 +1,7 @@
 // The panel's backend played with the mock data from the design canvas. Used
 // by previews and tests; behaves like the real server, including a search
 // that streams proposals in one by one.
-import { DateWindows, TripPage, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type LeaveStatus, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
+import { DateWindows, TripPage, addDaysIso, airportCity, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, rangeLabel, slugify, tally, type DatesView, type GroupSettings, type LeaveStatus, type Photo, type Plan, type Proposal, type SuggestionView, type VoteState } from "@wanderlot/core";
 import {
   DATES_PLAN_ID,
   MOCK_NOW,
@@ -374,6 +374,12 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
           return { added: fresh.length };
         });
       }
+      // Getting to the airport, when the group's home town is known: what
+      // research would estimate (ROADMAP 2.3). Remembered as the setting.
+      const home = (opts.home ?? settings.homeTown ?? "").trim();
+      if (opts.home) settings = { ...settings, homeTown: opts.home };
+      const reach = (p: Proposal): Proposal =>
+        home ? { ...p, access: { home, mode: "car", title: `Coche hasta ${airportCity(p.outbound.from)}, 2 coches`, detail: "Gasolina, peajes y parking 8 días, repartido entre 6.", minutes: 125, cents: 3400 } } : p;
       // One named place, typed by the organiser or a friend's idea (credited
       // to them): one proposal for it.
       const idea = opts.suggestionId ? ideas.find((i) => i.id === opts.suggestionId) : undefined;
@@ -388,7 +394,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         const taken = new Set(entry(planId).proposals.map((p) => p.id));
         let id = base.place.iata.toLowerCase();
         for (let n = 2; taken.has(id); n++) id = `${base.place.iata.toLowerCase()}-${n}`;
-        const fresh: Proposal = { ...base, id, planId, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) };
+        const fresh: Proposal = reach({ ...base, id, planId, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) });
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals, fresh] });
         if (idea) ideas = ideas.map((i) => (i.id === idea.id ? { ...i, status: "researched", proposalId: id } : i));
@@ -405,7 +411,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         await wait(tickMs / 2, signal);
         onStep?.({ kind: "read", host: "skyscanner.es", url: `https://www.skyscanner.es/vuelos/mad/${p.place.iata.toLowerCase()}` });
         await wait(tickMs / 2, signal);
-        const fresh: Proposal = { ...p, review: e.proposals.find((x) => x.id === p.id)?.review === "approved" ? "approved" : "pending" };
+        const fresh: Proposal = reach({ ...p, review: e.proposals.find((x) => x.id === p.id)?.review === "approved" ? "approved" : "pending" });
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals.filter((x) => x.id !== p.id), fresh] });
         onProposal(fresh);

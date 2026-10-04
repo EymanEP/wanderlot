@@ -65,6 +65,8 @@ const CheckedLeg = FlightLeg.omit({ priceCents: true });
 const PricesBody = z.object({
   flightCents: z.number().int().min(0).max(10_000_000),
   stayCents: z.number().int().min(0).max(100_000_000).optional(),
+  // Getting to the departure airport and back, per person, corrected.
+  accessCents: z.number().int().min(0).max(10_000_000).optional(),
   // Read from a screenshot and reviewed: the flights' real times, together.
   outbound: CheckedLeg.optional(),
   inbound: CheckedLeg.optional(),
@@ -104,6 +106,9 @@ const GenerateBody = z.object({
   suggestThings: z.boolean(),
   nearbyAirports: z.boolean().default(false),
   count: z.number().int().min(1).max(24).default(12),
+  // Where the group lives, to price getting to each airport (ROADMAP 2.3).
+  // Absent: the group's saved home town. Empty: don't.
+  home: z.string().trim().max(60).optional(),
 });
 
 const EditorialBody = z
@@ -251,12 +256,16 @@ export function createPanel({
     const previous = store.get(planId)!.trip;
     const trip = TripPage.parse(toTripPage(destinationId, home, out, now(), previous?.destinationId === destinationId ? previous : undefined, who.by));
     store.update(planId, (e) => ({ entry: { ...e!, trip }, result: null }));
-    if (home) {
-      const settings = await site.settings().catch(() => null);
-      if (settings && settings.homeTown !== home) await site.putSettings({ ...settings, homeTown: home }).catch(() => {});
-    }
+    await rememberHome(home);
     return trip;
   };
+
+  // Where the group lives, kept as a setting for next time. Best effort.
+  async function rememberHome(home: string) {
+    if (!home) return;
+    const settings = await site.settings().catch(() => null);
+    if (settings && settings.homeTown !== home) await site.putSettings({ ...settings, homeTown: home }).catch(() => {});
+  }
 
   // Hands a search or guide to the AI to run in the background: answers at
   // once (202) with the job, which GET …/job then follows.
@@ -499,7 +508,9 @@ export function createPanel({
     if (!body.success) return c.json({ error: "invalid request", issues: body.error.issues }, 400);
     const { plan } = entry;
     // A friend's idea: research exactly that place, crediting them.
-    const { suggestionId, ...options } = body.data;
+    const { suggestionId, home: typedHome, ...options } = body.data;
+    const home = typedHome ?? (await site.settings().catch(() => null))?.homeTown ?? "";
+    if (typedHome) await rememberHome(typedHome);
     const idea = suggestionId ? (await site.suggestions(plan.id)).find((x) => x.id === suggestionId) : undefined;
     if (suggestionId && !idea) return c.json({ error: say(c).ideaGone }, 404);
     const req: SearchRequest = {
@@ -518,6 +529,7 @@ export function createPanel({
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
       locale: await groupLocale(),
+      ...(home ? { home } : {}),
     };
     if (body.data.source === "api" && status.flights === "none") {
       return c.json({ error: say(c).noFlightsApi }, 409);

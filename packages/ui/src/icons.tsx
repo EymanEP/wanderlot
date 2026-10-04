@@ -51,6 +51,7 @@ export const HouseIcon = make(<><path d="M3 18h18" /><path d="M5 18V9l7-4 7 4v9"
 export const BeachIcon = make(<><path d="M3 17c2 1.6 4 1.6 6 0s4-1.6 6 0 4 1.6 6 0" /><path d="M3 21c2 1.6 4 1.6 6 0s4-1.6 6 0 4 1.6 6 0" /><circle cx="12" cy="7" r="4" /></>, { strokeWidth: 1.6 });
 export const MountainIcon = make(<path d="m3 19 6-11 4 7 2.5-4L21 19z" />, { strokeWidth: 1.6 });
 export const PlaneIcon = make(<path d="M10.5 13.5 3 11l1.5-1.5 7.5 1 4-4.5a2.1 2.1 0 0 1 3 3l-4.5 4 1 7.5L14 22l-2.5-7.5z" />, { strokeWidth: 1.7 });
+export const CarIcon = make(<><path d="M5 16V11l2-5h10l2 5v5" /><path d="M3 16h18v2H3z" /><path d="M5 11h14" /><circle cx="7.5" cy="18.5" r="1.5" /><circle cx="16.5" cy="18.5" r="1.5" /></>, { strokeWidth: 1.6 });
 export const SendIcon = make(<><path d="M4 12 20 4l-6 16-3-7z" /><path d="m11 13 9-9" /></>, { strokeWidth: 1.8 });
 export const StopIcon = make(<rect x="6" y="6" width="12" height="12" rx="2" />, { strokeWidth: 2 });
 export const TrashIcon = make(<><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></>);

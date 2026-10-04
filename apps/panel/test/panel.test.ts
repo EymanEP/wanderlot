@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { baseStay, type Proposal } from "@wanderlot/core";
 import { createPanel } from "../src/app.ts";
-import { siteClient } from "../src/publish.ts";
+import { buildSnapshot, siteClient } from "../src/publish.ts";
 import { PanelStore } from "../src/store.ts";
 import type { FlightProvider, ResearchProvider, SearchRequest } from "../src/providers/types.ts";
 import type { PhotoSource } from "../src/providers/photos.ts";
@@ -83,8 +83,10 @@ beforeEach(async () => {
       lastRequest = req;
       onProgress?.({ kind: "note", text: "Voy a buscar vuelos directos" });
       onProgress?.({ kind: "search", query: "vuelos Madrid Lisboa noviembre" });
+      // Getting to Madrid from home, when research knows where that is.
+      const access = req.home ? { access: { home: req.home, mode: "car" as const, title: "Coche hasta Madrid, 2 coches", minutes: 210, cents: 3500 } } : {};
       yield {
-        proposal: strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })),
+        proposal: { ...strip(proposal("lis", "Lisboa", "LIS", { provenance: claudeSources })), ...access },
         notes: { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C", photoSubjects: ["Alfama Lisboa"] },
       };
       yield { proposal: strip(proposal("nap", "Nápoles", "NAP", { provenance: claudeSources })) };
@@ -176,6 +178,36 @@ describe("panel → site", () => {
     await json("/api/settings", "PUT", { groupName: "Grupo 51", organiserName: "Eyman", defaultOrigin: "MAD", locale: "en" });
     await generate();
     expect(lastRequest?.locale).toBe("en");
+  });
+
+  it("prices getting to the airport from where the group lives, into the total", async () => {
+    const generate = (home?: string) =>
+      call(`/api/plans/${PLAN}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true, ...(home === undefined ? {} : { home }) });
+    // No home town yet: nothing to work out.
+    await generate();
+    expect(lastRequest).not.toHaveProperty("home");
+    // Typed once, it's asked for and remembered for next time.
+    await generate("Logroño");
+    expect(lastRequest?.home).toBe("Logroño");
+    expect((await json("/api/settings")).data.homeTown).toBe("Logroño");
+    await generate();
+    expect(lastRequest?.home).toBe("Logroño");
+    // Left empty on purpose: not counted this time.
+    await generate("");
+    expect(lastRequest).not.toHaveProperty("home");
+
+    await generate();
+    // Each search adds its own Lisbon: the newest one has it worked out.
+    const lis = (await json(`/api/plans/${PLAN}`)).data.proposals.filter((p: Proposal) => p.place.iata === "LIS").at(-1);
+    expect(lis.access).toMatchObject({ home: "Logroño", cents: 3500 });
+    // The organiser corrects it along with the prices.
+    const checked = (await json(`/api/plans/${PLAN}/proposals/${lis.id}/prices`, "POST", { flightCents: 20000, accessCents: 2800 })).data;
+    expect(checked.access).toMatchObject({ cents: 2800, checked: true });
+    await json(`/api/plans/${PLAN}/proposals/${lis.id}/review`, "POST", { review: "approved" });
+    const snapshot = buildSnapshot((await json(`/api/plans/${PLAN}`)).data, clock);
+    const d = snapshot.destinations.find((x) => x.id === lis.id)!;
+    expect(d.access?.cents).toBe(2800);
+    expect(d.totalPerPersonCents).toBe(20000 + Math.ceil((d.stays[0]!.nightlyCents * 7) / 6) + 2800);
   });
 
   it("reads screenshots of the flights and the stay, and keeps only what was checked", async () => {

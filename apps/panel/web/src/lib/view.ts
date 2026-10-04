@@ -2,6 +2,7 @@
 import {
   baseStay,
   copy,
+  duration,
   pick,
   euros,
   flightPriceCents,
@@ -32,6 +33,8 @@ const COPY = copy({
     things: (n: number) => `${n} cosas que hacer y ver`,
     byHand: (date: string) => `Comprobado a mano · ${date}`,
     sources: (n: number): string => `Claude · ${n} ${n === 1 ? "fuente" : "fuentes"}`,
+    accessLine: (airport: string, home: string, approx: string, price: string, summary: string) => `Llegar a ${airport} desde ${home}: ${approx}${price} ida y vuelta por persona · ${summary}`,
+    access: "Llegar al aeropuerto",
   },
   en: {
     category: { ciudad: "City", escapada: "Short break", playa: "Beach", naturaleza: "Nature" } as Record<Category, string>,
@@ -43,6 +46,8 @@ const COPY = copy({
     things: (n: number) => `${n} things to do and see`,
     byHand: (date: string) => `Checked by hand · ${date}`,
     sources: (n: number): string => `Claude · ${n} ${n === 1 ? "source" : "sources"}`,
+    accessLine: (airport: string, home: string, approx: string, price: string, summary: string) => `Getting to ${airport} from ${home}: ${approx}${price} return per person · ${summary}`,
+    access: "Getting to the airport",
   },
 });
 
@@ -137,3 +142,15 @@ export function weatherTemp(weather: string): number | null {
   const m = /(-?\d+)\s*°/.exec(weather);
   return m ? Number(m[1]) : null;
 }
+
+// "Llegar a BIO desde Logroño: ≈ 24 € ida y vuelta por persona · Coche hasta
+// Bilbao, 2 coches · 1 h 50 m" (ROADMAP 2.3); null when not worked out.
+export function accessLine(p: Proposal): string | null {
+  const a = p.access;
+  if (!a) return null;
+  const summary = a.minutes ? `${a.title} · ${duration(a.minutes)}` : a.title;
+  return pick(COPY).accessLine(p.outbound.from, a.home, a.checked ? "" : "≈ ", euros(a.cents), summary);
+}
+
+// "Llegar al aeropuerto", for a price's label.
+export const accessLabel = () => pick(COPY).access;

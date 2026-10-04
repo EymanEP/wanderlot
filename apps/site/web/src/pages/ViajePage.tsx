@@ -74,6 +74,7 @@ const COPY = copy({
     share: "Lo que pone cada uno",
     flight: (price: string) => `Vuelo ${price}`,
     stayShare: (price: string) => ` · alojamiento ${price}`,
+    accessShare: (price: string) => ` · llegar al aeropuerto ${price}`,
     tricount: "Abrir el Tricount",
     where: (place: string) => `Dónde: ${place}`,
   },
@@ -110,6 +111,7 @@ const COPY = copy({
     share: "What each of us pays",
     flight: (price: string) => `Flight ${price}`,
     stayShare: (price: string) => ` · stay ${price}`,
+    accessShare: (price: string) => ` · getting to the airport ${price}`,
     tricount: "Open the Tricount",
     where: (place: string) => `Where: ${place}`,
   },
@@ -167,7 +169,7 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
             </span>
           )}
         </div>
-        <Money flight={flight} stayShare={stayShare} tricountUrl={trip.tricountUrl} />
+        <Money flight={flight} stayShare={stayShare} access={d.access?.cents ?? null} tricountUrl={trip.tricountUrl} />
       </section>
 
       <LeaveCard />
@@ -295,15 +297,16 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
 }
 
 // Each person's share, and the group's Tricount for everything else.
-function Money({ flight, stayShare, tricountUrl }: { flight: number; stayShare: number | null; tricountUrl: string | null }) {
+function Money({ flight, stayShare, access, tricountUrl }: { flight: number; stayShare: number | null; access: number | null; tricountUrl: string | null }) {
   const t = useCopy(COPY);
   return (
     <Card variant="accent" className="flex shrink-0 flex-col gap-1.5 lg:w-[300px]" aria-label={t.share}>
       <span className="text-[13px] font-bold">{t.share}</span>
-      <span className="text-[28px] font-extrabold tracking-[-0.03em] tabular-nums">{euros(flight + (stayShare ?? 0))}</span>
+      <span className="text-[28px] font-extrabold tracking-[-0.03em] tabular-nums">{euros(flight + (stayShare ?? 0) + (access ?? 0))}</span>
       <span className="text-[13px]">
         {t.flight(euros(flight))}
         {stayShare !== null ? t.stayShare(euros(stayShare)) : ""}
+        {access !== null ? t.accessShare(euros(access)) : ""}
       </span>
       {tricountUrl && (
         <a href={tricountUrl} target="_blank" rel="noreferrer" className={cn(buttonClasses({ variant: "secondary", size: "sm" }), "mt-2 self-start")}>
