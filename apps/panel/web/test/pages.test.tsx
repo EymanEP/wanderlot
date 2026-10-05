@@ -950,7 +950,7 @@ describe("Cuándo", () => {
     renderAt("/fechas");
     const step = await screen.findByRole("link", { name: /Cuándo/ });
     expect(step.textContent).toMatch(/^1/);
-    const card = screen.getByRole("heading", { name: "¿Ya sabéis las fechas?" }).closest("div")!.parentElement!;
+    const card = (await screen.findByRole("heading", { name: "¿Ya sabéis las fechas?" })).closest("div")!.parentElement!;
     await user.click(within(card).getByRole("button", { name: "Fijar estas fechas" }));
     expect(await screen.findByText("Fechas decididas")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Cuándo/ }).textContent).not.toMatch(/^1/);
