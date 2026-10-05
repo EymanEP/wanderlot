@@ -6,6 +6,7 @@ import { AccountMenu } from "./AccountMenu.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { PlanProvider, useSite } from "../data/store.tsx";
 import { PageErrorBoundary } from "./PageErrorBoundary.tsx";
+import { openWindow } from "../lib/view.ts";
 
 const COPY = copy({
   es: { destinations: "Destinos", vote: "Votación", comments: "Comentarios", trip: "El viaje", dates: "Fechas", trips: "Tus viajes", tripsShort: "Viajes", sections: "Secciones", datesToDecide: "Fechas por decidir", people: (n: number) => `${n} personas` },
@@ -50,7 +51,8 @@ export function SiteShell() {
 
 // Header on wide screens; a bottom tab bar on phones, where the group votes.
 function Chrome() {
-  const { plan, me, dates } = useSite();
+  const { plan, me, dates, result } = useSite();
+  const placeWindow = openWindow(plan, result?.winnerId ?? plan.winnerDestinationId);
   const { group } = useAuth();
   const t = useCopy(COPY);
   const nav = useNav();
@@ -72,7 +74,7 @@ function Chrome() {
             <Brand size="lg" sub={group.groupName} />
           </Link>
         }
-        center={<InfoPill items={[plan.name, dates?.status === "open" ? t.datesToDecide : rangeLabel(plan.dateFrom, plan.dateTo), t.people(plan.partySize)]} />}
+        center={<InfoPill items={[plan.name, placeWindow ? rangeLabel(placeWindow.from, placeWindow.to) : dates?.status === "open" ? t.datesToDecide : rangeLabel(plan.dateFrom, plan.dateTo), t.people(plan.partySize)]} />}
         nav={
           <nav aria-label={t.sections} className="hidden items-center gap-6 md:flex">
             {nav.map((n) => (

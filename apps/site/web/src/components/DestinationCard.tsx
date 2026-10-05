@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { checkedLabel, copy, euros, researchLabel, standardImageUrl, type Destination, type Plan } from "@wanderlot/core";
-import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, useCopy, type Trust } from "@wanderlot/ui";
+import { checkedLabel, copy, euros, researchLabel, standardImageUrl, type Destination, type Plan, rangeLabel } from "@wanderlot/core";
+import { Badge, BookmarkIcon, IconButton, Photo, ProvenanceBadge, useCopy, type Trust, CalendarIcon } from "@wanderlot/ui";
 import { placeLine, rankLabel, stayLine } from "../lib/view.ts";
 
 const COPY = copy({
@@ -89,6 +89,12 @@ export function DestinationCard({ destination: d, plan, href, trust, myPosition,
             </Badge>
           )}
         </div>
+        {d.dateFrom && d.dateTo && (
+          <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-accent-soft px-2.5 py-0.5 text-[13px] font-bold text-accent-strong">
+            <CalendarIcon size={13} />
+            {rangeLabel(d.dateFrom, d.dateTo)}
+          </span>
+        )}
         <span className="text-sm text-muted">{placeLine(d)}</span>
         <span className="text-sm text-muted">{stayLine(d, plan)}</span>
         {d.suggestedBy && <span className="text-[13px] font-semibold text-accent-strong">{t.ideaOf(d.suggestedBy)}</span>}

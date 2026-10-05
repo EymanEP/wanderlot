@@ -2,7 +2,7 @@ import { createContext, useContext, useLayoutEffect, useState, type ReactNode } 
 import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Activity } from "./Activity.tsx";
-import { copy, rangeLabel } from "@wanderlot/core";
+import { copy, decidesPlaceFirst, rangeLabel } from "@wanderlot/core";
 import { Brand, CheckIcon, ExternalIcon, Page, PageTransition, Select, StatusDot, TopBar, chipClasses, cn, useCopy, useToast } from "@wanderlot/ui";
 import { usePanel } from "../data/store.tsx";
 import { signOutHosted } from "./HostedGate.tsx";
@@ -21,6 +21,7 @@ const COPY = copy({
     trip: "Viaje",
     when: "Cuándo",
     where: "Dónde",
+    whereWhen: "Dónde y cuándo",
     theTrip: "El viaje",
     open: "abierta",
     closed: "cerrada",
@@ -52,6 +53,7 @@ const COPY = copy({
     trip: "Trip",
     when: "When",
     where: "Where",
+    whereWhen: "Where and when",
     theTrip: "The trip",
     open: "open",
     closed: "closed",
@@ -155,11 +157,20 @@ function TripBar({ end }: { end?: ReactNode }) {
   const pending = state.proposals.filter((p) => p.review === "pending").length;
   // Dónde opens where the trip is: searching, reviewing, or voting.
   const dondeHome = plan.status !== "draft" ? "/votacion" : state.proposals.length ? "/revisar" : "/generar";
-  const steps = [
-    { n: 1, label: t.when, to: "/fechas", active: pathname.startsWith("/fechas"), done: state.datesDecided, later: false },
-    { n: 2, label: t.where, to: dondeHome, active: inDonde, done: decided, later: false },
-    { n: 3, label: t.theTrip, to: "/viaje", active: pathname.startsWith("/viaje"), done: false, later: !decided },
-  ];
+  // Deciding the place and the dates together (ROADMAP 2.7): one step for
+  // both, and the window until a destination brings its dates.
+  const together = decidesPlaceFirst(plan);
+  const steps = together
+    ? [
+        { n: 1, label: t.whereWhen, to: dondeHome, active: inDonde, done: decided, later: false },
+        { n: 2, label: t.theTrip, to: "/viaje", active: pathname.startsWith("/viaje"), done: false, later: !decided },
+      ]
+    : [
+        { n: 1, label: t.when, to: "/fechas", active: pathname.startsWith("/fechas"), done: state.datesDecided, later: false },
+        { n: 2, label: t.where, to: dondeHome, active: inDonde, done: decided, later: false },
+        { n: 3, label: t.theTrip, to: "/viaje", active: pathname.startsWith("/viaje"), done: false, later: !decided },
+      ];
+  const range = together && !state.datesDecided && plan.window ? rangeLabel(plan.window.from, plan.window.to) : rangeLabel(plan.dateFrom, plan.dateTo);
   const extra = (to: string) =>
     to === "/revisar" && pending > 0 ? String(pending) : to === "/votacion" && plan.status === "voting" ? t.open : to === "/votacion" && decided ? t.closed : null;
 
@@ -169,7 +180,7 @@ function TripBar({ end }: { end?: ReactNode }) {
         <div className="flex min-w-0 items-center gap-3">
           <TripSwitcher />
           <span className="hidden text-sm whitespace-nowrap text-muted xl:inline">
-            {rangeLabel(plan.dateFrom, plan.dateTo)} · {t.persons(plan.partySize)}
+            {range} · {t.persons(plan.partySize)}
           </span>
         </div>
         <nav aria-label={t.tripSteps} className="flex items-center gap-1 max-sm:w-full">

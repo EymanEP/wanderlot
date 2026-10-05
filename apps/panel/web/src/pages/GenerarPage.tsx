@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import { addDaysIso, copy, type SuggestionView } from "@wanderlot/core";
+import { addDaysIso, copy, rangeLabel, type SuggestionView, decidesPlaceFirst } from "@wanderlot/core";
 import { Badge, Button, Heading, Notice, nightsBetween, useCopy, useToast } from "@wanderlot/ui";
 import { IdeasCard } from "../components/IdeasCard.tsx";
 import { JobCard } from "../components/JobCard.tsx";
@@ -27,6 +27,7 @@ const COPY = copy({
     ),
     title: "Propuestas generadas",
     people: (n: number) => `${n} personas`,
+    inWindow: (range: string, n: number) => `${n} noches entre el ${range}`,
     newOnes: (n: number): string => `${n} ${n === 1 ? "propuesta nueva" : "propuestas nuevas"}`,
     stopped: "Búsqueda detenida",
     finished: "Búsqueda terminada",
@@ -65,6 +66,7 @@ const COPY = copy({
     ),
     title: "Generated proposals",
     people: (n: number) => `${n} people`,
+    inWindow: (range: string, n: number) => `${n} nights within ${range}`,
     newOnes: (n: number): string => `${n} ${n === 1 ? "new proposal" : "new proposals"}`,
     stopped: "Search stopped",
     finished: "Search finished",
@@ -97,6 +99,7 @@ export function GenerarPage() {
   const plan = usePlan();
   const toast = useToast();
   const { generation, proposals, status } = state;
+  const placeWindow = decidesPlaceFirst(plan) && !state.datesDecided && plan.window ? { ...plan.window, nights: plan.nights } : null;
   const initial = searchFromPlan(plan, status?.flights !== "none", state.settings?.homeTown ?? "");
   // A search running in the background (from the panel at /admin) counts
   // as running too: one at a time per trip.
@@ -147,13 +150,12 @@ export function GenerarPage() {
     if (!v.start || !v.end) return toast(t.pickDates);
     if (v.scope === "place" && !v.place.trim()) return toast(t.writePlace);
     // Dates, people, budget and origin belong to the plan: save them first.
+    // Dates decided with the place (ROADMAP 2.7) stay as they are.
     try {
       await savePlan({
         ...plan,
         origin: originCode(v.origin, plan.origin),
-        dateFrom: v.start,
-        dateTo: v.end,
-        nights: nightsBetween(v.start, v.end),
+        ...(placeWindow ? {} : { dateFrom: v.start, dateTo: v.end, nights: nightsBetween(v.start, v.end) }),
         flexDays: v.flexDays,
         partySize: v.people,
         maxPriceCents: v.maxPrice === null ? null : v.maxPrice * 100,
@@ -187,7 +189,7 @@ export function GenerarPage() {
             </Notice>
           ) : (
             // Keyed so switching plans resets the form to the new plan.
-            <SearchForm key={`${plan.id}:${state.settings?.homeTown ?? ""}`} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} {...(status?.ai ? { ai: status.ai } : {})} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
+            <SearchForm key={`${plan.id}:${state.settings?.homeTown ?? ""}`} window={placeWindow} initial={initial} onSubmit={onSubmit} count={COUNT} existing={proposals.length} running={running} flightsConnected={status?.flights !== "none"} {...(status?.ai ? { ai: status.ai } : {})} min={addDaysIso(now.toISOString().slice(0, 10), 1)} />
           )}
         </div>
 
@@ -198,7 +200,7 @@ export function GenerarPage() {
                 {t.title}
               </Heading>
               <span className="text-sm text-muted">
-                {plan.name} · {rangeSummary(initial)} · {t.people(plan.partySize)} · {t.stops[stops]}
+                {plan.name} · {placeWindow ? t.inWindow(rangeLabel(placeWindow.from, placeWindow.to), placeWindow.nights) : rangeSummary(initial)} · {t.people(plan.partySize)} · {t.stops[stops]}
               </span>
             </div>
             {generation && !running && !generation.error && (

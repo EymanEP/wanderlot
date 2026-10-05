@@ -226,7 +226,9 @@ The panel reads these from `.env` (written by `npm run setup`) or the environmen
   `/admin` for the organiser's phone; with an AI key shared, it reads
   screenshots and searches in the background.
 - Dates can be agreed first: the organiser proposes a few windows, each friend
-  says yes, if need be or no, and the chosen one becomes the trip's dates.
+  says yes, if need be or no, and the chosen one becomes the trip's dates. Or
+  the place and its dates are decided together: within a month or two,
+  research finds each destination's best dates and the group votes on them.
 - Getting there counts: with the group's home town set, research estimates
   getting to each destination's departure airport and back (car or bus or
   train), and it's part of the per-person price the group votes on.

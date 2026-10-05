@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
 import { addDaysIso, airportCity, copy } from "@wanderlot/core";
-import { Button, Card, Field, Notice, PageHeader, TextInput, nightsBetween, useCopy, type DateRange } from "@wanderlot/ui";
+import { Button, Card, Field, Notice, PageHeader, RadioCard, TextInput, nightsBetween, useCopy, type DateRange } from "@wanderlot/ui";
+import { WindowField, windowOf, type Month } from "../components/WindowField.tsx";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { originCode } from "../components/SearchForm.tsx";
 import { TripDates, type FlexDays } from "../components/TripDates.tsx";
@@ -17,6 +18,12 @@ const COPY = copy({
     name: "Nombre",
     namePlaceholder: "Semana Santa 2027",
     from: "Salimos desde",
+    order: "Qué decidís primero",
+    datesFirst: "Las fechas",
+    datesFirstHint: "Elegís los días (o votáis entre varias opciones) y luego el destino.",
+    placeFirst: "El destino, con sus fechas",
+    placeFirstHint: "Dais uno o dos meses y cuántas noches: cada propuesta trae sus mejores fechas y se vota todo junto.",
+    pickMonths: "Elige el mes, o los dos meses, en que puede ser el viaje",
     creating: "Creando…",
     create: "Crear el plan",
   },
@@ -27,6 +34,12 @@ const COPY = copy({
     name: "Name",
     namePlaceholder: "Easter 2027",
     from: "Flying from",
+    order: "What you decide first",
+    datesFirst: "The dates",
+    datesFirstHint: "You pick the days (or vote between options), then the destination.",
+    placeFirst: "The destination, with its dates",
+    placeFirstHint: "You give a month or two and how many nights: each proposal brings its best dates and it's all voted together.",
+    pickMonths: "Choose the month, or two months, the trip could be in",
     creating: "Creating…",
     create: "Create the plan",
   },
@@ -44,6 +57,10 @@ export function NewPlanPage() {
   // No dates until the organiser picks them; the calendar opens on this month.
   const [dates, setDates] = useState<DateRange>({ start: null, end: null });
   const [flexDays, setFlexDays] = useState<FlexDays>(1);
+  // Or the place first, with its dates (ROADMAP 2.7).
+  const [placeFirst, setPlaceFirst] = useState(false);
+  const [months, setMonths] = useState<[Month, Month] | null>(null);
+  const [nights, setNights] = useState(5);
   // Everyone in the group by default; untick who isn't coming. The group may
   // still be loading on arrival, so fill it in once it's there.
   const [going, setGoing] = useState<string[] | null>(null);
@@ -57,11 +74,22 @@ export function NewPlanPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const { start, end } = dates;
-    if (!start || !end) return setError(t.pickDates);
+    if (placeFirst ? !months : !start || !end) return setError(placeFirst ? t.pickMonths : t.pickDates);
+    const placeWindow = placeFirst ? windowOf(months!, today) : null;
     setBusy(true);
     setError(null);
     try {
-      await createPlan({ name: name.trim(), origin: originCode(origin, origin0), dateFrom: start, nights: nightsBetween(start, end), flexDays, partySize: Math.max(1, (going ?? []).length), participants: going ?? [], maxPriceCents: maxPrice === null ? null : maxPrice * 100 });
+      await createPlan({
+        name: name.trim(),
+        origin: originCode(origin, origin0),
+        dateFrom: placeWindow ? placeWindow.from : start!,
+        nights: placeWindow ? nights : nightsBetween(start!, end!),
+        flexDays,
+        partySize: Math.max(1, (going ?? []).length),
+        participants: going ?? [],
+        maxPriceCents: maxPrice === null ? null : maxPrice * 100,
+        ...(placeWindow ? { datesBy: "place" as const, window: placeWindow } : {}),
+      });
       navigate("/generar");
     } catch (err) {
       setError((err as Error).message);
@@ -80,11 +108,22 @@ export function NewPlanPage() {
           <Field label={t.from}>
             {({ inputId }) => <TextInput id={inputId} value={origin} onChange={(e) => setOrigin(e.target.value)} />}
           </Field>
-          <TripDates value={dates} onChange={setDates} flexDays={flexDays} onFlexChange={setFlexDays} min={addDaysIso(today, 1)} />
+          <div role="radiogroup" aria-label={t.order} className="flex flex-col gap-2">
+            <span className="text-[13px] font-bold">{t.order}</span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <RadioCard name="orden" title={t.datesFirst} description={t.datesFirstHint} checked={!placeFirst} onChange={() => setPlaceFirst(false)} />
+              <RadioCard name="orden" title={t.placeFirst} description={t.placeFirstHint} checked={placeFirst} onChange={() => setPlaceFirst(true)} />
+            </div>
+          </div>
+          {placeFirst ? (
+            <WindowField today={today} months={months} onMonthsChange={setMonths} nights={nights} onNightsChange={setNights} />
+          ) : (
+            <TripDates value={dates} onChange={setDates} flexDays={flexDays} onFlexChange={setFlexDays} min={addDaysIso(today, 1)} />
+          )}
           <WhoGoes people={state.members} value={going ?? []} onChange={setGoing} />
           <BudgetField value={maxPrice} onChange={setMaxPrice} max={1500} />
           {error && <Notice role="alert">{error}</Notice>}
-          <Button type="submit" variant="primary" size="lg" disabled={busy || !name.trim() || !dates.end}>
+          <Button type="submit" variant="primary" size="lg" disabled={busy || !name.trim() || (placeFirst ? !months : !dates.end)}>
             {busy ? t.creating : t.create}
           </Button>
         </Card>

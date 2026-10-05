@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router";
-import { baseStay, copy, euros, flightDetailsKnown, flightPriceCents, checkedLabel, longDate, monthName, pointsFor, researchLabel, tripLabel } from "@wanderlot/core";
+import { baseStay, copy, euros, flightDetailsKnown, flightPriceCents, checkedLabel, longDate, monthName, pointsFor, researchLabel, tripLabel, datesOf, rangeLabel } from "@wanderlot/core";
 import {
   BulletList,
   Card,
@@ -113,9 +113,12 @@ export function DestinoPage() {
   const myPoints = myPos >= 0 ? pointsFor(myPos) : 0;
   const trust = trustOf(d, now);
   const comments = site.comments.filter((c) => c.destinationId === d.id);
-  const month = monthName(plan.dateFrom);
+  // Its own dates, when the trip decides them with the place (ROADMAP 2.7).
+  const own = datesOf(plan, d);
+  const month = monthName(own.dateFrom);
   const approved = d.approvedAt ? t.approved(group.organiserName, longDate(d.approvedAt)) : "";
-  const days = t.days(Number(plan.dateFrom.slice(8)), Number(plan.dateTo.slice(8)), month);
+  // "del 7 al 14 de noviembre", or "28 nov – 3 dic" across two months.
+  const days = own.dateFrom.slice(0, 7) === own.dateTo.slice(0, 7) ? t.days(Number(own.dateFrom.slice(8)), Number(own.dateTo.slice(8)), month) : rangeLabel(own.dateFrom, own.dateTo);
 
   return (
     <Main className="gap-7">

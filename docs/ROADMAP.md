@@ -371,6 +371,25 @@ group chat.
 
 ---
 
+### 2.7 The place and its dates, decided together · M · ⚙️
+
+**Why.** Sometimes the place decides the dates: a festival, the weather, the
+week flights are cheap. Agreeing on dates first, then on a place, makes the
+group guess.
+
+**What it does.** A new trip says what's decided first:
+- **The dates** (as before): a date vote, or dates set, then Dónde.
+- **The place, with its dates:** a month or two (`window`, up to 62 days)
+  and how many nights. Research picks, for each destination, the best dates
+  inside the window: "Grecia, 1–5 nov" and "Grecia, 23–28 nov" can both be
+  on the vote. The trip has one step, "Dónde y cuándo", and Generar shows
+  the window instead of a calendar.
+- **When the vote closes,** the winner's dates become the trip's (its
+  checked prices still hold) and the site asks about days off, as after a
+  date vote.
+
+**Done.**
+
 ## 3. The panel from anywhere, with any AI (or none)
 
 **Why.** Today the panel only runs on the organiser's laptop:
@@ -598,4 +617,5 @@ Not planned in detail yet. They wait until the flows above are in use.
      endpoints, adding by hand, and searching from `/admin` in the
      background. Left: `codex` and `opencode` as local commands.
 5. ~~**Cómo llegar phase 2 (2.3)**, after a real trip with phase 1.~~ Done.
-6. **Later:** currency (Spanish and English are done).
+6. ~~**The place and its dates together (2.7).**~~ Done.
+7. **Later:** currency (Spanish and English are done).

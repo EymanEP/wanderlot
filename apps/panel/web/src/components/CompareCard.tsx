@@ -4,6 +4,7 @@ import { copy, euros, flightPriceCents, tripLabel } from "@wanderlot/core";
 import type { Editorial } from "@wanderlot/mocks";
 import { Button, Card, Checkbox, DataList, DataRow, Field, Heading, IataTile, ProsCons, TextArea, useCopy } from "@wanderlot/ui";
 import { CATEGORY_LABEL, accessLabel, total } from "../lib/view.ts";
+import { DatesChip } from "./DatesChip.tsx";
 
 const COPY = copy({
   es: {
@@ -72,6 +73,7 @@ export function CompareCard({ proposal: p, plan, editorial: e, monthLabel, onCha
           <span className="text-xs text-muted">
             {p.place.country} · {CATEGORY_LABEL[p.category]}
           </span>
+          <DatesChip proposal={p} className="mt-1 w-fit" />
         </div>
       </div>
 

@@ -75,6 +75,8 @@ export interface AiView {
 export interface ManualProposal extends CheckedPrices {
   place: Proposal["place"];
   category: Proposal["category"];
+  // Its own start, in a trip deciding the place and the dates together.
+  dateFrom?: string;
 }
 
 // The panel at /admin: on or off, and where it is.
@@ -239,7 +241,7 @@ export interface PublishStatus {
   changed: boolean;
 }
 
-export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents"> & { participants: string[] };
+export type NewPlan = Pick<Plan, "name" | "origin" | "dateFrom" | "nights" | "flexDays" | "partySize" | "maxPriceCents" | "datesBy" | "window"> & { participants: string[] };
 
 export interface PanelBackend {
   now(): Date;

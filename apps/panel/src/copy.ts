@@ -29,6 +29,7 @@ export const PANEL_COPY = copy({
     oldDeleteTrips: "borrar viajes",
     oldExport: "exportar",
     oldEstimates: "mostrar precios estimados",
+    oldPlaceFirst: "decidir el destino y las fechas a la vez",
     oldChangeDestination: "cambiar de destino",
     oldTripPage: "mostrar la página del viaje",
     oldDatesVote: "votar fechas",
@@ -56,6 +57,10 @@ export const PANEL_COPY = copy({
     pickPeopleDates: "elige quién va al viaje (en Personas) antes de proponer fechas",
     returnAfterOutbound: "la vuelta tiene que ser después de la ida",
     datesVoteOpen: "Hay una votación de fechas abierta: elige una de sus opciones o quítala primero.",
+    badWindow: "Elige entre qué fechas buscar: el final va después del principio.",
+    windowTooLong: (days: number) => `La ventana puede ser de ${days} días como mucho (unos dos meses).`,
+    nightsBeyondWindow: "El viaje no cabe en esa ventana: alárgala o quita noches.",
+    pickDatesInWindow: "Elige cuándo empieza, dentro de la ventana del viaje.",
   },
   en: {
     aiShape: "The AI's answer didn't come back as expected. Try again; if it keeps happening, do it by hand.",
@@ -76,6 +81,7 @@ export const PANEL_COPY = copy({
     oldDeleteTrips: "delete trips",
     oldExport: "export",
     oldEstimates: "show estimated prices",
+    oldPlaceFirst: "decide the place and the dates together",
     oldChangeDestination: "change the destination",
     oldTripPage: "show the trip page",
     oldDatesVote: "run a dates vote",
@@ -103,6 +109,10 @@ export const PANEL_COPY = copy({
     pickPeopleDates: "choose who's going on the trip (in People) before proposing dates",
     returnAfterOutbound: "the return has to be after the outbound flight",
     datesVoteOpen: "There's a dates vote open: choose one of its options or remove it first.",
+    badWindow: "Choose between which dates to look: the end goes after the start.",
+    windowTooLong: (days: number) => `The window can be ${days} days at most (about two months).`,
+    nightsBeyondWindow: "The trip doesn't fit in that window: widen it or take nights off.",
+    pickDatesInWindow: "Choose when it starts, within the trip's window.",
   },
 });
 

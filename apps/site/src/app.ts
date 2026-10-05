@@ -950,6 +950,7 @@ export function createApp({ store, adminToken, rp, now = () => new Date(), index
         votedByMe: settled.ballots.some((b) => b.memberId === me),
         ...(dates ? { datesOpen: dates.status === "open", datesAnsweredByMe: answeredAll(dates, me) } : {}),
         ...(settled.snapshot.trip ? { tripReady: true } : {}),
+        ...(plan.datesBy === "place" && plan.window && !winner ? { datesWindow: plan.window } : {}),
       });
     }
     return c.json(list);

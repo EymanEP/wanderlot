@@ -728,6 +728,33 @@ describe("Personas", () => {
 });
 
 describe("Nuevo plan", () => {
+  it("can decide the place and the dates together, within a month or two", async () => {
+    const user = userEvent.setup();
+    renderAt("/planes/nuevo");
+    await user.type(await screen.findByLabelText("Nombre"), "Otoño en Grecia");
+    await user.click(screen.getByLabelText(/^El destino, con sus fechas/));
+    // Months, not days: November, then December next to it.
+    expect(screen.queryByRole("button", { name: "Mes siguiente" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "noviembre" }));
+    await user.click(screen.getByRole("button", { name: "diciembre" }));
+    expect(screen.getByRole("button", { name: "noviembre" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "diciembre" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Crear el plan" }));
+    expect(await screen.findByText(/Todavía no hay propuestas para Otoño en Grecia/)).toBeTruthy();
+    // One step for both, and Generar shows the window instead of a calendar.
+    expect(screen.getByRole("link", { name: /Dónde y cuándo/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /^1\s*Cuándo/ })).toBeNull();
+    expect(screen.getByText("Del 1 de noviembre al 31 de diciembre · 5 noches")).toBeTruthy();
+    // A search brings each destination with its own dates.
+    await user.click(screen.getByRole("button", { name: "Destino" }));
+    await user.click(screen.getByRole("option", { name: "Destino concreto…" }));
+    await user.type(screen.getByLabelText("¿Adónde?"), "Atenas");
+    await user.click(screen.getByRole("button", { name: "Investigar Atenas" }));
+    expect(await screen.findByText("Búsqueda terminada", undefined, { timeout: 5000 })).toBeTruthy();
+    const card = screen.getByRole("article", { name: "Atenas" });
+    expect(within(card).getByText("1 – 6 nov")).toBeTruthy();
+  });
+
   it("opens on this month, takes start and end days, and creates the plan", async () => {
     const user = userEvent.setup();
     renderAt("/planes/nuevo");
@@ -923,7 +950,7 @@ describe("Cuándo", () => {
     renderAt("/fechas");
     const step = await screen.findByRole("link", { name: /Cuándo/ });
     expect(step.textContent).toMatch(/^1/);
-    const card = screen.getByRole("heading", { name: "¿Ya sabéis las fechas?" }).closest("div")!.parentElement!;
+    const card = (await screen.findByRole("heading", { name: "¿Ya sabéis las fechas?" })).closest("div")!.parentElement!;
     await user.click(within(card).getByRole("button", { name: "Fijar estas fechas" }));
     expect(await screen.findByText("Fechas decididas")).toBeTruthy();
     expect(screen.getByRole("link", { name: /Cuándo/ }).textContent).not.toMatch(/^1/);

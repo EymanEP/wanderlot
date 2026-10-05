@@ -17,8 +17,8 @@ const photo = {
   alt: "Tranvía en Alfama",
 };
 
-function card(photos: (typeof photo)[]) {
-  const d = destination("lis", { photos });
+function card(photos: (typeof photo)[], own: { dateFrom?: string; dateTo?: string } = {}) {
+  const d = destination("lis", { photos, ...own });
   const plan = { ...snapshot([d]).plan, status: "voting" } as Plan;
   render(
     <MemoryRouter>
@@ -32,6 +32,14 @@ describe("DestinationCard", () => {
     card([photo]);
     const img = screen.getByRole("img", { name: "Tranvía en Alfama" }) as HTMLImageElement;
     expect(img.src).toBe(photo.url);
+  });
+
+  it("shows its own dates when the trip decides them with the place", () => {
+    card([], { dateFrom: "2026-11-23", dateTo: "2026-11-28" });
+    expect(screen.getByText("23 – 28 nov")).toBeTruthy();
+    cleanup();
+    card([]);
+    expect(screen.queryByText(/– \d+ nov$/)).toBeNull();
   });
 
   it("shows a placeholder until photos are picked", () => {

@@ -45,6 +45,7 @@ The organising unit: one named trip window.
 | `voteDeadline` | set when voting opens |
 | `winnerDestinationId` | where they're going: set when closed; the vote's winner unless the organiser chose another |
 | `decidedNote` | optional, up to 300 characters: why the organiser chose another destination |
+| `datesBy`, `window` | what's decided first (ROADMAP 2.7): `dates` (or absent), or `place`: the place and its dates together, within `window: { from, to }` of up to 62 days. Until a destination wins, `dateFrom` is the window's start and `nights` the trip's length; the winner's dates then become the plan's, its prices still holding, and the site asks about days off. Needs site API version 16 |
 
 A plan in `draft` exists only in the panel. The site sees a plan from its first
 publish onwards.
@@ -61,6 +62,7 @@ One candidate the research produced. Never leaves the machine unless approved.
 | `stays` | 0–2 accommodation options (`name`, `kind`, `description?`, whole-group `nightlyCents`), one may be `recommended` |
 | `todo`, `see` | lists of specific things ("Qué hacer", "Qué ver"), each `{ title, detail? }` |
 | `provenance` | §3 |
+| `dateFrom?`, `dateTo?` | its own dates, in a plan with `datesBy: place`: within the window, always `nights` long. Research picks them from the flight it found; a destination added by hand asks when it starts. Shown with the destination in the panel and on the site |
 | `access?` | getting from the group's home town to the departure airport and back (ROADMAP 2.3): the way that counts, `{ home, mode, title, detail?, minutes (one way) \| null, cents (per person, both ways), checked? }`, and up to 3 `alternatives` with the same fields. Research proposes 2–4 ways (car with parking, bus, train), the one it recommends first; the organiser can switch to another and correct its price with the prices (`checked`). Absent: not worked out |
 | `review` | `pending` \| `approved` \| `discarded` |
 | `sources` | list of `{label, url}` — required when provenance is `claude` |
