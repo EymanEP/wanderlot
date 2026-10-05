@@ -60,3 +60,11 @@ export const HeartIcon = make(<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 
 export const ExternalIcon = make(<><path d="M14 4h6v6" /><path d="M20 4 11 13" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>, { strokeWidth: 1.8 });
 export const MenuIcon = make(<><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></>, { strokeWidth: 1.9 });
 export const TrophyIcon = make(<><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0z" /><path d="M17 5h3v2a3 3 0 0 1-3 3" /><path d="M7 5H4v2a3 3 0 0 0 3 3" /></>, { strokeWidth: 1.8 });
+export const BusIcon = make(<><rect x="5" y="3.5" width="14" height="14" rx="2.5" /><path d="M5 11h14" /><path d="M8 20.5v-3M16 20.5v-3" /><path d="M8.5 14.5h.01M15.5 14.5h.01" /></>, { strokeWidth: 1.7 });
+export const TrainIcon = make(<><rect x="6" y="3" width="12" height="13.5" rx="3" /><path d="M6 10h12" /><path d="m8.5 21 2-4.5M15.5 21l-2-4.5" /><path d="M9.5 13.3h.01M14.5 13.3h.01" /></>, { strokeWidth: 1.7 });
+export const WalkIcon = make(<><circle cx="13" cy="4.5" r="1.6" /><path d="m10.5 21 2.2-6.5-2.2-3 1-4.2 3 3 3 1.2" /><path d="M10.5 8.8 7.5 12" /><path d="m12.7 14.5 2.8 2.5.8 4" /></>, { strokeWidth: 1.7 });
+export const ForkIcon = make(<><path d="M6.5 3v7a2 2 0 0 0 2 2v9" /><path d="M10.5 3v7a2 2 0 0 1-2 2" /><path d="M17.5 21V3c-2.2 1.2-3.3 4-3.3 8h3.3" /></>, { strokeWidth: 1.7 });
+export const CameraIcon = make(<><path d="M3.5 8.5h3.2l1.8-2.8h7l1.8 2.8h3.2v10.5h-17z" /><circle cx="12" cy="13.3" r="3.3" /></>, { strokeWidth: 1.7 });
+export const PinIcon = make(<><path d="M12 21s-6.5-5.6-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z" /><circle cx="12" cy="9.8" r="2.3" /></>, { strokeWidth: 1.7 });
+export const StarIcon = make(<path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z" />, { strokeWidth: 1.7 });
+export const InfoIcon = make(<><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5" /><path d="M12 7.6h.01" /></>, { strokeWidth: 1.8 });
