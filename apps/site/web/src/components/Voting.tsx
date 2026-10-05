@@ -1,6 +1,6 @@
 // Pieces of the Votación page.
 import { Link } from "react-router";
-import { copy, currentLocale, euros, pick, type Destination, type TallyResult } from "@wanderlot/core";
+import { copy, currentLocale, euros, pick, type Destination, type TallyResult, rangeLabel } from "@wanderlot/core";
 import type { Person } from "../data/store.tsx";
 import { ArrowDownIcon, ArrowUpIcon, Avatar, Button, Card, Heading, IataTile, IconButton, LockIcon, Text, TrophyIcon, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import { flightLabel, groupWord, pointsWord } from "../lib/view.ts";
@@ -59,7 +59,8 @@ const COPY = copy({
 });
 
 function meta(d: Destination): string {
-  return `${d.place.country} · ${euros(d.totalPerPersonCents)} ${pick(COPY).perPerson} · ${flightLabel(d)}`;
+  const own = d.dateFrom && d.dateTo ? `${rangeLabel(d.dateFrom, d.dateTo)} · ` : "";
+  return `${own}${d.place.country} · ${euros(d.totalPerPersonCents)} ${pick(COPY).perPerson} · ${flightLabel(d)}`;
 }
 
 function PointsBox({ points, strong }: { points: number; strong: boolean }) {

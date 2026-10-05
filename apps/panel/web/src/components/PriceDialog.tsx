@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
-import { airbnbUrl, baseStay, copy, currentLocale, duration, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal } from "@wanderlot/core";
+import { airbnbUrl, baseStay, copy, currentLocale, duration, euros, flightDetailsKnown, flightPriceCents, googleFlightsUrl, localTime, shortDate, stayTotalCents, pick, stopsLabel, type Plan, type Proposal, datesOf } from "@wanderlot/core";
 import { Button, CarIcon, Dialog, ExternalIcon, Field, HouseIcon, Notice, PlaneIcon, RadioCard, TextInput, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Browsed, Extracted, ExtractedLeg, FlightChoice, PriceSave, ScreenshotImage, SearchStep } from "../data/backend.ts";
 import type { Task } from "../data/store.tsx";
@@ -329,6 +329,8 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
   const stayShare = stayCents === null || stayCents === undefined ? stayCents : Math.round(stayCents / people);
   // Only when research worked it out: there's an estimate to correct.
   const accessCents = p?.access ? toCents(access) : undefined;
+  // Its own dates, when the trip decides them with the place (ROADMAP 2.7).
+  const dates = datesOf(plan, p);
   const ways = p?.access ? [p.access, ...(p.access.alternatives ?? [])] : [];
   const way = ways[choice];
   const chooseWay = (i: number) => {
@@ -473,7 +475,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
       open={p !== undefined}
       wide
       title={p ? t.title(p.place.city) : ""}
-      subtitle={`${shortDate(plan.dateFrom)} – ${shortDate(plan.dateTo)} · ${t.nights(plan.nights)} · ${t.people(people)}`}
+      subtitle={`${shortDate(dates.dateFrom)} – ${shortDate(dates.dateTo)} · ${t.nights(plan.nights)} · ${t.people(people)}`}
       onClose={onClose}
       actions={
         <>
@@ -569,7 +571,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
           <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
             <div className="w-full sm:w-[220px]">{euroInput(t.flightInput, t.perPersonPrice, flights, setFlights)}</div>
             {p && (
-              <a href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)} target="_blank" rel="noreferrer" className={cn(linkClass, "pb-3")}>
+              <a href={googleFlightsUrl(p.outbound.from, p.outbound.to, dates.dateFrom, dates.dateTo)} target="_blank" rel="noreferrer" className={cn(linkClass, "pb-3")}>
                 {t.openGoogle} <ExternalIcon size={13} />
               </a>
             )}
@@ -605,7 +607,7 @@ export function PriceDialog({ proposal: p, plan, onSave, onClose, onExtract, bro
             <div className="flex flex-wrap items-center gap-1">
               {p && (
                 <a
-                  href={airbnbUrl({ city: p.place.city, dateFrom: plan.dateFrom, dateTo: plan.dateTo, partySize: people }, stay?.url)}
+                  href={airbnbUrl({ city: p.place.city, ...dates, partySize: people }, stay?.url)}
                   target="_blank"
                   rel="noreferrer"
                   className={buttonClasses({ size: "sm", variant: "secondary" })}

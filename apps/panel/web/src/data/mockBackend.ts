@@ -208,7 +208,15 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
   };
   const setPlan = (planId: string, patch: Partial<Plan>) => {
     const e = entry(planId);
-    entries.set(planId, { ...e, plan: { ...e.plan, ...patch } });
+    const plan = { ...e.plan, ...patch };
+    // Deciding the place and the dates together: where they're going brings
+    // its dates, as the real panel does.
+    const won = plan.datesBy === "place" && plan.winnerDestinationId ? e.proposals.find((p) => p.id === plan.winnerDestinationId) : undefined;
+    if (won?.dateFrom && won.dateTo) {
+      entries.set(planId, { ...e, plan: { ...plan, dateFrom: won.dateFrom, dateTo: won.dateTo, nights: nightsOf({ dateFrom: won.dateFrom, dateTo: won.dateTo }) }, datesDecided: true });
+      return;
+    }
+    entries.set(planId, { ...e, plan });
   };
 
   // Ajustes: the laptop has the claude command; the site, no key yet.
@@ -267,7 +275,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       aiActive = id;
       return aiView();
     },
-    async addProposal(planId, { place, category, ...prices }) {
+    async addProposal(planId, { place, category, dateFrom: ownStart, ...prices }) {
       const e = entry(planId);
       const base = slugify(place.city) || place.iata.toLowerCase();
       let id = base;
@@ -279,8 +287,9 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
           planId,
           place,
           category,
-          outbound: leg(e.plan.origin, place.iata, e.plan.dateFrom),
-          inbound: leg(place.iata, e.plan.origin, e.plan.dateTo),
+          outbound: leg(e.plan.origin, place.iata, ownStart ?? e.plan.dateFrom),
+          inbound: leg(place.iata, e.plan.origin, ownStart ? addDaysIso(ownStart, e.plan.nights) : e.plan.dateTo),
+          ...(ownStart ? { dateFrom: ownStart, dateTo: addDaysIso(ownStart, e.plan.nights) } : {}),
           stays: [],
           todo: [],
           see: [],
@@ -305,7 +314,8 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       let id = base;
       for (let n = 2; entries.has(id); n++) id = `${base}-${n}`;
       const { participants: going, ...fields } = p;
-      const plan: Plan = { ...fields, id, dateTo: addDaysIso(p.dateFrom, p.nights), status: "draft" };
+      const start = p.datesBy === "place" && p.window ? p.window.from : p.dateFrom;
+      const plan: Plan = { ...fields, id, dateFrom: start, dateTo: addDaysIso(start, p.nights), status: "draft" };
       entries.set(id, { plan, proposals: [], editorial: {} });
       participants.set(id, going);
       return plan;
@@ -378,6 +388,19 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
       // research would estimate (ROADMAP 2.3). Remembered as the setting.
       const home = (opts.home ?? settings.homeTown ?? "").trim();
       if (opts.home) settings = { ...settings, homeTown: opts.home };
+      // Deciding the place and the dates together: each one on its own
+      // dates, spread over the window.
+      const placed = entry(planId);
+      const spread = placed.plan.datesBy === "place" && placed.plan.window && !placed.datesDecided ? placed.plan.window : null;
+      let nth = 0;
+      const dated = (p: Proposal): Proposal => {
+        if (!spread) return p;
+        const span = Math.max(0, nightsOf({ dateFrom: spread.from, dateTo: spread.to }) - placed.plan.nights);
+        const start = addDaysIso(spread.from, (nth++ * 9) % (span + 1));
+        const end = addDaysIso(start, placed.plan.nights);
+        const at = (iso: string, day: string) => `${day}${iso.slice(10)}`;
+        return { ...p, dateFrom: start, dateTo: end, outbound: { ...p.outbound, departAt: at(p.outbound.departAt, start), arriveAt: at(p.outbound.arriveAt, start) }, inbound: { ...p.inbound, departAt: at(p.inbound.departAt, end), arriveAt: at(p.inbound.arriveAt, end) } };
+      };
       const reach = (p: Proposal): Proposal =>
         home
           ? {
@@ -410,7 +433,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         const taken = new Set(entry(planId).proposals.map((p) => p.id));
         let id = base.place.iata.toLowerCase();
         for (let n = 2; taken.has(id); n++) id = `${base.place.iata.toLowerCase()}-${n}`;
-        const fresh: Proposal = reach({ ...base, id, planId, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) });
+        const fresh: Proposal = dated(reach({ ...base, id, planId, review: "pending", ...(idea ? { suggestedBy: idea.member.name } : {}) }));
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals, fresh] });
         if (idea) ideas = ideas.map((i) => (i.id === idea.id ? { ...i, status: "researched", proposalId: id } : i));
@@ -427,7 +450,7 @@ export function mockBackend({ tickMs = 650, verifyMs = 1200, hosted = false, hos
         await wait(tickMs / 2, signal);
         onStep?.({ kind: "read", host: "skyscanner.es", url: `https://www.skyscanner.es/vuelos/mad/${p.place.iata.toLowerCase()}` });
         await wait(tickMs / 2, signal);
-        const fresh: Proposal = reach({ ...p, review: e.proposals.find((x) => x.id === p.id)?.review === "approved" ? "approved" : "pending" });
+        const fresh: Proposal = dated(reach({ ...p, review: e.proposals.find((x) => x.id === p.id)?.review === "approved" ? "approved" : "pending" }));
         const cur = entry(planId);
         entries.set(planId, { ...cur, proposals: [...cur.proposals.filter((x) => x.id !== p.id), fresh] });
         onProposal(fresh);

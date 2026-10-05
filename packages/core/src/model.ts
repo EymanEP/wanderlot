@@ -167,6 +167,10 @@ export const Proposal = z.object({
   suggestedBy: z.string().min(1).max(60).optional(),
   // Absent: not worked out (no home town known when it was researched).
   access: Access.optional(),
+  // Its own dates, in a trip that decides the place and the dates together
+  // (ROADMAP 2.7): somewhere in the trip's window, always the trip's nights.
+  dateFrom: isoDate.optional(),
+  dateTo: isoDate.optional(),
   review: z.enum(["pending", "approved", "discarded"]),
 });
 export type Proposal = z.infer<typeof Proposal>;
@@ -200,6 +204,14 @@ export const Plan = z.object({
   // organiser chose after it, with a note saying why.
   winnerDestinationId: id.optional(),
   decidedNote: z.string().max(300).optional(),
+  // What's decided first (ROADMAP 2.7): the dates (absent too), or the
+  // place and its dates together, picked within the window (up to two
+  // months). Until then the plan's own dates are the window's start.
+  datesBy: z.enum(["dates", "place"]).optional(),
+  window: z
+    .object({ from: isoDate, to: isoDate })
+    .refine((w) => w.to > w.from, "el final de la ventana va después del principio")
+    .optional(),
 });
 export type Plan = z.infer<typeof Plan>;
 
@@ -342,6 +354,9 @@ export const PlanSummary = z.object({
   // A date vote is open (ROADMAP 2.1), and whether this person has answered it.
   datesOpen: z.boolean().optional(),
   datesAnsweredByMe: z.boolean().optional(),
+  // Deciding the place and the dates together, before a destination is
+  // chosen (ROADMAP 2.7): the window each destination's dates fall in.
+  datesWindow: z.object({ from: isoDate, to: isoDate }).optional(),
   // The trip page is published (ROADMAP 2.2).
   tripReady: z.boolean().optional(),
 });
@@ -372,5 +387,6 @@ export interface SuggestionView {
 // without sources. 12: searching from /admin in the background. 13: days off,
 // and settling the dates on the site without publishing. 14: the group's
 // language, and the site in English. 15: getting to the departure airport
-// in each destination's total.
-export const SITE_API_VERSION = 15;
+// in each destination's total. 16: deciding the place and the dates
+// together, each destination with its own dates.
+export const SITE_API_VERSION = 16;

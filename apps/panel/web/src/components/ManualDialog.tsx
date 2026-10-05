@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentProps, type FormEvent } from "react";
-import { copy, type Category, type Plan } from "@wanderlot/core";
+import { addDaysIso, copy, type Category, type Plan } from "@wanderlot/core";
 import { Button, Dialog, Field, Notice, Select, TextInput, useCopy } from "@wanderlot/ui";
 import type { ManualProposal } from "../data/backend.ts";
 import { toCents } from "./PriceDialog.tsx";
@@ -26,6 +26,8 @@ const COPY = copy({
     airport: "Aeropuerto de llegada",
     kind: "Tipo de destino",
     flight: "Vuelo, ida y vuelta · € por persona",
+    start: (n: number) => `Salida (el viaje es de ${n} noches)`,
+    pickStart: "Elige el día de salida, dentro de la ventana del viaje",
     from: (origin: string) => `Desde ${origin}`,
     stay: "Alojamiento (opcional)",
     stayPlaceholder: "Piso en Ribeira, 3 habitaciones",
@@ -53,6 +55,8 @@ const COPY = copy({
     airport: "Arrival airport",
     kind: "Type of destination",
     flight: "Flight, return · € per person",
+    start: (n: number) => `Leaving on (the trip is ${n} nights)`,
+    pickStart: "Choose the day you leave, within the trip's window",
     from: (origin: string) => `From ${origin}`,
     stay: "Stay (optional)",
     stayPlaceholder: "Flat in Ribeira, 3 bedrooms",
@@ -66,6 +70,8 @@ const CATEGORIES: Category[] = ["ciudad", "escapada", "playa", "naturaleza"];
 export interface ManualDialogProps {
   open: boolean;
   plan: Plan;
+  // A trip deciding the place and the dates together: ask when it starts.
+  ownDates?: boolean;
   onSave: (p: ManualProposal) => Promise<void>;
   onClose: () => void;
 }
@@ -73,8 +79,11 @@ export interface ManualDialogProps {
 // "Añadir a mano" (ROADMAP 3.3): a destination the organiser found on their
 // own, with the prices they saw. No AI needed; it goes in approved and
 // checked, and the price dialog can add the flight times later.
-export function ManualDialog({ open, plan, onSave, onClose }: ManualDialogProps) {
+export function ManualDialog({ open, plan, ownDates = false, onSave, onClose }: ManualDialogProps) {
   const t = useCopy(COPY);
+  // Deciding the place and the dates together (ROADMAP 2.7): its own start.
+  const [start, setStart] = useState("");
+  const lastStart = plan.window ? addDaysIso(plan.window.to, -plan.nights) : undefined;
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
   const [iata, setIata] = useState("");
@@ -88,7 +97,7 @@ export function ManualDialog({ open, plan, onSave, onClose }: ManualDialogProps)
 
   useEffect(() => {
     if (!open) return;
-    for (const set of [setCity, setCountry, setIata, setFlights, setStayName, setStayUrl, setStayTotal]) set("");
+    for (const set of [setCity, setCountry, setIata, setFlights, setStayName, setStayUrl, setStayTotal, setStart]) set("");
     setCategory("ciudad");
     setError(null);
   }, [open]);
@@ -102,6 +111,7 @@ export function ManualDialog({ open, plan, onSave, onClose }: ManualDialogProps)
     const stayCents = stayTotal.trim() ? toCents(stayTotal) : undefined;
     if (stayCents === null) return setError(t.badStay);
     if (stayCents !== undefined && !stayName.trim()) return setError(t.nameStay);
+    if (ownDates && !start) return setError(t.pickStart);
     setBusy(true);
     setError(null);
     try {
@@ -109,6 +119,7 @@ export function ManualDialog({ open, plan, onSave, onClose }: ManualDialogProps)
         place: { city: city.trim(), country: country.trim(), iata: code },
         category,
         flightCents,
+        ...(ownDates ? { dateFrom: start } : {}),
         ...(stayCents !== undefined
           ? { stayCents, stay: { name: stayName.trim(), ...(stayUrl.trim() ? { url: stayUrl.trim() } : {}) } }
           : {}),
@@ -147,7 +158,8 @@ export function ManualDialog({ open, plan, onSave, onClose }: ManualDialogProps)
           {text(t.airport, iata, setIata, { required: true, maxLength: 3, placeholder: "OPO", autoCapitalize: "characters" })}
           <Field label={t.kind}>{({ labelId }) => <Select labelledBy={labelId} value={category} options={CATEGORIES.map((c) => ({ value: c, label: t[c] }))} onChange={setCategory} />}</Field>
         </div>
-        <div className="border-t border-line-faint pt-4">
+        <div className="grid gap-3 border-t border-line-faint pt-4 sm:grid-cols-2">
+          {ownDates && text(t.start(plan.nights), start, setStart, { type: "date", required: true, ...(plan.window ? { min: plan.window.from } : {}), ...(lastStart ? { max: lastStart } : {}) })}
           {text(t.flight, flights, setFlights, { required: true, inputMode: "decimal", placeholder: t.from(plan.origin) })}
         </div>
         <div className="grid gap-3 border-t border-line-faint pt-4 sm:grid-cols-2">

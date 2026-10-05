@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
-import { copy } from "@wanderlot/core";
+import { copy, decidesPlaceFirst } from "@wanderlot/core";
 import { ArrowUpIcon, Button, PlusIcon, Checkbox, Chip, Dialog, EmptyState, PageHeader, ScrollRow, Select, TrashIcon, useCopy, useToast } from "@wanderlot/ui";
 import { PanelShell } from "../components/PanelShell.tsx";
 import { PhotoPicker } from "../components/PhotoPicker.tsx";
@@ -320,6 +320,7 @@ export function RevisarPage() {
       <ManualDialog
         open={adding}
         plan={plan}
+        ownDates={decidesPlaceFirst(plan) && !state.datesDecided}
         onClose={() => setAdding(false)}
         onSave={async (p) => {
           const added = await addProposal(p);

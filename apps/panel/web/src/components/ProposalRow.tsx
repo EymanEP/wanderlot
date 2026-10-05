@@ -3,6 +3,7 @@ import type { Plan, Proposal } from "@wanderlot/core";
 import { checkedLabel, copy, euros, researchLabel } from "@wanderlot/core";
 import { Badge, Button, Card, Heading, IataTile, ProvenanceBadge, buttonClasses, useCopy } from "@wanderlot/ui";
 import { generatedLine, total, trustOf } from "../lib/view.ts";
+import { DatesChip } from "./DatesChip.tsx";
 
 const COPY = copy({
   es: {
@@ -48,6 +49,7 @@ export function ProposalRow({ proposal: p, plan, now, verifying, onVerify, canVe
             {p.place.city}
           </Heading>
           <span className="text-sm text-muted">{p.place.country}</span>
+          <DatesChip proposal={p} />
           <ProvenanceBadge trust={trust} label={trust === "stale" ? t.stale : p.provenance.kind === "organiser" ? (p.provenance.seenOn?.length ? checkedLabel(p.provenance)! : t.checked) : (researchLabel(p.provenance) ?? "short")} />
           {p.suggestedBy && <Badge tone="neutral">{t.ideaOf(p.suggestedBy)}</Badge>}
         </div>

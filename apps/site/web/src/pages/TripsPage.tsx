@@ -120,7 +120,7 @@ export function TripsPage() {
                           </Badge>
                         </div>
                         <span className="text-sm text-ink-2">
-                          {tr.datesOpen ? t.datesToDecide : rangeLabel(tr.dateFrom, tr.dateTo)} · {t.people(tr.partySize)}
+                          {tr.datesWindow ? rangeLabel(tr.datesWindow.from, tr.datesWindow.to) : tr.datesOpen ? t.datesToDecide : rangeLabel(tr.dateFrom, tr.dateTo)} · {t.people(tr.partySize)}
                           {tr.destinations !== undefined ? ` · ${t.destinations(tr.destinations)}` : ""}
                         </span>
                         <span className="mt-auto text-sm text-muted">{s.line}</span>

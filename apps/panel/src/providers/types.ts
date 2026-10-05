@@ -29,6 +29,9 @@ export interface SearchRequest {
   // Where the group lives: research works out getting to each departure
   // airport and back (ROADMAP 2.3). Absent: it doesn't.
   home?: string;
+  // Deciding the place and the dates together (ROADMAP 2.7): each proposal
+  // picks its own dates of \`nights\` nights between these days.
+  window?: { from: string; to: string };
 }
 
 export interface Itinerary {

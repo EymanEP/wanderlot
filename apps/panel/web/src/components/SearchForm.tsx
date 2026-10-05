@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { airportCity, copy, type Plan } from "@wanderlot/core";
+import { airportCity, copy, longDate, type Plan } from "@wanderlot/core";
 import { Link } from "react-router";
 import { BudgetField } from "./BudgetField.tsx";
 import { TripDates, datesSummary, type FlexDays } from "./TripDates.tsx";
@@ -23,6 +23,9 @@ const COPY = copy({
     intro: "Nada llega al sitio de la cuadrilla hasta que tú lo apruebes.",
     from: "Salimos desde",
     home: "Vivimos en",
+    window: "Cuándo",
+    windowText: (from: string, to: string, nights: number) => `Del ${from} al ${to} · ${nights} noches`,
+    windowHint: "Claude elige las mejores fechas para cada destino dentro de esa ventana; se vota el destino con ellas.",
     homeHint: "Para sumar lo que cuesta llegar a cada aeropuerto y volver. Déjalo vacío para no contarlo.",
     destination: "Destino",
     any: "Cualquiera",
@@ -59,6 +62,9 @@ const COPY = copy({
     intro: "Nothing reaches the group's site until you approve it.",
     from: "Flying from",
     home: "We live in",
+    window: "When",
+    windowText: (from: string, to: string, nights: number) => `${from} to ${to} · ${nights} nights`,
+    windowHint: "Claude picks the best dates for each destination within that window; the destination is voted with them.",
     homeHint: "To add what getting to each airport and back costs. Leave it empty not to count it.",
     destination: "Destination",
     any: "Anywhere",
@@ -161,11 +167,14 @@ export interface SearchFormProps {
   flightsConnected: boolean;
   // First day that can be picked.
   min: string;
+  // Deciding the place and the dates together (ROADMAP 2.7): the window
+  // shows instead of the calendar, and the dates aren't the form's to set.
+  window?: { from: string; to: string; nights: number } | null;
   // The AI that researches (ROADMAP 3.3), and whether it searches the web.
   ai?: { name: string; search: boolean };
 }
 
-export function SearchForm({ initial, onSubmit, count = 12, existing = 0, running, flightsConnected, min, ai = { name: "Claude", search: true } }: SearchFormProps) {
+export function SearchForm({ initial, onSubmit, count = 12, existing = 0, running, flightsConnected, min, window: placeWindow, ai = { name: "Claude", search: true } }: SearchFormProps) {
   const t = useCopy(COPY);
   const [v, setV] = useState(initial);
   const set = <K extends keyof SearchValues>(k: K, value: SearchValues[K]) => setV((s) => ({ ...s, [k]: value }));
@@ -220,13 +229,21 @@ export function SearchForm({ initial, onSubmit, count = 12, existing = 0, runnin
         </Field>
       )}
 
-      <TripDates
-        value={v}
-        onChange={(r) => setV((s) => ({ ...s, ...r }))}
-        flexDays={v.flexDays}
-        onFlexChange={(f) => set("flexDays", f)}
-        min={v.start && v.start < min ? v.start : min}
-      />
+      {placeWindow ? (
+        <div className="flex flex-col gap-1 rounded-tile bg-accent-soft p-3.5">
+          <span className="text-[13px] font-bold text-accent-strong">{t.window}</span>
+          <span className="text-[15px] font-bold">{t.windowText(longDate(placeWindow.from), longDate(placeWindow.to), placeWindow.nights)}</span>
+          <span className="text-[13px] text-ink-2">{t.windowHint}</span>
+        </div>
+      ) : (
+        <TripDates
+          value={v}
+          onChange={(r) => setV((s) => ({ ...s, ...r }))}
+          flexDays={v.flexDays}
+          onFlexChange={(f) => set("flexDays", f)}
+          min={v.start && v.start < min ? v.start : min}
+        />
+      )}
 
       <p className="m-0 flex flex-wrap items-baseline justify-between gap-2 text-sm">
         <span>

@@ -619,6 +619,65 @@ describe("panel → site", () => {
   });
 });
 
+describe("deciding the place and the dates together (ROADMAP 2.7)", () => {
+  const create = (extra: object) =>
+    json("/api/plans", "POST", { name: "Otoño", origin: "MAD", dateFrom: "2026-11-01", nights: 5, flexDays: 1, partySize: 2, maxPriceCents: null, datesBy: "place", ...extra });
+
+  it("takes a window of up to two months that the trip fits in", async () => {
+    expect((await create({ window: { from: "2026-11-01", to: "2027-01-31" } })).data.error).toMatch(/62 días/);
+    expect((await create({ window: { from: "2026-11-01", to: "2026-11-04" } })).data.error).toMatch(/no cabe/);
+    expect((await create({})).status).toBe(400);
+    const made = await create({ window: { from: "2026-11-01", to: "2026-12-31" } });
+    expect(made.status).toBe(201);
+    expect(made.data).toMatchObject({ datesBy: "place", window: { from: "2026-11-01", to: "2026-12-31" }, dateFrom: "2026-11-01", dateTo: "2026-11-06", nights: 5 });
+    // Research is asked to pick the dates within it.
+    await call(`/api/plans/${made.data.id}/generate`, "POST", { source: "claude", scope: { kind: "europe" }, stops: "direct", estimateStays: true, suggestThings: true });
+    expect(lastRequest?.window).toEqual({ from: "2026-11-01", to: "2026-12-31" });
+  });
+
+  it("votes on each destination with its dates, and the winner's become the trip's", async () => {
+    const id = (await create({ window: { from: "2026-11-01", to: "2026-12-31" } })).data.id as string;
+    const add = (city: string, iata: string, dateFrom?: string) =>
+      json(`/api/plans/${id}/proposals`, "POST", { place: { city, country: "Grecia", iata }, category: "playa", flightCents: 20000, ...(dateFrom ? { dateFrom } : {}) });
+    // By hand: when it starts, inside the window.
+    expect((await add("Atenas", "ATH")).status).toBe(400);
+    expect((await add("Atenas", "ATH", "2026-12-29")).status).toBe(400);
+    const early = (await add("Atenas", "ATH", "2026-11-01")).data;
+    const late = (await add("Atenas", "ATH", "2026-11-23")).data;
+    expect([early.dateFrom, early.dateTo, late.dateFrom, late.dateTo]).toEqual(["2026-11-01", "2026-11-06", "2026-11-23", "2026-11-28"]);
+
+    expect((await json(`/api/plans/${id}/publish`, "POST", { confirm: true })).data.published).toBe(2);
+    await json("/api/members", "PUT", FRIENDS.slice(0, 2));
+    await json(`/api/plans/${id}/participants`, "PUT", ["ana", "bea"]);
+    const message = (await json(`/api/plans/${id}/open-vote`, "POST", { deadline: "2026-10-20T20:00:00Z" })).data.message as string;
+    const token = message.split("\n").find((l) => l.startsWith("• ana:"))!.split("/i/")[1]!;
+    const phone = new SoftAuthenticator(SITE);
+    const opts = (await (await site.request(`/api/invites/${token}/passkey/options`, { method: "POST" })).json()) as any;
+    const joined = await site.request(`/api/invites/${token}/passkey/verify`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ flowId: opts.flowId, response: phone.register(opts.options) }),
+    });
+    const cookie = joined.headers.get("set-cookie")!.split(";")[0]!;
+    // The site shows each one with its own dates.
+    const view = (await (await site.request(`/api/plans/${id}`, { headers: { cookie } })).json()) as any;
+    expect(view.destinations.map((d: any) => d.dateFrom)).toEqual(["2026-11-01", "2026-11-23"]);
+    expect(view.plan).toMatchObject({ datesBy: "place", window: { from: "2026-11-01", to: "2026-12-31" } });
+
+    await site.request(`/api/plans/${id}/ballot`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ ranking: [late.id, early.id] }) });
+    const closed = (await json(`/api/plans/${id}/close`, "POST")).data;
+    expect(closed.result.winnerId).toBe(late.id);
+    // Where they're going brings its dates, here and on the site, where the
+    // group is asked about days off. Its checked price still holds.
+    const entry = (await json(`/api/plans/${id}`)).data;
+    expect(entry.plan).toMatchObject({ dateFrom: "2026-11-23", dateTo: "2026-11-28", nights: 5 });
+    expect(entry.datesDecided).toBe(true);
+    expect(entry.proposals.find((p: any) => p.id === late.id).provenance).not.toHaveProperty("forOtherDates");
+    const leave = (await (await site.request(`/api/plans/${id}`, { headers: { cookie } })).json()) as any;
+    expect(leave.leave).toMatchObject({ dateFrom: "2026-11-23", dateTo: "2026-11-28" });
+  });
+});
+
 describe("plans and settings", () => {
   it("creates draft plans with unique ids and newest first", async () => {
     const input = { name: "Semana Santa 2027", origin: "MAD", dateFrom: "2027-03-23", nights: 5, flexDays: 1, partySize: 6, maxPriceCents: 45000 };

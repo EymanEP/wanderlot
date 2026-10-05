@@ -3,7 +3,7 @@
 // the Comparativa notes (pros, cons, weather) and what to photograph: Claude
 // names subjects, never image URLs (SPEC §6).
 import { z } from "zod";
-import { Category, FlightLeg, Place, Source, Stay, Thing, TransportMode, type Access, type AccessOption } from "@wanderlot/core";
+import { Category, FlightLeg, Place, Source, Stay, Thing, TransportMode, addDaysIso, type Access, type AccessOption } from "@wanderlot/core";
 import type { ResearchResult, SearchRequest } from "./types.ts";
 import { languageLine } from "./language.ts";
 
@@ -83,7 +83,9 @@ export function buildPrompt(req: SearchRequest, who: Researcher = {}): string {
         ]
       : []),
     ...(req.exclude?.length ? [`Ya tenemos propuestas para: ${req.exclude.join(", ")}. Busca destinos distintos a esos.`] : []),
-    `Salida el ${req.dateFrom} (±${req.flexDays} días), ${req.nights} noches, ${req.partySize} personas.`,
+    req.window
+      ? `Las fechas no están decididas: elige para cada propuesta las mejores para ese destino, un viaje de exactamente ${req.nights} noches que salga entre el ${req.window.from} y el ${req.window.to} (y vuelva como tarde el ${req.window.to}), mirando el precio de los vuelos, el tiempo y si hay algo especial esos días. Pueden ser fechas distintas para cada propuesta, y el mismo destino en dos fechas si las dos merecen la pena. ${req.partySize} personas.`
+      : `Salida el ${req.dateFrom} (±${req.flexDays} días), ${req.nights} noches, ${req.partySize} personas.`,
     req.maxPriceCents === null
       ? `Sin tope de precio, pero busca buena relación calidad-precio. ${stops}.`
       : `Tope de ${(req.maxPriceCents / 100).toFixed(0)} € por persona en total. ${stops}.`,
@@ -114,9 +116,13 @@ export function toResults(req: SearchRequest, output: ResearchOutput | z.infer<t
   return output.proposals.map((p, i) => {
     const { sources, pros, cons, weather, photoSubjects, access, ...rest } = p;
     const reach = req.home ? toAccess(req.home, access) : null;
+    // Its own dates, when the trip decides them with the place: from the
+    // day its flight leaves, always the trip's nights.
+    const start = req.window ? p.outbound.departAt.slice(0, 10) : null;
     return {
       proposal: {
         ...rest,
+        ...(start ? { dateFrom: start, dateTo: addDaysIso(start, req.nights) } : {}),
         ...(reach ? { access: reach } : {}),
         id: `${p.place.iata.toLowerCase()}-${i + 1}`,
         planId: req.planId,

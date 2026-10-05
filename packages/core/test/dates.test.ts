@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DateWindows, answeredAll, bestDateOptions, dateCounts, type DatesView } from "../src/dates.ts";
+import { DateWindows, answeredAll, bestDateOptions, dateCounts, datesOf, decidesPlaceFirst, type DatesView } from "../src/dates.ts";
 
 const view = (responses: DatesView["responses"]): DatesView => ({
   status: "open",
@@ -48,5 +48,16 @@ describe("who can go when", () => {
     expect(bestDateOptions(view([r("ana", { [A]: "yes", [B]: "yes", [C]: "no" }), r("bea", { [A]: "no", [B]: "yes", [C]: "yes" })]))).toEqual([B]);
     expect(bestDateOptions(view([r("ana", { [A]: "yes", [B]: "yes", [C]: "yes" }), r("bea", { [A]: "no", [B]: "maybe", [C]: "no" })]))).toEqual([B]);
     expect(bestDateOptions(view([r("ana", { [A]: "yes", [B]: "yes", [C]: "no" })]))).toEqual([A, B]);
+  });
+});
+
+describe("deciding the place and the dates together", () => {
+  const plan = { dateFrom: "2026-11-01", dateTo: "2026-11-06" };
+  it("uses a destination's own dates, else the trip's", () => {
+    expect(datesOf(plan, { dateFrom: "2026-11-23", dateTo: "2026-11-28" })).toEqual({ dateFrom: "2026-11-23", dateTo: "2026-11-28" });
+    expect(datesOf(plan, {})).toEqual(plan);
+    expect(datesOf(plan)).toEqual(plan);
+    expect(decidesPlaceFirst({ datesBy: "place" })).toBe(true);
+    expect(decidesPlaceFirst({})).toBe(false);
   });
 });

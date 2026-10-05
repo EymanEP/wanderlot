@@ -137,6 +137,22 @@ describe("claude research provider", () => {
     expect(buildPrompt(req)).toContain("Deja access vacío.");
   });
 
+  it("lets each proposal bring its own dates when the trip decides them with the place", async () => {
+    const provider = claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources }] })));
+    const out = [];
+    for await (const p of provider.research({ ...req, nights: 5, window: { from: "2026-11-01", to: "2026-12-31" } })) out.push(p);
+    const start = lisbon.outbound.departAt.slice(0, 10);
+    expect(out[0]!.proposal).toMatchObject({ dateFrom: start });
+    expect(out[0]!.proposal.dateTo! > start).toBe(true);
+    const prompt = buildPrompt({ ...req, nights: 5, window: { from: "2026-11-01", to: "2026-12-31" } });
+    expect(prompt).toContain("exactamente 5 noches que salga entre el 2026-11-01 y el 2026-12-31");
+    expect(prompt).not.toContain("Salida el");
+    // Dates decided first: none of their own.
+    const fixed = [];
+    for await (const p of claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources }] }))).research(req)) fixed.push(p);
+    expect(fixed[0]!.proposal).not.toHaveProperty("dateFrom");
+  });
+
   it("passes Comparativa notes and photo subjects through", async () => {
     const notes = { pros: ["Vuelo corto"], cons: ["Llueve"], weather: "17 °C · lluvioso", photoSubjects: ["Alfama Lisboa"] };
     const provider = claudeProvider(async (_a, onLine) => onLine(resultLine({ proposals: [{ ...lisbon, sources, ...notes }] })));

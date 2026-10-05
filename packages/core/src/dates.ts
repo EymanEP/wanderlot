@@ -157,3 +157,18 @@ export function leaveCounts(view: Pick<LeaveView, "people">): Record<LeaveStatus
 export function allLeaveApproved(view: Pick<LeaveView, "people">): boolean {
   return view.people.length > 0 && view.people.every((p) => p.status === "approved");
 }
+
+// --- Place and dates together (ROADMAP 2.7) ------------------------------------
+
+// The widest window a trip can choose its dates in: about two months.
+export const MAX_WINDOW_DAYS = 62;
+
+export function decidesPlaceFirst(plan: { datesBy?: "dates" | "place" | undefined }): boolean {
+  return plan.datesBy === "place";
+}
+
+// The dates a destination is for: its own, in a trip that decides them
+// with the place, else the trip's.
+export function datesOf(plan: { dateFrom: string; dateTo: string }, p?: { dateFrom?: string | undefined; dateTo?: string | undefined }): { dateFrom: string; dateTo: string } {
+  return p?.dateFrom && p.dateTo ? { dateFrom: p.dateFrom, dateTo: p.dateTo } : { dateFrom: plan.dateFrom, dateTo: plan.dateTo };
+}

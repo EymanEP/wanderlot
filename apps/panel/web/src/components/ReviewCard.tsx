@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { Photo as PhotoData, Plan, Proposal } from "@wanderlot/core";
-import { checkedLabel, copy, euros, googleFlightsUrl, researchLabel, standardImageUrl } from "@wanderlot/core";
+import { checkedLabel, copy, euros, googleFlightsUrl, researchLabel, standardImageUrl, datesOf } from "@wanderlot/core";
 import { Badge, Button, Card, CheckIcon, Heading, Notice, Photo, ProvenanceBadge, buttonClasses, cn, useCopy } from "@wanderlot/ui";
 import type { Review } from "../data/store.tsx";
 import { CATEGORY_LABEL, accessLine, flightLine, sourceLine, stayLine, thingsLine, total, trustOf, trustText } from "../lib/view.ts";
+import { DatesChip } from "./DatesChip.tsx";
 
 const COPY = copy({
   es: {
@@ -128,6 +129,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
               {p.place.city}
             </Heading>
             <span className="text-sm text-muted">{p.place.country}</span>
+            <DatesChip proposal={p} />
             {approved && <Badge tone="accent-solid">{t.approved}</Badge>}
             {p.suggestedBy && <Badge tone="neutral">{t.ideaOf(p.suggestedBy)}</Badge>}
             {discarded && <Badge tone="muted">{t.discarded}</Badge>}
@@ -213,7 +215,7 @@ export function ReviewCard({ proposal: p, plan, now, verifying, onReview, onVeri
             </button>{" "}
             ·{" "}
             <a
-              href={googleFlightsUrl(p.outbound.from, p.outbound.to, plan.dateFrom, plan.dateTo)}
+              href={googleFlightsUrl(p.outbound.from, p.outbound.to, datesOf(plan, p).dateFrom, datesOf(plan, p).dateTo)}
               target="_blank"
               rel="noreferrer"
               className="font-semibold text-accent hover:text-accent-hover"

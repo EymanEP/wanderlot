@@ -3,7 +3,7 @@
 import { Hono, type Context } from "hono";
 import { stream } from "hono/streaming";
 import { z } from "zod";
-import { DEFAULT_LOCALE, LeaveStatus, googleFlightsUrl, type Locale, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
+import { DEFAULT_LOCALE, MAX_WINDOW_DAYS, datesOf, decidesPlaceFirst, LeaveStatus, googleFlightsUrl, type Locale, Category, DateWindows, FlightLeg, GroupSettings, Photo, Place, Plan, SITE_API_VERSION, TripPage, baseStay, addDaysIso, answeredAll, applyCheckedPrices, markForOtherDates, nightsOf, slugify, type DatesView, type LeaveView, type Proposal, type VoteState } from "@wanderlot/core";
 import { extractedFields } from "./providers/extract.ts";
 import { browsedFields, type Browsed, type BrowseRequest } from "./providers/browse.ts";
 import { GuideEstimate, GuideOutput, toTripPage } from "./providers/guide.ts";
@@ -132,6 +132,10 @@ const NewPlan = z.object({
   partySize: z.number().int().min(1).max(30),
   maxPriceCents: z.number().int().positive().nullable(),
   participants: z.array(z.string().min(1)).max(100).default([]),
+  // Deciding the place and the dates together (ROADMAP 2.7): within this
+  // window; dateFrom is then its start.
+  datesBy: z.enum(["dates", "place"]).optional(),
+  window: z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).optional(),
 });
 
 // "Añadir a mano" (ROADMAP 3.3): a destination the organiser found
@@ -139,6 +143,8 @@ const NewPlan = z.object({
 const ManualBody = PricesBody.extend({
   place: Place,
   category: Category,
+  // Its own start, in a trip that decides the place and the dates together.
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 // Adds research's results to a trip, as pending: a new search never replaces
@@ -462,7 +468,17 @@ export function createPanel({
     let id = base;
     for (let n = 2; store.get(id); n++) id = `${base}-${n}`;
     const { participants, ...fields } = body.data;
-    const plan: Plan = { ...fields, id, dateTo: addDaysIso(fields.dateFrom, fields.nights), status: "draft" };
+    const placeFirst = fields.datesBy === "place";
+    if (placeFirst) {
+      const w = fields.window;
+      if (!w || w.to <= w.from) return c.json({ error: say(c).badWindow }, 400);
+      const days = nightsOf({ dateFrom: w.from, dateTo: w.to });
+      if (days > MAX_WINDOW_DAYS) return c.json({ error: say(c).windowTooLong(MAX_WINDOW_DAYS) }, 400);
+      if (fields.nights > days) return c.json({ error: say(c).nightsBeyondWindow }, 400);
+    }
+    const start = placeFirst ? fields.window!.from : fields.dateFrom;
+    const { window, datesBy, ...rest } = fields;
+    const plan: Plan = { ...rest, ...(placeFirst ? { datesBy, window } : {}), id, dateFrom: start, dateTo: addDaysIso(start, fields.nights), status: "draft" };
     store.update(id, () => ({ entry: { plan, proposals: [], editorial: {}, participants }, result: null }));
     // Best effort: publishing and opening the vote send it again anyway.
     if (participants.length) await site.setPlanMembers(id, participants).catch(() => {});
@@ -480,7 +496,8 @@ export function createPanel({
     const plan = parsed.data;
     store.update(plan.id, (e) => {
       // New dates: prices checked for the old ones no longer hold (ROADMAP 1.4).
-      const moved = e && (e.plan.dateFrom !== plan.dateFrom || e.plan.dateTo !== plan.dateTo);
+      // Not while each destination has its own dates (ROADMAP 2.7).
+      const moved = e && !(decidesPlaceFirst(plan) && !e.datesDecided) && (e.plan.dateFrom !== plan.dateFrom || e.plan.dateTo !== plan.dateTo);
       const proposals = moved ? e.proposals.map(markForOtherDates) : (e?.proposals ?? []);
       return { entry: { editorial: {}, ...e, proposals, plan }, result: null };
     });
@@ -531,6 +548,7 @@ export function createPanel({
       partySize: plan.partySize,
       maxPriceCents: plan.maxPriceCents,
       locale: await groupLocale(),
+      ...(decidesPlaceFirst(plan) && plan.window && !entry.datesDecided ? { window: plan.window } : {}),
       ...(home ? { home } : {}),
     };
     if (body.data.source === "api" && status.flights === "none") {
@@ -745,8 +763,14 @@ export function createPanel({
     const body = ManualBody.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: body.error.issues[0]?.message ?? say(c).badProposal, issues: body.error.issues }, 400);
     if (!body.data.outbound !== !body.data.inbound) return c.json({ error: "outbound and inbound go together" }, 400);
-    const { place, category, ...prices } = body.data;
+    const { place, category, dateFrom: ownStart, ...prices } = body.data;
     const { plan } = entry;
+    // Deciding the place and the dates together: its own dates, in the window.
+    const own = decidesPlaceFirst(plan) && !entry.datesDecided;
+    if (own && (!ownStart || (plan.window && (ownStart < plan.window.from || addDaysIso(ownStart, plan.nights) > plan.window.to)))) {
+      return c.json({ error: say(c).pickDatesInWindow }, 400);
+    }
+    const dates = own ? { dateFrom: ownStart!, dateTo: addDaysIso(ownStart!, plan.nights) } : { dateFrom: plan.dateFrom, dateTo: plan.dateTo };
     const taken = new Set(entry.proposals.map((p) => p.id));
     const base = slugify(place.city) || place.iata.toLowerCase();
     let id = base;
@@ -758,8 +782,9 @@ export function createPanel({
       planId,
       place,
       category,
-      outbound: leg(plan.origin, place.iata, plan.dateFrom),
-      inbound: leg(place.iata, plan.origin, plan.dateTo),
+      outbound: leg(plan.origin, place.iata, dates.dateFrom),
+      inbound: leg(place.iata, plan.origin, dates.dateTo),
+      ...(own ? dates : {}),
       stays: [],
       todo: [],
       see: [],
@@ -791,7 +816,7 @@ export function createPanel({
       {
         kind: body.data.kind,
         images: body.data.images,
-        context: { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize },
+        context: { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, ...datesOf(plan, proposal), nights: plan.nights, partySize: plan.partySize },
         locale: await groupLocale(),
       },
       c.req.raw.signal,
@@ -816,8 +841,8 @@ export function createPanel({
   };
   const readFlights = async (entry: PlanEntry, proposal: Proposal, signal: AbortSignal, onProgress: (p: ResearchProgress) => void, t: PanelCopy): Promise<Browsed> => {
     const { plan } = entry;
-    const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, dateFrom: plan.dateFrom, dateTo: plan.dateTo, nights: plan.nights, partySize: plan.partySize };
-    const req: BrowseRequest = { url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, plan.dateFrom, plan.dateTo), context };
+    const context = { origin: plan.origin, city: proposal.place.city, iata: proposal.place.iata, ...datesOf(plan, proposal), nights: plan.nights, partySize: plan.partySize };
+    const req: BrowseRequest = { url: googleFlightsUrl(proposal.outbound.from, proposal.place.iata, context.dateFrom, context.dateTo), context };
     // One window at a time: the browser's profile can't be opened twice.
     const turn = browserTurn.then(() => browse!(req, signal, onProgress));
     browserTurn = turn.then(
@@ -891,6 +916,9 @@ export function createPanel({
     if (snapshot.destinations.some((d) => d.provenance.kind === "claude" && d.provenance.estimate) && (await site.version()) < 11) {
       return c.json({ error: say(c).oldSite(say(c).oldEstimates) }, 409);
     }
+    // Each destination with its own dates: a site before version 16 would
+    // show them all on the trip's.
+    if (decidesPlaceFirst(entry.plan) && (await site.version()) < 16) return c.json({ error: say(c).oldSite(say(c).oldPlaceFirst) }, 409);
     // Nothing approved empties a trip that's on the site; one never published
     // has nothing to send.
     if (snapshot.destinations.length === 0 && !entry.published) return c.json({ error: say(c).noneApproved }, 409);
@@ -965,6 +993,15 @@ export function createPanel({
         entry: { ...e!, plan: { ...e!.plan, status: state.status, ...(winner ? { winnerDestinationId: winner } : {}) } },
         result: null,
       }));
+    }
+    // Deciding the place and the dates together (ROADMAP 2.7): where they're
+    // going brings its dates, and the group can ask for the days off. Its
+    // prices were checked for those dates, so they still hold.
+    const won = winner && decidesPlaceFirst(entry.plan) ? entry.proposals.find((p) => p.id === winner) : undefined;
+    if (won?.dateFrom && won.dateTo && (entry.plan.dateFrom !== won.dateFrom || entry.plan.dateTo !== won.dateTo || !entry.datesDecided)) {
+      const dates = { dateFrom: won.dateFrom, dateTo: won.dateTo };
+      store.update(planId, (e) => ({ entry: { ...e!, plan: { ...e!.plan, ...dates, nights: nightsOf(dates) }, datesDecided: true }, result: null }));
+      await settleOnSite(planId, dates);
     }
     const going = new Set(entry.participants ?? []);
     const members = (await site.members()).filter((m) => going.has(m.id));

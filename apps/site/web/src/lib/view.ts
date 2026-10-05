@@ -1,6 +1,7 @@
 // Turns destinations, members and votes into the strings the site shows.
 import {
   baseStay,
+  decidesPlaceFirst,
   euros,
   flightDetailsKnown,
   flightPriceCents,
@@ -123,4 +124,10 @@ export function numberWord(n: number): string {
 export function names(list: string[]): string {
   if (list.length <= 1) return list.join("");
   return `${list.slice(0, -1).join(", ")} ${pick(COPY).and} ${list[list.length - 1]}`;
+}
+
+// Deciding the place and the dates together, before a destination is chosen
+// (ROADMAP 2.7): the window each destination's dates fall in; null otherwise.
+export function openWindow(plan: Pick<Plan, "datesBy" | "window">, winnerId: string | null | undefined): { from: string; to: string } | null {
+  return decidesPlaceFirst(plan) && !winnerId && plan.window ? plan.window : null;
 }

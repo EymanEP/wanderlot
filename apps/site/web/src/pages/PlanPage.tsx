@@ -29,13 +29,14 @@ import { SuggestDialog } from "../components/SuggestDialog.tsx";
 import { DestinationCard } from "../components/DestinationCard.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
-import { memberOf, numberWord, overridden, trustOf } from "../lib/view.ts";
+import { memberOf, numberWord, overridden, trustOf, openWindow } from "../lib/view.ts";
 
 const COPY = copy({
   es: {
     tabs: { all: "Todos", ciudad: "Ciudad", escapada: "Escapada", playa: "Playa", naturaleza: "Naturaleza" },
     category: "Categoría",
     datesOpen: "Fechas por decidir",
+    withPlace: (from: string, to: string, n: number) => `Cada destino con sus fechas, del ${from} al ${to} · ${n} noches`,
     range: (from: string, to: string) => `Del ${from} al ${to}`,
     from: (city: string) => `salida desde ${city}`,
     proposals: (n: string) => `${n} propuestas sobre la mesa`,
@@ -76,6 +77,7 @@ const COPY = copy({
     tabs: { all: "All", ciudad: "City", escapada: "Getaway", playa: "Beach", naturaleza: "Nature" },
     category: "Category",
     datesOpen: "Dates to be decided",
+    withPlace: (from: string, to: string, n: number) => `Each destination with its dates, ${from} to ${to} · ${n} nights`,
     range: (from: string, to: string) => `${from} to ${to}`,
     from: (city: string) => `leaving from ${city}`,
     proposals: (n: string) => `${n} ideas on the table`,
@@ -132,6 +134,7 @@ export function PlanPage() {
   const { group } = useAuth();
   const { plan, destinations, myRanking, voted, comments, members, now, result, closed, dates, trip } = site;
   const datesOpen = dates?.status === "open";
+  const placeWindow = openWindow(plan, result?.winnerId ?? plan.winnerDestinationId);
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [showFilters, setShowFilters] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -160,7 +163,7 @@ export function PlanPage() {
       <PageHeader
         size="display"
         title={plan.name}
-        subtitle={`${datesOpen ? t.datesOpen : t.range(weekdayDay(plan.dateFrom), weekdayDay(plan.dateTo))} · ${t.from(airportCity(plan.origin))}${destinations.length ? ` · ${t.proposals(numberWord(destinations.length))}` : ""}`}
+        subtitle={`${placeWindow ? t.withPlace(longDate(placeWindow.from), longDate(placeWindow.to), plan.nights) : datesOpen ? t.datesOpen : t.range(weekdayDay(plan.dateFrom), weekdayDay(plan.dateTo))} · ${t.from(airportCity(plan.origin))}${destinations.length ? ` · ${t.proposals(numberWord(destinations.length))}` : ""}`}
         actions={
           <>
             <div className="flex flex-col gap-0.5 lg:items-end">
