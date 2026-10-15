@@ -130,6 +130,20 @@ Passkeys belong to the site's address, so settle on it (the `workers.dev` one
 or a custom domain) before inviting anyone. After pulling new code, run
 `npm run deploy:site` again. Details: [`docs/SPEC.md` §11](docs/SPEC.md#11-hosting-and-setup).
 
+To have Cloudflare deploy every push instead, connect the repository to the
+Worker once (Workers & Pages → `wanderlot` → Settings → Build → Connect), with:
+
+| setting | value |
+|---|---|
+| branch | `main` |
+| root directory | `/` |
+| build command | `npm run build -w @wanderlot/site` |
+| deploy command | `npx wrangler d1 migrations apply wanderlot --remote -c apps/site/wrangler.jsonc && npx wrangler deploy -c apps/site/wrangler.jsonc` |
+
+The Worker keeps the secrets `npm run setup` stored, and `.node-version` asks
+for Node 22. If the migrations step is refused, give the build's API token
+D1 edit access.
+
 ## Running
 
 Requires Node ≥ 22.13 (the Node site uses the built-in `node:sqlite`).
