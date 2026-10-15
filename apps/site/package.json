@@ -22,6 +22,7 @@
     "@wanderlot/core": "*",
     "@wanderlot/mocks": "*",
     "@wanderlot/ui": "*",
+    "gsap": "^3.15.0",
     "hono": "^4.9.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

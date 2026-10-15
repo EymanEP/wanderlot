@@ -110,6 +110,14 @@ stay's details and the Tricount link. Flights and stay show the destination's
 own (checked) prices; everything the guide says is labelled as Claude's and
 approximate.
 
+The page opens with a countdown to the trip, worked out in the viewer's
+browser from the plan's dates (nothing new in the snapshot): days, hours,
+minutes and seconds until the outbound flight leaves (its time when the
+flight details are known, otherwise the first day's midnight), and a plane
+on a route from origin to destination that covers the last eight weeks.
+During the trip it shows which day it is; after the last day it's gone.
+Its movement is GSAP and stops for whoever asks for reduced motion.
+
 ---
 
 ## 2. The two halves and the boundary between them
