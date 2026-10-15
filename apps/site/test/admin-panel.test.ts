@@ -259,11 +259,13 @@ describe("the panel at /admin", () => {
   it("moves the laptop's data/panel.json to the site once, keeping a backup", async () => {
     const dir = mkdtempSync(join(tmpdir(), "wanderlot-move-"));
     const file = join(dir, "panel.json");
+    // Expired invites are dropped, so this one runs out a week from today.
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
     writeFileSync(
       file,
       JSON.stringify({
         plans: { semana: { plan: plan("semana", "Semana Santa"), proposals: [], editorial: {} } },
-        invites: { ana: { token: "tok", expiresAt: "2026-10-15T00:00:00Z" } },
+        invites: { ana: { token: "tok", expiresAt } },
       }),
     );
     const client = siteClient(ORIGIN, ADMIN, async (input, init) => site.request(String(input), init));
@@ -271,7 +273,7 @@ describe("the panel at /admin", () => {
     expect(existsSync(file)).toBe(false);
     expect(existsSync(`${file}.moved-to-site`)).toBe(true);
     expect((await onLaptop("/api/plans/semana")).data.plan.name).toBe("Semana Santa");
-    expect(await client.panelInvites()).toEqual({ ana: { token: "tok", expiresAt: "2026-10-15T00:00:00Z" } });
+    expect(await client.panelInvites()).toEqual({ ana: { token: "tok", expiresAt } });
     // Nothing left to move the second time.
     expect(await moveFileToSite(file, sitePanelBackend(client))).toBe(0);
   });

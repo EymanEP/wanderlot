@@ -243,6 +243,10 @@ describe("El viaje", () => {
     const nav = screen.getAllByRole("navigation", { name: "Secciones" })[0]!;
     expect(within(nav).getAllByRole("link").map((l) => l.textContent)).toEqual(["El viaje", "Destinos", "Votación", "Comentarios"]);
 
+    // The countdown to take-off, said in words for screen readers.
+    const countdown = screen.getByRole("region", { name: "Cuenta atrás" });
+    expect(within(countdown).getByText(/^Quedan 42 días, 20 horas y (20|19) minutos para Nápoles$/)).toBeTruthy();
+
     // Each person's share, and the group's Tricount.
     const money = screen.getByLabelText("Lo que pone cada uno");
     // Getting to the airport too, the way the organiser said they're going.

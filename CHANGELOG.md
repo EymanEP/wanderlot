@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- El viaje opens with an animated countdown to the trip: days, a clock to
+  take-off and a plane flying the last eight weeks to the destination; during
+  the trip it counts its days.
+
 ## 1.0.0 — 2026-10-06
 
 The first release: everything a group of friends needs to plan a trip

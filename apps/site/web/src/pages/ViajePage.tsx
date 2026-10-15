@@ -34,6 +34,7 @@ import {
   useCopy,
 } from "@wanderlot/ui";
 import { LeaveCard } from "../components/LeaveCard.tsx";
+import { TripCountdown } from "../components/TripCountdown.tsx";
 import { BeforeYouGo, FlightsCard, GuideGrid, SectionTitle, StayCard, TransportList } from "../components/TripParts.tsx";
 import { useAuth } from "../data/auth.tsx";
 import { useSite } from "../data/store.tsx";
@@ -156,6 +157,16 @@ function Trip({ trip, d }: { trip: TripPage; d: Destination }) {
         </div>
         <Money flight={flight} stayShare={stayShare} access={d.access?.cents ?? (trip.toAirportChosen === null ? null : (trip.toAirport[trip.toAirportChosen]?.priceCents ?? null))} tricountUrl={trip.tricountUrl} />
       </section>
+
+      <TripCountdown
+        dateFrom={plan.dateFrom}
+        dateTo={plan.dateTo}
+        departAt={flightDetailsKnown(d) ? d.outbound.departAt : null}
+        from={d.outbound.from}
+        to={d.place.iata}
+        city={d.place.city}
+        now={now}
+      />
 
       <LeaveCard />
 
